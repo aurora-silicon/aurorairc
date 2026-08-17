@@ -1,0 +1,3251 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="color-scheme" content="light dark">
+<meta name="theme-color" content="#101014">
+<title>AuroraIRC</title>
+<style>
+/* ============================ tokens ============================ */
+:root {
+  --bg:#fbfbfc; --surface:#fff; --raised:#f3f3f5; --sunken:#eeeef1;
+  --line:#e2e2e7; --line-soft:#ededf1;
+  --fg:#16161a; --fg-2:#55555f; --fg-3:#8a8a95;
+  --accent:#2563d8; --accent-fg:#fff; --accent-soft:#e8effc;
+  --mark:#ffd968; --mark-fg:#3d2f00;
+  --danger:#c0392b; --ok:#1f9254;
+  --radius:12px; --radius-sm:9px; --feed-max:1500px;
+  --scroll:#c8c8d2; --scroll-hover:#a3a3b2;
+  --shadow:0 1px 2px rgba(16,16,24,.06), 0 8px 24px rgba(16,16,24,.08);
+  --mono:ui-monospace,SFMono-Regular,"SF Mono",Menlo,Consolas,monospace;
+  --bar-h:56px;
+}
+/* Shared by both dark palettes */
+:root[data-theme="noir"],:root[data-theme="dark"],
+:root:not([data-theme]) { color-scheme:light }
+
+/* --- noir: near black, the original look --- */
+@media (prefers-color-scheme:dark){:root:not([data-theme]){
+  color-scheme:dark;
+  --bg:#0e0e11; --surface:#16161b; --raised:#1e1e25; --sunken:#232330;
+  --line:#2a2a33; --line-soft:#22222a;
+  --fg:#eaeaef; --fg-2:#a6a6b2; --fg-3:#70707e;
+  --accent:#5b9dff; --accent-fg:#0b1220;
+  --mark:#6d5400; --mark-fg:#ffe9a3;
+  --danger:#ff6b5e; --ok:#4ade80;
+  --shadow:0 1px 2px rgba(0,0,0,.4), 0 10px 30px rgba(0,0,0,.45);
+  --scroll:#3b3b47; --scroll-hover:#51515f;
+}}
+:root[data-theme="noir"]{
+  color-scheme:dark;
+  --bg:#0e0e11; --surface:#16161b; --raised:#1e1e25; --sunken:#232330;
+  --line:#2a2a33; --line-soft:#22222a;
+  --fg:#eaeaef; --fg-2:#a6a6b2; --fg-3:#70707e;
+  --accent:#5b9dff; --accent-fg:#0b1220;
+  --mark:#6d5400; --mark-fg:#ffe9a3;
+  --danger:#ff6b5e; --ok:#4ade80;
+  --shadow:0 1px 2px rgba(0,0,0,.4), 0 10px 30px rgba(0,0,0,.45);
+  --scroll:#3b3b47; --scroll-hover:#51515f;
+}
+
+/* --- dark: softer, lifted off pure black --- */
+:root[data-theme="dark"]{
+  color-scheme:dark;
+  --bg:#1b1c21; --surface:#23242a; --raised:#2c2d35; --sunken:#32333d;
+  --line:#3a3b45; --line-soft:#2e2f38;
+  --fg:#e9eaee; --fg-2:#adaeba; --fg-3:#7b7c8a;
+  --accent:#6ea8ff; --accent-fg:#0d1626;
+  --mark:#7a5f00; --mark-fg:#ffeeb0;
+  --danger:#ff7468; --ok:#57d98b;
+  --shadow:0 1px 2px rgba(0,0,0,.35), 0 12px 32px rgba(0,0,0,.4);
+  --scroll:#474854; --scroll-hover:#5c5d6b;
+}
+
+/* Derived from --accent last, so setting a custom accent updates every tint
+   without having to hand-pick a matching soft colour. */
+:root{--accent-soft:color-mix(in srgb, var(--accent) 16%, var(--surface))}
+
+/* Optional background image, behind everything, with its own scrim so text
+   stays readable no matter what gets uploaded. */
+#bgimg{
+  position:fixed;inset:0;z-index:-2;pointer-events:none;
+  background-size:cover;background-position:center;background-repeat:no-repeat;
+  opacity:var(--bg-strength,.35);filter:blur(var(--bg-blur,0px));
+  transform:scale(1.04);          /* hides blur bleed at the edges */
+}
+body.has-bg{background:transparent}
+body.has-bg::after{
+  content:'';position:fixed;inset:0;z-index:-1;pointer-events:none;
+  background:var(--bg);opacity:var(--bg-scrim,.5);
+}
+/* Let the image show through the reading area; panels stay solid for contrast */
+body.has-bg .feed,body.has-bg #log{background:transparent}
+body.has-bg .appbar,body.has-bg aside,body.has-bg .composer,body.has-bg .status,
+body.has-bg .strip{background:color-mix(in srgb,var(--surface) 88%,transparent)}
+
+/* Anonymous view: personalisation and management simply are not there. The
+   server refuses these actions anyway; this stops the UI offering them. */
+body.public #theme,
+body.public #manage-tags,
+body.public #save-search{display:none}
+
+*{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+html,body{height:100%;overscroll-behavior-y:none}
+body{
+  margin:0;background:var(--bg);color:var(--fg);
+  font:15px/1.5 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,"Helvetica Neue",sans-serif;
+  display:flex;flex-direction:column;
+  -webkit-font-smoothing:antialiased;
+}
+button,input,select,textarea{font:inherit;color:inherit}
+button{border:0;background:none;cursor:pointer}
+::selection{background:var(--accent-soft)}
+
+/* Scrollbars, everywhere. Firefox honours only the standard properties and
+   ignores ::-webkit-* entirely, which is why it was still showing the OS
+   default - both syntaxes are needed. */
+*{scrollbar-width:thin;scrollbar-color:var(--scroll) transparent}
+*::-webkit-scrollbar{width:11px;height:11px}
+*::-webkit-scrollbar-track{background:transparent}
+*::-webkit-scrollbar-thumb{
+  background:var(--scroll);border-radius:99px;
+  border:3px solid transparent;background-clip:content-box;
+}
+*::-webkit-scrollbar-thumb:hover{background:var(--scroll-hover);background-clip:content-box}
+*::-webkit-scrollbar-thumb:active{background:var(--fg-3);background-clip:content-box}
+*::-webkit-scrollbar-corner{background:transparent}
+/* Keep the gutter reserved so content doesn't shift when a list becomes
+   scrollable mid-render. */
+#log,.nicklist,.taglist,#ctxbody,.sheet .content,#picker{scrollbar-gutter:stable}
+
+/* ============================ app bar ============================ */
+/* Flex-wrap does the responsive work: the search field is full-width (and so
+   wraps to its own line) on narrow screens, and shrinks onto the title row
+   once there is room. No duplicated markup, no JS. */
+.appbar{
+  position:sticky;top:0;z-index:30;background:var(--surface);
+  border-bottom:1px solid var(--line);
+  padding:max(6px,env(safe-area-inset-top)) 10px 0;
+  display:flex;flex-wrap:wrap;align-items:center;column-gap:10px;
+}
+.title{order:1;flex:1 1 auto;min-width:0;height:44px;display:flex;align-items:center;
+  font-weight:680;letter-spacing:-.02em;font-size:16px;white-space:nowrap}
+.actions{order:2;flex:0 0 auto;display:flex;align-items:center;gap:3px}
+.searchwrap{order:3;flex:1 1 100%}
+.rail{order:4;flex:1 1 100%}
+.applied{order:5;flex:1 1 100%}
+.title span{color:var(--fg-3);font-weight:450;font-size:13px;margin-left:7px;
+  font-variant-numeric:tabular-nums}
+.grow{flex:1;min-width:0}
+
+.iconbtn{
+  width:38px;height:38px;border-radius:10px;display:grid;place-items:center;
+  color:var(--fg-2);flex:none;position:relative;
+}
+.iconbtn:hover{background:var(--raised);color:var(--fg)}
+.iconbtn[aria-pressed="true"]{background:var(--accent-soft);color:var(--accent)}
+.iconbtn svg{width:20px;height:20px;stroke:currentColor;fill:none;
+  stroke-width:1.9;stroke-linecap:round;stroke-linejoin:round}
+.iconbtn .badge{
+  position:absolute;top:6px;right:6px;width:7px;height:7px;border-radius:50%;
+  background:var(--ok);box-shadow:0 0 0 2px var(--surface);display:none;
+}
+.iconbtn.on .badge{display:block}
+
+/* search */
+.searchwrap{position:relative;display:flex;align-items:center;padding-bottom:8px}
+.searchwrap svg{position:absolute;left:11px;width:17px;height:17px;color:var(--fg-3);
+  stroke:currentColor;fill:none;stroke-width:2;pointer-events:none}
+#q{
+  width:100%;height:38px;padding:0 34px 0 34px;border-radius:10px;
+  background:var(--sunken);border:1px solid transparent;font-size:16px;
+}
+#q::placeholder{color:var(--fg-3)}
+#q:focus{outline:none;border-color:var(--accent);background:var(--surface)}
+#qclear{position:absolute;right:4px;width:30px;height:30px;border-radius:8px;
+  display:none;place-items:center;color:var(--fg-3)}
+#qclear.on{display:grid}
+#qclear:hover{background:var(--raised);color:var(--fg)}
+
+/* @nick autocomplete */
+#suggest{
+  display:none;position:absolute;top:calc(100% - 2px);left:0;right:0;z-index:35;
+  background:var(--surface);border:1px solid var(--line);border-radius:12px;
+  box-shadow:var(--shadow);overflow:hidden;max-height:280px;overflow-y:auto
+}
+#suggest.on{display:block}
+#suggest button{
+  display:flex;align-items:center;gap:9px;width:100%;padding:8px 11px;text-align:left;
+  min-height:44px
+}
+#suggest button:hover,#suggest button.sel{background:var(--accent-soft)}
+#suggest .nm{flex:1;font-size:14px;font-weight:540}
+#suggest .ct{font-size:12px;color:var(--fg-3);font-variant-numeric:tabular-nums}
+
+/* channel rail */
+.rail{display:flex;gap:6px;overflow-x:auto;padding:0 0 8px;scrollbar-width:none}
+.rail::-webkit-scrollbar{display:none}
+.chip{
+  flex:none;height:30px;padding:0 12px;border-radius:99px;font-size:13.5px;
+  font-weight:520;color:var(--fg-2);background:var(--raised);
+  border:1px solid transparent;white-space:nowrap;display:inline-flex;align-items:center;gap:6px;
+}
+.chip:hover{color:var(--fg)}
+.chip[aria-pressed="true"]{background:var(--accent);color:var(--accent-fg);border-color:transparent}
+.chip .n{opacity:.62;font-size:12px;font-variant-numeric:tabular-nums}
+
+/* filter summary strip */
+.applied{
+  display:none;gap:6px;align-items:center;padding:0 0 8px;overflow-x:auto;
+  scrollbar-width:none;font-size:13px;color:var(--fg-2)
+}
+.applied::-webkit-scrollbar{display:none}
+.applied.on{display:flex}
+.tag{
+  flex:none;display:inline-flex;align-items:center;gap:6px;height:28px;padding:0 6px 0 10px;
+  border-radius:99px;background:var(--accent-soft);color:var(--accent);font-weight:520;font-size:13px;
+}
+.tag button{width:18px;height:18px;border-radius:50%;display:grid;place-items:center;
+  color:inherit;opacity:.7;font-size:15px;line-height:1}
+.tag button:hover{opacity:1;background:rgba(0,0,0,.08)}
+.linkbtn{color:var(--accent);font-weight:560;font-size:13px;white-space:nowrap;flex:none}
+
+/* ============================ layout ============================ */
+main{flex:1;display:flex;min-height:0;position:relative}
+
+/* people panel */
+aside{
+  width:264px;flex:none;background:var(--surface);border-right:1px solid var(--line);
+  display:flex;flex-direction:column;min-height:0;
+}
+.aside-head{padding:10px;display:flex;flex-direction:column;gap:8px;border-bottom:1px solid var(--line-soft)}
+.aside-head .row{display:flex;align-items:center;justify-content:space-between;gap:8px}
+.aside-head h2{margin:0;font-size:13px;font-weight:620;color:var(--fg-2);
+  text-transform:uppercase;letter-spacing:.05em}
+/* These are classes, not ids: the panel is rendered twice (sidebar + sheet).
+   As ids the overflow rule silently stopped applying and the list grew the
+   whole page instead of scrolling inside itself. */
+.nickfilter{height:34px;padding:0 10px;border-radius:9px;background:var(--sunken);
+  border:1px solid transparent;font-size:16px;width:100%}
+.nickfilter:focus{outline:none;border-color:var(--accent);background:var(--surface)}
+.nicksort{height:30px;border:0;background:none;color:var(--accent);font-size:13px;
+  font-weight:540;padding:0;cursor:pointer}
+.nicklist{overflow-y:auto;flex:1;min-height:0;padding:6px}
+.taglist{max-height:min(46vh,340px);overflow-y:auto}
+.person{
+  display:flex;align-items:center;gap:9px;padding:7px 9px;border-radius:10px;
+  cursor:pointer;min-height:40px;
+}
+.person:hover{background:var(--raised)}
+.person.on{background:var(--accent-soft)}
+.person .nm{flex:1;font-size:14px;font-weight:520;overflow:hidden;
+  text-overflow:ellipsis;white-space:nowrap}
+.person .ct{color:var(--fg-3);font-size:12px;font-variant-numeric:tabular-nums}
+.av{
+  width:26px;height:26px;border-radius:50%;flex:none;display:grid;place-items:center;
+  font-size:12px;font-weight:680;color:#fff;text-transform:uppercase;
+  font-family:-apple-system,sans-serif;
+}
+
+/* feed */
+.feed{flex:1;display:flex;flex-direction:column;min-width:0;position:relative}
+.strip{
+  display:flex;align-items:flex-end;gap:1.5px;height:30px;padding:5px 12px;
+  background:var(--surface);border-bottom:1px solid var(--line);overflow:hidden;cursor:crosshair;
+}
+.strip .bar{flex:1 1 0;min-width:2px;background:var(--accent);opacity:.32;border-radius:2px 2px 0 0;
+  transition:opacity .12s}
+.strip .bar:hover,.strip .bar.on{opacity:1}
+
+#log{flex:1;overflow-y:auto;padding:4px 0 22px;overscroll-behavior:contain}
+
+/* date separator - centered pill */
+/* Not sticky: several would pin at the same offset and stack, which is what
+   made the pill look like it had a second rounded box behind it - and left
+   clicks landing on whichever separator happened to be on top. */
+.daysep{display:flex;justify-content:center;margin:16px 0 10px;pointer-events:none}
+/* A real button, inline-flex: the hit area is exactly the pill you can see.
+   As styled inline text the background and the clickable box disagreed. */
+.daysep button{
+  pointer-events:auto;display:inline-flex;align-items:center;
+  background:var(--raised);color:var(--fg-2);font-size:12px;font-weight:600;
+  height:26px;padding:0 13px;border-radius:99px;border:1px solid var(--line-soft);
+  box-shadow:0 1px 3px rgba(0,0,0,.06);cursor:pointer;line-height:1;
+  transition:color .12s,background .12s,border-color .12s;
+}
+.daysep button:hover{color:var(--accent);border-color:var(--accent);background:var(--accent-soft)}
+.daysep button:active{transform:translateY(.5px)}
+
+/* message rows, grouped like a real chat client */
+.msg{display:grid;grid-template-columns:34px 1fr;gap:10px;padding:1px 12px;position:relative}
+.msg.head{margin-top:9px}
+.msg:hover{background:var(--line-soft)}
+.msg .gutter{grid-column:1;display:flex;justify-content:center;padding-top:3px}
+.msg .gutter .time{display:none;font:11px/1.6 var(--mono);color:var(--fg-3)}
+.msg:not(.head):hover .gutter .time{display:block}
+.msg .body{grid-column:2;min-width:0}
+.msg .meta{display:flex;align-items:baseline;gap:8px;margin-bottom:1px;flex-wrap:wrap}
+.msg .who{font-weight:640;font-size:14.5px;cursor:pointer;letter-spacing:-.01em}
+.msg .who:hover{text-decoration:underline}
+.msg .when{font-size:11.5px;color:var(--fg-3);cursor:pointer;font-variant-numeric:tabular-nums}
+.msg .when:hover{color:var(--accent);text-decoration:underline}
+/* Colour-coded so interleaved channels are scannable at a glance.
+   Hidden entirely when exactly one channel is selected. */
+.msg .chan{
+  font-size:11px;font-weight:600;padding:1px 7px;border-radius:99px;
+  color:var(--ch-fg);background:var(--ch-bg);cursor:pointer;
+  border:1px solid color-mix(in srgb,var(--ch-fg) 22%,transparent);
+}
+.msg .chan:hover{filter:brightness(1.08)}
+.txt{white-space:pre-wrap;overflow-wrap:anywhere;font-size:15px;line-height:1.48}
+.txt a{color:var(--accent);text-underline-offset:2px}
+.mention{color:var(--accent);font-weight:580;cursor:pointer;border-radius:3px}
+.mention:hover{background:var(--accent-soft);text-decoration:underline}
+.msg.action .txt{font-style:italic;color:var(--fg-2)}
+.msg.topic .txt{color:var(--accent);font-size:14px}
+.msg.topic .txt::before{content:"topic — ";color:var(--fg-3);font-style:italic}
+.msg.mine .txt{color:var(--fg)}
+.msg.mine .who{color:var(--ok)!important}
+mark{background:var(--mark);color:var(--mark-fg);border-radius:3px;padding:0 2px}
+.msg.focus{background:var(--accent-soft)}
+@keyframes flash{from{background:var(--mark)}to{background:transparent}}
+.msg.jumped{animation:flash 2.2s ease-out 1}
+.sending{opacity:.5}
+
+/* Presence traffic: quiet, but one line per event and on the same grid as
+   messages so the text lines up rather than floating off to the left. */
+.evt{
+  display:grid;grid-template-columns:34px 1fr;gap:10px;align-items:baseline;
+  padding:0 12px;font-size:12px;line-height:1.62;
+  color:var(--fg-3);opacity:.5;transition:opacity .12s;
+}
+.evt:hover{opacity:.9;background:var(--line-soft)}
+.evt .et{grid-column:1;text-align:right;font-family:var(--mono);font-size:10px;opacity:.75}
+.evt .eb{grid-column:2;overflow-wrap:anywhere}
+.evt .sig{display:inline-block;width:10px;margin-right:7px;font-weight:700;opacity:.75}
+.evt .sig.in{color:var(--ok)}
+.evt .sig.out{color:var(--danger)}
+.evt b{font-weight:600;color:var(--fg-2);cursor:pointer}
+.evt b:hover{color:var(--accent);text-decoration:underline}
+.evt .why{opacity:.72}
+.evt .xn{margin-left:6px;padding:0 5px;border-radius:99px;font-size:10px;
+  font-weight:700;background:var(--raised);color:var(--fg-3);
+  border:1px solid var(--line-soft)}
+.evt .chan{font-size:10.5px;font-weight:600;padding:0 6px;border-radius:99px;
+  color:var(--ch-fg);background:var(--ch-bg);cursor:pointer;margin-right:5px;
+  border:1px solid color-mix(in srgb,var(--ch-fg) 20%,transparent)}
+@media (min-width:768px){ .evt{grid-template-columns:44px 1fr;padding-inline:16px} }
+@media (min-width:1200px){ .evt{max-width:var(--feed-max);margin-inline:auto} }
+
+.empty{padding:56px 24px;text-align:center;color:var(--fg-3);font-size:14px}
+.empty b{display:block;color:var(--fg-2);font-size:15px;margin-bottom:5px}
+.loading{padding:16px;text-align:center;color:var(--fg-3);font-size:13px}
+
+/* status line */
+.status{
+  display:flex;align-items:center;gap:10px;padding:5px 12px;font-size:12.5px;
+  color:var(--fg-3);background:var(--surface);border-bottom:1px solid var(--line)
+}
+.status b{color:var(--fg-2);font-variant-numeric:tabular-nums;font-weight:600}
+
+/* send feedback + jump-to-latest */
+.sendstatus{
+  display:none;padding:6px 14px;font-size:12.5px;color:var(--fg-2);
+  background:var(--raised);border-top:1px solid var(--line);align-items:center;gap:7px
+}
+.sendstatus.on{display:flex}
+.sendstatus.err{color:var(--danger)}
+.spin{width:12px;height:12px;border-radius:50%;border:2px solid var(--line);
+  border-top-color:var(--accent);animation:spin .7s linear infinite;flex:none}
+@keyframes spin{to{transform:rotate(360deg)}}
+/* Sits clear of the composer. --composer-h is measured live, so the pill keeps
+   its footing as the textarea grows with a long message. */
+.newpill{
+  position:absolute;left:50%;transform:translateX(-50%) translateY(8px);
+  bottom:calc(16px + var(--composer-h,0px));z-index:9;
+  height:34px;padding:0 15px;border-radius:99px;background:var(--accent);color:var(--accent-fg);
+  font-size:13.5px;font-weight:600;box-shadow:var(--shadow);display:none;align-items:center;gap:7px;
+  opacity:0;transition:opacity .16s,transform .16s
+}
+.newpill.on{display:flex;opacity:1;transform:translateX(-50%) translateY(0)}
+
+/* composer */
+.composer{
+  display:none;gap:8px;align-items:flex-end;position:relative;
+  padding:10px 12px;padding-bottom:max(10px,env(safe-area-inset-bottom));
+  background:var(--surface);border-top:1px solid var(--line);
+}
+.composer.on{display:flex}
+/* Messages fade out into the composer instead of being sliced by its edge */
+.composer::before{
+  content:'';position:absolute;left:0;right:0;bottom:100%;height:30px;
+  pointer-events:none;
+  background:linear-gradient(to bottom,transparent,var(--bg));
+}
+.composer select{
+  height:42px;border-radius:12px;background:var(--sunken);
+  border:1px solid var(--line);padding:0 10px;font-size:14px;max-width:140px;flex:none
+}
+/* One rounded field holding the text and the send button, so they read as a
+   single control rather than three loose boxes */
+.cbox{
+  flex:1;min-width:0;display:flex;align-items:flex-end;gap:6px;
+  background:var(--sunken);border:1px solid var(--line);border-radius:14px;padding:4px;
+  transition:border-color .12s,background .12s;
+}
+.cbox:focus-within{border-color:var(--accent);background:var(--surface)}
+.composer textarea{
+  flex:1;min-width:0;min-height:34px;max-height:140px;resize:none;
+  padding:7px 4px 7px 10px;background:none;border:0;
+  font-size:16px;line-height:1.4;font-family:inherit
+}
+.composer textarea:focus{outline:none}
+.sendbtn{
+  width:34px;height:34px;border-radius:10px;background:var(--accent);color:var(--accent-fg);
+  display:grid;place-items:center;flex:none;transition:opacity .12s
+}
+.sendbtn:disabled{opacity:.35;cursor:default}
+.sendbtn svg{width:17px;height:17px;stroke:currentColor;fill:none;stroke-width:2.1;
+  stroke-linecap:round;stroke-linejoin:round}
+
+/* ============================ overlays ============================ */
+.scrim{position:fixed;inset:0;background:rgba(10,10,14,.45);z-index:40;
+  opacity:0;pointer-events:none;transition:opacity .18s}
+.scrim.on{opacity:1;pointer-events:auto}
+
+.sheet{
+  position:fixed;z-index:50;background:var(--surface);box-shadow:var(--shadow);
+  display:flex;flex-direction:column;transition:transform .22s cubic-bezier(.32,.72,0,1);
+}
+/* bottom sheet (mobile default) */
+.sheet.bottom{
+  left:0;right:0;bottom:0;max-height:82vh;border-radius:18px 18px 0 0;
+  transform:translateY(101%);padding-bottom:env(safe-area-inset-bottom)
+}
+.sheet.bottom.on{transform:translateY(0)}
+.sheet .handle{width:36px;height:4px;border-radius:99px;background:var(--line);
+  margin:8px auto 2px;flex:none}
+/* #ctxsheet is its own element, not a .sheet, so it has to be named here too
+   or it inherits no header layout at all. */
+.sheet header,#ctxsheet header{display:flex;align-items:center;gap:12px;padding:12px 18px;
+  border-bottom:1px solid var(--line-soft);flex:none}
+.sheet header h3,#ctxsheet header h3{margin:0;font-size:16px;font-weight:640;
+  letter-spacing:-.01em}
+.sheet .content{overflow-y:auto;padding:14px 16px;display:flex;flex-direction:column;gap:16px}
+.sheet .content::-webkit-scrollbar{display:none}
+
+/* side sheet for people on mobile */
+.sheet.side{
+  top:0;bottom:0;left:0;width:min(300px,86vw);transform:translateX(-101%);
+  padding-top:env(safe-area-inset-top)
+}
+.sheet.side.on{transform:translateX(0)}
+.sheet.side aside{width:100%;border:0}
+
+.field{display:flex;flex-direction:column;gap:7px}
+.field label{font-size:12.5px;font-weight:620;color:var(--fg-2);
+  text-transform:uppercase;letter-spacing:.04em}
+.field input,.field select{
+  height:42px;padding:0 12px;border-radius:10px;background:var(--sunken);
+  border:1px solid transparent;font-size:16px;width:100%
+}
+.field input:focus,.field select:focus{outline:none;border-color:var(--accent);background:var(--surface)}
+.field .hint{font-size:12.5px;color:var(--fg-3);line-height:1.45}
+.dates{display:flex;gap:8px}
+.dates input{flex:1;min-width:0}
+/* Mixed input+select+button rows. Without a real basis the text field
+   collapses to zero width once the select and button take their space -
+   it reads as an empty circle you cannot type into. */
+.formrow{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
+.formrow input{flex:1 1 170px;min-width:150px;height:42px;padding:0 12px;
+  border-radius:10px;background:var(--sunken);border:1px solid var(--line);font-size:16px}
+.formrow input:focus{outline:none;border-color:var(--accent);background:var(--surface)}
+.formrow select{flex:0 1 auto;min-width:110px;height:42px;border-radius:10px;
+  background:var(--sunken);border:1px solid var(--line);padding:0 10px;font-size:14px}
+.formrow .btn{flex:0 0 auto;width:auto;padding:0 18px;height:42px}
+.presets{display:flex;gap:6px;flex-wrap:wrap}
+.seg{display:flex;background:var(--sunken);border-radius:10px;padding:3px;gap:3px}
+.seg button{flex:1;height:34px;border-radius:8px;font-size:13.5px;font-weight:540;color:var(--fg-2)}
+.seg button[aria-pressed="true"]{background:var(--surface);color:var(--fg);box-shadow:0 1px 3px rgba(0,0,0,.1)}
+.btn{
+  height:44px;border-radius:11px;background:var(--accent);color:var(--accent-fg);
+  font-weight:620;font-size:15px;width:100%;display:grid;place-items:center
+}
+.btn.ghost{background:var(--raised);color:var(--fg)}
+.btn:disabled{opacity:.5;cursor:default}
+/* appearance controls */
+.swatches{display:flex;flex-wrap:wrap;gap:8px}
+.swatch-btn{
+  width:32px;height:32px;border-radius:50%;border:2px solid transparent;
+  box-shadow:inset 0 0 0 1px rgba(0,0,0,.15);cursor:pointer;
+}
+.swatch-btn[aria-pressed="true"]{border-color:var(--fg);transform:scale(1.06)}
+.field .sub{font-size:12px;font-weight:500;color:var(--fg-3);text-transform:none;
+  letter-spacing:0;margin-top:10px;display:block}
+input[type=range]{width:100%;accent-color:var(--accent);margin-top:4px}
+input[type=color]{flex:1;height:42px;padding:3px;border-radius:10px;
+  background:var(--sunken);border:1px solid var(--line);cursor:pointer}
+
+/* saved searches */
+.saved{display:flex;align-items:center;gap:9px;padding:8px 9px;border-radius:10px;
+  cursor:pointer;min-height:42px}
+.saved:hover{background:var(--raised)}
+.saved .nm{flex:1;font-size:14px;font-weight:560;overflow:hidden;
+  text-overflow:ellipsis;white-space:nowrap}
+.saved .qq{font:11.5px var(--mono);color:var(--fg-3);overflow:hidden;
+  text-overflow:ellipsis;white-space:nowrap;max-width:46%}
+/* Always present, not hover-revealed: on touch there is no hover, so a
+   hover-only control simply does not exist for half the users. */
+.saved .del{width:32px;height:32px;border-radius:8px;display:grid;place-items:center;
+  color:var(--fg-3);font-size:15px;line-height:1;flex:none;opacity:.55;
+  transition:opacity .12s,background .12s,color .12s}
+.saved:hover .del,.saved .del:focus-visible{opacity:1}
+@media (hover:none){.saved .del{opacity:.85}}
+.saved .del.danger:hover{background:color-mix(in srgb,var(--danger) 16%,transparent);
+  color:var(--danger)}
+.saved .del:hover{background:var(--sunken);color:var(--danger)}
+
+.note{font-size:13px;color:var(--fg-2);background:var(--raised);padding:10px 12px;
+  border-radius:10px;line-height:1.5}
+.note.err{background:color-mix(in srgb,var(--danger) 12%,transparent);color:var(--danger)}
+.note code{font-family:var(--mono);font-size:12px}
+.dot{width:8px;height:8px;border-radius:50%;background:var(--fg-3);flex:none}
+.dot.live{background:var(--ok)}
+
+/* context modal */
+#ctxsheet{
+  position:fixed;z-index:50;inset:auto 0 0;max-height:80vh;background:var(--surface);
+  border-radius:18px 18px 0 0;box-shadow:var(--shadow);display:flex;flex-direction:column;
+  transform:translateY(101%);transition:transform .22s cubic-bezier(.32,.72,0,1)
+}
+#ctxsheet.on{transform:translateY(0)}
+#ctxbody{overflow-y:auto;padding:10px 6px max(18px,env(safe-area-inset-bottom))}
+#ctxbody .msg{padding-inline:14px}
+#ctxbody .daysep{margin-top:10px}
+@media (min-width:768px){
+  #ctxbody{padding:14px 10px 18px}
+  #ctxbody .msg{padding-inline:18px}
+}
+
+/* ====================== tablet and up (≥768) ====================== */
+@media (min-width:768px){
+  .appbar{padding-inline:16px}
+  /* Panels stop being bottom sheets and become proper floating surfaces */
+  .sheet.bottom{
+    left:auto;right:20px;bottom:20px;width:400px;max-height:min(70vh,620px);
+    border-radius:16px;transform:translateY(calc(100% + 40px))
+  }
+  .sheet.bottom.on{transform:translateY(0)}
+  .sheet.bottom .handle{display:none}
+  #ctxsheet{
+    left:50%;right:auto;bottom:auto;top:50%;transform:translate(-50%,-46%) scale(.985);
+    width:min(860px,92vw);max-height:80vh;border-radius:16px;opacity:0;pointer-events:none
+  }
+  #ctxsheet.on{transform:translate(-50%,-50%) scale(1);opacity:1;pointer-events:auto}
+  #ctxsheet .handle{display:none}
+  .sheet.side{width:320px}
+  .msg{grid-template-columns:40px 1fr;padding-inline:16px}
+}
+
+/* Search joins the title row once there is horizontal room. 768 is the
+   narrowest width where title + field + three buttons still fit comfortably.
+   Title and actions take equal flexible space so the field lands dead centre
+   regardless of how wide either side happens to be. */
+@media (min-width:768px){
+  .searchwrap{order:2;flex:0 1 560px;padding-bottom:0}
+  .title{flex:1 1 0;overflow:hidden;text-overflow:ellipsis;font-size:17px}
+  .actions{order:3;flex:1 1 0;justify-content:flex-end}
+  .rail{padding-top:8px}
+}
+
+/* ====================== desktop (≥1000) ====================== */
+@media (min-width:1000px){
+  .msg{grid-template-columns:44px 1fr}
+  #log{padding-bottom:26px}
+}
+@media (max-width:999px){
+  aside.desktop{display:none}        /* below this the People sheet takes over */
+}
+/* Collapsible on desktop too - the list is useful, not always wanted.
+   Animated by width rather than display, which cannot be transitioned, so it
+   slides like the sheets instead of snapping in and out. */
+@media (min-width:1000px){
+  aside.desktop{
+    width:264px;flex:0 0 auto;overflow:hidden;
+    transition:width .22s cubic-bezier(.32,.72,0,1),
+               opacity .16s ease,
+               border-right-color .22s;
+  }
+  /* Fixed-width children so the list does not reflow mid-slide */
+  aside.desktop > *{width:264px;flex:none}
+  aside.desktop > .nicklist{flex:1 1 auto}
+  body.no-people aside.desktop{
+    width:0;opacity:0;border-right-color:transparent;pointer-events:none;
+  }
+}
+@media (prefers-reduced-motion:reduce){
+  aside.desktop,.sheet,#ctxsheet{transition:none}
+}
+
+/* ====================== wide desktop (≥1200) ====================== */
+/* Cap the reading measure. Full-window lines are miserable at 1920px, and
+   chat text is short - the extra width buys nothing. */
+@media (min-width:1200px){
+  /* Only the reading column is capped. The composer, its fade and the status
+     bar span the full width - inset, they read as a cut-off panel. */
+  #log .msg,#log .daysep{max-width:var(--feed-max);margin-inline:auto}
+  .status>*:first-child{padding-left:max(0px,calc((100% - var(--feed-max))/2))}
+  .strip{padding-inline:max(12px,calc((100% - var(--feed-max))/2))}
+  /* keep the field itself aligned with the text column, without boxing the bar */
+  .composer{padding-inline:max(12px,calc((100% - var(--feed-max))/2))}
+}
+
+/* ---------------- tags ---------------- */
+.mtags{display:flex;flex-wrap:wrap;gap:4px;margin-top:3px}
+.mtag{
+  display:inline-flex;align-items:center;gap:5px;height:20px;padding:0 8px;
+  border-radius:99px;font-size:11.5px;font-weight:620;cursor:pointer;
+  color:var(--tg-fg);background:var(--tg-bg);
+  border:1px solid color-mix(in srgb,var(--tg-fg) 20%,transparent);
+}
+.mtag:hover{filter:brightness(1.07)}
+.mtag i{width:7px;height:7px;border-radius:50%;background:var(--tg-dot);flex:none}
+
+/* tag list rows in the panels */
+.tagrow{display:flex;align-items:center;gap:9px;padding:7px 9px;border-radius:10px;
+  cursor:pointer;min-height:40px}
+.tagrow:hover{background:var(--raised)}
+.tagrow.on{background:var(--accent-soft)}
+.tagrow .swatch{width:13px;height:13px;border-radius:50%;background:var(--tg-dot);flex:none;
+  box-shadow:0 0 0 2px color-mix(in srgb,var(--tg-dot) 25%,transparent)}
+.tagrow .nm{flex:1;font-size:14px;font-weight:520}
+.tagrow .ct{font-size:12px;color:var(--fg-3);font-variant-numeric:tabular-nums}
+.tagrow .del{width:26px;height:26px;border-radius:7px;display:none;place-items:center;
+  color:var(--fg-3);font-size:16px;line-height:1}
+.tagrow:hover .del{display:grid}
+.tagrow .del:hover{background:var(--raised);color:var(--danger)}
+
+#toast{
+  position:fixed;left:50%;transform:translateX(-50%) translateY(10px);
+  bottom:max(20px,env(safe-area-inset-bottom));z-index:80;
+  background:var(--fg);color:var(--bg);padding:9px 16px;border-radius:99px;
+  font-size:13.5px;font-weight:560;box-shadow:var(--shadow);
+  opacity:0;pointer-events:none;transition:opacity .18s,transform .18s;max-width:88vw
+}
+#toast.on{opacity:1;transform:translateX(-50%) translateY(0)}
+
+/* tag manager rows */
+.tagedit{display:flex;align-items:center;gap:8px;padding:6px 4px;
+  border-bottom:1px solid var(--line-soft)}
+.tagedit.new{border:0;padding-top:0}
+.tagedit .swatch{width:13px;height:13px;border-radius:50%;background:var(--tg-dot);flex:none;
+  box-shadow:0 0 0 2px color-mix(in srgb,var(--tg-dot) 25%,transparent)}
+.tagedit .lbl{flex:1 1 auto;min-width:0;height:36px;padding:0 10px;border-radius:9px;
+  background:var(--sunken);border:1px solid transparent;font-size:16px}
+.tagedit .lbl:focus{outline:none;border-color:var(--accent);background:var(--surface)}
+.tagedit .slug{font:12px var(--mono);color:var(--fg-3);flex:none}
+.tagedit .col{height:36px;border-radius:9px;background:var(--sunken);
+  border:1px solid transparent;font-size:13px;flex:none;max-width:104px}
+.tagedit .ct{font-size:12px;color:var(--fg-3);font-variant-numeric:tabular-nums;
+  min-width:34px;text-align:right;flex:none}
+.tagedit .del{width:30px;height:30px;border-radius:8px;display:grid;place-items:center;
+  color:var(--fg-3);font-size:18px;line-height:1;flex:none}
+.tagedit .del:hover{background:var(--raised);color:var(--danger)}
+@media (max-width:520px){
+  .tagedit .slug,.tagedit .ct{display:none}
+}
+
+/* tag picker popover */
+#picker{
+  position:fixed;z-index:60;width:250px;max-height:340px;overflow-y:auto;
+  background:var(--surface);border:1px solid var(--line);border-radius:13px;
+  box-shadow:var(--shadow);padding:6px;display:none
+}
+#picker.on{display:block}
+#picker .hd{font-size:11.5px;font-weight:620;color:var(--fg-3);padding:6px 8px 4px;
+  text-transform:uppercase;letter-spacing:.05em}
+#picker .newrow{display:flex;gap:6px;padding:6px 4px 4px;border-top:1px solid var(--line-soft);
+  margin-top:4px}
+#picker .newrow input{flex:1;min-width:0;height:34px;padding:0 9px;border-radius:8px;
+  background:var(--sunken);border:1px solid transparent;font-size:16px}
+#picker .newrow input:focus{outline:none;border-color:var(--accent);background:var(--surface)}
+#picker .newrow select{height:34px;border-radius:8px;background:var(--sunken);
+  border:1px solid transparent;font-size:13px;max-width:96px}
+#picker .check{margin-left:auto;color:var(--accent);font-weight:700}
+
+/* Hidden by default: on touch there is no hover, and these would otherwise
+   sit permanently on every message. */
+.rowact{display:none}
+
+/* Hover affordances - only where there is a real pointer */
+@media (hover:hover) and (pointer:fine){
+  .rowact{
+    position:absolute;top:-13px;right:14px;display:none;gap:2px;padding:2px;
+    background:var(--surface);border:1px solid var(--line);border-radius:9px;
+    box-shadow:var(--shadow);z-index:3
+  }
+  .msg:hover .rowact{display:flex}
+  .rowact button{
+    width:28px;height:28px;border-radius:7px;display:grid;place-items:center;color:var(--fg-2)
+  }
+  .rowact button:hover{background:var(--raised);color:var(--fg)}
+  .rowact svg{width:15px;height:15px;stroke:currentColor;fill:none;stroke-width:1.9;
+    stroke-linecap:round;stroke-linejoin:round}
+  @media (min-width:1200px){
+    .rowact{right:max(14px,calc((100% - var(--feed-max))/2 + 8px))}
+  }
+}
+</style>
+</head>
+<body>
+
+<div class="appbar">
+  <div class="title">AuroraIRC <span id="subtitle">loading…</span></div>
+
+  <div class="actions">
+    <button class="iconbtn" id="people-btn" title="People (P)" aria-pressed="false">
+      <svg viewBox="0 0 24 24"><path d="M16 19v-1a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v1"/><circle cx="9" cy="7" r="3.2"/><path d="M22 19v-1a4 4 0 0 0-3-3.8"/><path d="M16 3.2A4 4 0 0 1 16 11"/></svg>
+    </button>
+    <button class="iconbtn" id="filter-btn" title="Filters (F)">
+      <svg viewBox="0 0 24 24"><path d="M3 5h18M6 12h12M10 19h4"/></svg>
+    </button>
+    <button class="iconbtn" id="live-btn" title="Live connection (L)">
+      <svg viewBox="0 0 24 24"><path d="M12 2a10 10 0 0 1 10 10"/><path d="M12 8a6 6 0 0 1 6 6"/><circle cx="8" cy="16" r="2.4"/></svg>
+      <i class="badge"></i>
+    </button>
+  </div>
+
+  <div class="searchwrap">
+    <svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.2-3.2"/></svg>
+    <input id="q" type="search" placeholder="Search 336,000 messages" autocomplete="off" enterkeyhint="search">
+    <button id="qclear" title="Clear"><svg viewBox="0 0 24 24" width="16" height="16" stroke="currentColor" fill="none" stroke-width="2" stroke-linecap="round"><path d="M18 6 6 18M6 6l12 12"/></svg></button>
+    <div id="suggest"></div>
+  </div>
+
+  <div class="rail" id="rail"></div>
+  <div class="applied" id="applied"></div>
+</div>
+
+<main>
+  <aside class="desktop" id="desktop-aside"></aside>
+
+  <section class="feed">
+    <div class="status">
+      <span><b id="count">0</b> messages</span>
+      <span class="grow"></span>
+      <button class="linkbtn" id="copy">Copy</button>
+      <button class="linkbtn" id="theme">Theme</button>
+    </div>
+    <div class="strip" id="strip"></div>
+    <div id="log"><div class="loading">Loading…</div></div>
+    <button class="newpill" id="newpill">↓ Jump to latest</button>
+    <div class="sendstatus" id="sendstatus"></div>
+    <form class="composer" id="composer">
+      <select id="sendchan"></select>
+      <div class="cbox">
+        <textarea id="sendtext" rows="1" placeholder="Message" maxlength="450"></textarea>
+        <button class="sendbtn" id="sendbtn" type="submit" disabled title="Send">
+          <svg viewBox="0 0 24 24"><path d="M4 12h15M13 6l6 6-6 6"/></svg>
+        </button>
+      </div>
+    </form>
+  </section>
+</main>
+
+<div class="scrim" id="scrim"></div>
+
+<!-- people (mobile) -->
+<div class="sheet side" id="people-sheet"><aside id="mobile-aside"></aside></div>
+
+<!-- filters -->
+<div class="sheet bottom" id="filter-sheet">
+  <div class="handle"></div>
+  <header><h3>Filters</h3><span class="grow"></span>
+    <button class="linkbtn" id="clear-filters">Clear all</button></header>
+  <div class="content">
+    <div class="field">
+      <label>Sort</label>
+      <div class="seg" id="order-seg">
+        <button data-order="asc">Oldest first</button>
+        <button data-order="desc">Newest first</button>
+      </div>
+    </div>
+    <div class="field">
+      <label>Date range</label>
+      <div class="dates">
+        <input id="from" type="date" aria-label="From">
+        <input id="to" type="date" aria-label="To">
+      </div>
+      <div class="presets" id="presets">
+        <button class="chip" data-days="1">Today</button>
+        <button class="chip" data-days="7">7 days</button>
+        <button class="chip" data-days="30">30 days</button>
+        <button class="chip" data-days="365">1 year</button>
+        <button class="chip" data-days="0">All time</button>
+      </div>
+    </div>
+    <div class="field">
+      <label>Saved searches
+        <button class="linkbtn" id="save-search" style="float:right">Save current</button></label>
+      <div id="savedlist"></div>
+      <div class="hint">Stored on the server, so they follow you between devices.</div>
+    </div>
+    <div class="field">
+      <label>Tags <button class="linkbtn" id="manage-tags" style="float:right">Manage</button></label>
+      <div class="taglist"></div>
+      <div class="hint">Or type <code>&amp;important</code> / <code>&amp;red</code> in the search bar.</div>
+    </div>
+    <div class="field">
+      <label>Presence</label>
+      <div class="presets">
+        <button class="chip" id="show-events" aria-pressed="false">Show joins &amp; quits</button>
+      </div>
+      <div class="hint">Folded into single lines between messages, and kept out of
+        search and the MCP tools entirely.</div>
+    </div>
+    <div class="field">
+      <label>Message types</label>
+      <div class="presets" id="kinds">
+        <button class="chip" data-kind="0" aria-pressed="false">Messages</button>
+        <button class="chip" data-kind="1" aria-pressed="false">Actions</button>
+        <button class="chip" data-kind="2" aria-pressed="false">Topics</button>
+      </div>
+      <div class="hint">Leave all off to include everything.</div>
+    </div>
+  </div>
+</div>
+
+<div id="bgimg"></div>
+
+<!-- settings -->
+<div class="sheet bottom" id="set-sheet">
+  <div class="handle"></div>
+  <header><h3>Settings</h3><span class="grow"></span>
+    <button class="linkbtn" id="set-close">Done</button></header>
+  <div class="content" id="set-content"></div>
+</div>
+
+<!-- appearance -->
+<div class="sheet bottom" id="look-sheet">
+  <div class="handle"></div>
+  <header><h3>Appearance</h3><span class="grow"></span>
+    <button class="linkbtn" id="look-close">Done</button></header>
+  <div class="content">
+    <div class="field">
+      <label>Theme</label>
+      <div class="seg" id="theme-seg">
+        <button data-th="">System</button>
+        <button data-th="light">Light</button>
+        <button data-th="dark">Dark</button>
+        <button data-th="noir">Noir</button>
+      </div>
+    </div>
+    <div class="field">
+      <label>Accent</label>
+      <div class="swatches" id="accents"></div>
+      <div class="dates" style="margin-top:8px">
+        <input id="accent-custom" type="color" aria-label="Custom accent">
+        <button class="btn ghost" id="accent-reset" style="width:auto;padding:0 16px">Reset</button>
+      </div>
+    </div>
+    <div class="field">
+      <label>Background</label>
+      <div class="dates">
+        <label class="btn ghost" for="bgfile" style="cursor:pointer">Choose image…</label>
+        <input id="bgfile" type="file" accept="image/*" hidden>
+        <button class="btn ghost" id="bgclear" style="width:auto;padding:0 16px">Clear</button>
+      </div>
+      <div id="bgcontrols" style="display:none">
+        <label class="sub">Image strength</label>
+        <input id="bgstrength" type="range" min="5" max="100" value="35">
+        <label class="sub">Blur</label>
+        <input id="bgblur" type="range" min="0" max="24" value="0">
+        <label class="sub">Dim</label>
+        <input id="bgscrim" type="range" min="0" max="95" value="50">
+      </div>
+      <div class="hint">Stored on this device only, resized to keep it small.</div>
+    </div>
+  </div>
+</div>
+
+<!-- tag manager -->
+<div class="sheet bottom" id="tags-sheet">
+  <div class="handle"></div>
+  <header><h3>Tags</h3><span class="grow"></span>
+    <button class="linkbtn" id="tags-close">Done</button></header>
+  <div class="content" id="tags-content"></div>
+</div>
+
+<!-- live / sign-in -->
+<div class="sheet bottom" id="live-sheet">
+  <div class="handle"></div>
+  <header><h3 id="live-title">Live connection</h3><span class="grow"></span>
+    <button class="linkbtn" id="live-close">Done</button></header>
+  <div class="content" id="live-content"></div>
+</div>
+
+<!-- conversation context -->
+<div id="picker"></div>
+
+<div id="ctxsheet">
+  <div class="handle"></div>
+  <header><h3>In context</h3><span class="grow"></span>
+    <button class="linkbtn" id="ctx-jump">Open in feed</button>
+    <button class="linkbtn" id="ctx-close">Close</button></header>
+  <div id="ctxbody"></div>
+</div>
+
+<script>
+const $ = s => document.querySelector(s);
+const $$ = s => [...document.querySelectorAll(s)];
+const api = (p, q) => fetch(p + (q ? '?' + q : '')).then(r => r.json());
+/* Every state-changing request echoes the session's CSRF token; a cookie on
+   its own is deliberately not enough to act. */
+let CSRF='';
+const post = (p, b) => fetch(p, {
+  method:'POST',
+  headers:{'Content-Type':'application/json', ...(CSRF?{'X-CSRF':CSRF}:{})},
+  body: JSON.stringify(b||{})
+}).then(r => r.json());
+
+const state = {
+  q:'', channels:new Set(), nicks:new Set(), kinds:new Set(), tags:new Set(),
+  from:'', to:'', order:'asc', anchor:null, showEvents:false,
+  head:0, tail:0, limit:200, total:0,
+  done:false, doneUp:true, loading:false,
+};
+let APPNAME='AuroraIRC';
+/* The product name is a setting, not a constant - nothing here is tied
+   to any particular network or community. */
+function applyAppName(){
+  document.title=APPNAME;
+  const t=document.querySelector('.title');
+  if(t)t.childNodes[0].nodeValue=APPNAME+' ';
+}
+let META=null, SESSION={signedIn:false, live:{connected:false}};
+let nickSort='count', nickFilter='', lastDay=null, lastMsg=null, seq=0, jumpSeq=0, ctxFocus=null;
+
+/* ---------------- helpers ---------------- */
+const esc = s => s.replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+const pad = n => String(n).padStart(2,'0');
+const fmtN = n => n.toLocaleString();
+
+function hue(s){let h=0;for(let i=0;i<s.length;i++)h=(h*31+s.charCodeAt(i))%360;return h}
+/* Evenly spaced hues per channel, so the badges stay distinguishable from each
+   other rather than landing wherever a string hash falls. */
+function chanStyle(name){
+  const i=META?META.channels.findIndex(c=>c.name===name):-1;
+  const n=META?Math.max(META.channels.length,1):1;
+  const h=i<0?hue(name):Math.round((i*360)/n+18);
+  const dark=document.documentElement.getAttribute('data-theme')==='dark'||
+    (matchMedia('(prefers-color-scheme: dark)').matches&&
+     document.documentElement.getAttribute('data-theme')!=='light');
+  return `--ch-fg:hsl(${h} ${dark?'70% 72%':'62% 34%'});`+
+         `--ch-bg:hsl(${h} ${dark?'52% 18%':'70% 94%'})`;
+}
+const nickColor = n => `hsl(${hue(n)} 58% ${document.documentElement.getAttribute('data-theme')==='light'?'38%':
+  (matchMedia('(prefers-color-scheme: dark)').matches && document.documentElement.getAttribute('data-theme')!=='light' ? '68%':'38%')})`;
+const avatarBg = n => `hsl(${hue(n)} 52% 46%)`;
+
+/* Matches the CSS breakpoint where the sidebar stops being a sheet */
+const sidebarPinned = () => matchMedia('(min-width:1000px)').matches;
+
+/* Finder-ish flag palette. Hues chosen to stay legible in both themes. */
+const TAG_HUE={red:2,orange:28,yellow:45,green:145,blue:214,purple:272,pink:330,grey:220};
+function isDark(){
+  const t=document.documentElement.getAttribute('data-theme');
+  return t==='dark'||(t!=='light'&&matchMedia('(prefers-color-scheme: dark)').matches);
+}
+function tagStyle(color){
+  const h=TAG_HUE[color]??TAG_HUE.grey;
+  const s=color==='grey'?12:70;
+  return isDark()
+    ? `--tg-fg:hsl(${h} ${s}% 74%);--tg-bg:hsl(${h} ${Math.round(s*.6)}% 19%);`
+      +`--tg-dot:hsl(${h} ${s}% 60%)`
+    : `--tg-fg:hsl(${h} ${Math.round(s*.85)}% 32%);--tg-bg:hsl(${h} ${s}% 93%);`
+      +`--tg-dot:hsl(${h} ${s}% 52%)`;
+}
+
+/* Timestamps are stored as UTC seconds but shown in the reader's own zone -
+   a live chat client showing UTC reads as hours out of step with reality.
+   Day grouping follows local time too, or a "day" would not match its
+   messages. */
+const utc = ts => new Date(ts*1000);
+function dayKey(ts){
+  const d=new Date(ts*1000);
+  return d.getFullYear()+'-'+pad(d.getMonth()+1)+'-'+pad(d.getDate());
+}
+function hhmm(ts){const d=new Date(ts*1000);return pad(d.getHours())+':'+pad(d.getMinutes())}
+/* Local midnight..23:59:59 for a YYYY-MM-DD, as unix seconds. The API accepts
+   raw timestamps, so a day filter means the same day you can see on screen. */
+function dayRange(k){
+  const s=new Date(k+'T00:00:00'), e=new Date(k+'T23:59:59');
+  return [Math.floor(s.getTime()/1000), Math.floor(e.getTime()/1000)];
+}
+function dayLabel(k){
+  const d=new Date(k+'T00:00:00'), now=new Date();
+  const today=new Date(now.getFullYear(),now.getMonth(),now.getDate());
+  const diff=Math.round((today-d)/86400000);
+  if(diff===0)return 'Today'; if(diff===1)return 'Yesterday';
+  return d.toLocaleDateString(undefined,{weekday:'short',day:'numeric',month:'long',
+    year:d.getFullYear()===now.getFullYear()?undefined:'numeric'});
+}
+function terms(){
+  return (state.q.match(/"[^"]+"|\S+/g)||[]).map(t=>t.replace(/^"|"$/g,'').replace(/\*$/,''))
+    .filter(t=>t.length>1);
+}
+
+/* ---------------- search grammar ----------------
+   One bar drives everything:
+     #mychannel channel        @someone  person
+     &important tag or colour  M3        message text
+   So "#mychannel @someone &important term" reads as it sounds. Prefixes of
+   the same kind are ORed; different kinds are ANDed. */
+function resolveNick(n){
+  if(!META)return n;
+  const exact=META.nicks.find(x=>x.name===n);
+  if(exact)return exact.name;
+  const ci=META.nicks.find(x=>x.name.toLowerCase()===n.toLowerCase());
+  return ci?ci.name:n;
+}
+function resolveChannel(c){
+  if(!META)return c;
+  const ci=META.channels.find(x=>x.name.toLowerCase()===c.toLowerCase());
+  return ci?ci.name:c;
+}
+function parseQuery(raw){
+  const nicks=new Set(),chans=new Set(),tags=new Set(),words=[];
+  for(const tok of String(raw||'').split(/\s+/)){
+    if(!tok)continue;
+    const rest=tok.slice(1);
+    if(tok[0]==='@'&&rest)nicks.add(resolveNick(rest));
+    else if(tok[0]==='#'&&rest)chans.add(resolveChannel(rest));
+    else if(tok[0]==='&'&&rest)tags.add(rest.toLowerCase());
+    else words.push(tok);
+  }
+  return {nicks,chans,tags,text:words.join(' ')};
+}
+function writeQueryBox(nicks,text,chans,tags){
+  const box=$('#q');
+  box.value=[...(chans||state.channels)].map(c=>'#'+c)
+    .concat([...nicks].map(n=>'@'+n))
+    .concat([...(tags||state.tags)].map(t=>'&'+t))
+    .concat(text?[text]:[]).join(' ');
+  $('#qclear').classList.toggle('on',!!box.value);
+}
+function applyQueryBox(){
+  const {nicks,chans,tags,text}=parseQuery($('#q').value);
+  state.nicks=nicks;state.channels=chans;state.tags=tags;state.q=text;
+  state.anchor=null;
+  $$('#rail .chip').forEach(c=>c.setAttribute('aria-pressed',state.channels.has(c.dataset.chan)));
+  drawNicks();drawTagList();refresh();syncComposerChannel();
+}
+
+/* suggestion list while typing an @token */
+function caretToken(){
+  const box=$('#q'),pos=box.selectionStart??box.value.length;
+  const before=box.value.slice(0,pos),after=box.value.slice(pos);
+  const start=before.lastIndexOf(' ')+1;
+  const end=after.search(/\s/)<0?box.value.length:pos+after.search(/\s/);
+  return {token:box.value.slice(start,end),start,end};
+}
+function updateSuggest(){
+  const box=$('#suggest'),{token}=caretToken();
+  const sigil=token[0];
+  if(!META||!'@#&'.includes(sigil)||token.length<1){
+    box.classList.remove('on');box.innerHTML='';return;
+  }
+  const frag=token.slice(1).toLowerCase();
+  const chosen=parseQuery($('#q').value);
+  let hits=[];
+  if(sigil==='@'){
+    hits=META.nicks.filter(n=>!chosen.nicks.has(n.name)&&
+      (!frag||n.name.toLowerCase().includes(frag))).slice(0,8)
+      .map(n=>({v:n.name,label:n.name,count:n.count,
+                av:`<span class="av" style="background:${avatarBg(n.name)}">${esc(n.name[0]||'?')}</span>`}));
+  }else if(sigil==='#'){
+    hits=META.channels.filter(c=>!chosen.chans.has(c.name)&&
+      (!frag||c.name.toLowerCase().includes(frag))).slice(0,8)
+      .map(c=>({v:c.name,label:'#'+c.name,count:c.count,
+                av:`<span class="swatch" style="${chanStyle(c.name)};background:var(--ch-fg);
+                    width:13px;height:13px;border-radius:50%"></span>`}));
+  }else{
+    // colours are searchable too, so offer them alongside named tags
+    const colors=['red','orange','yellow','green','blue','purple','pink','grey'];
+    hits=tagDefs().filter(t=>!chosen.tags.has(t.name)&&
+      (!frag||t.name.toLowerCase().includes(frag))).slice(0,6)
+      .map(t=>({v:t.name,label:t.label||t.name,count:t.count,
+                av:`<span class="swatch" style="${tagStyle(t.color)};background:var(--tg-dot);
+                    width:13px;height:13px;border-radius:50%"></span>`}));
+    hits=hits.concat(colors.filter(c=>!chosen.tags.has(c)&&frag&&c.startsWith(frag))
+      .slice(0,3).map(c=>({v:c,label:c+' (colour)',count:'',
+        av:`<span class="swatch" style="${tagStyle(c)};background:var(--tg-dot);
+            width:13px;height:13px;border-radius:50%"></span>`})));
+  }
+  if(!hits.length){box.classList.remove('on');box.innerHTML='';return}
+  box.innerHTML=hits.map(h=>
+    `<button type="button" data-accept="${esc(h.v)}" data-sigil="${sigil}">
+       ${h.av}<span class="nm">${esc(h.label)}</span>
+       <span class="ct">${h.count===''?'':fmtN(h.count)}</span></button>`).join('');
+  box.classList.add('on');
+}
+function acceptSuggestion(value,sigil){
+  const {start,end}=caretToken(),box=$('#q');
+  box.value=(box.value.slice(0,start)+(sigil||'@')+value+' '+box.value.slice(end))
+    .replace(/\s+/g,' ').trimStart();
+  $('#suggest').classList.remove('on');
+  box.focus();
+  applyQueryBox();
+}
+/* Lowercased nick -> canonical, built once so mention detection is a set
+   lookup rather than a scan over a thousand names per message. */
+let NICKSET=new Map();
+function buildNickSet(){
+  // Prefer the full speaker list: the People sidebar only carries the top
+  // talkers, so a quiet person's name would never linkify without this.
+  const names=(META&&META.speakers)||((META?META.nicks:[]).map(n=>n.name));
+  NICKSET=new Map(names.map(n=>[n.toLowerCase(),n]));
+}
+// IRC nicks allow these alongside word characters
+const MENTION=/(^|[\s(])([A-Za-z_\[\]\\^{}|`][\w\-\[\]\\^{}|`]{0,29})(?=[:,](?:\s|$))/g;
+
+function render(text){
+  let html = esc(text).replace(/\bhttps?:\/\/[^\s<>"')\]]+/g,
+    m=>`<a href="${m}" target="_blank" rel="noopener noreferrer">${m}</a>`);
+
+  // "sven: ..." addressed to someone -> clickable, when that nick is real
+  html=html.split(/(<[^>]+>)/g).map(p=>p.startsWith('<')?p:
+    p.replace(MENTION,(all,pre,name)=>{
+      const canon=NICKSET.get(name.toLowerCase());
+      return canon
+        ? `${pre}<span class="mention" data-nick="${esc(canon)}" `+
+          `title="Show only ${esc(canon)}">${name}</span>`
+        : all;
+    })).join('');
+
+  for(const t of terms()){
+    const re=new RegExp('('+t.replace(/[.*+?^${}()|[\]\\]/g,'\\$&')+')','gi');
+    html=html.split(/(<[^>]+>)/g).map(p=>p.startsWith('<')?p:p.replace(re,'<mark>$1</mark>')).join('');
+  }
+  return html;
+}
+function params(extra={}){
+  const p=new URLSearchParams();
+  if(state.q)p.set('q',state.q);
+  state.channels.forEach(c=>p.append('channel',c));
+  state.nicks.forEach(n=>p.append('nick',n));
+  state.kinds.forEach(k=>p.append('kind',k));
+  state.tags.forEach(t=>p.append('tag',t));
+  // Send unix seconds for local day boundaries; a bare YYYY-MM-DD would be
+  // read as UTC on the server and drift by the reader's offset.
+  if(state.from)p.set('from',/^\d{4}-\d{2}-\d{2}$/.test(state.from)
+      ?dayRange(state.from)[0]:state.from);
+  if(state.to)p.set('to',/^\d{4}-\d{2}-\d{2}$/.test(state.to)
+      ?dayRange(state.to)[1]:state.to);
+  p.set('order',state.order);
+  for(const [k,v] of Object.entries(extra))p.set(k,v);
+  return p.toString();
+}
+
+/* ---------------- message rendering ---------------- */
+function sepNode(k){
+  const d=document.createElement('div'); d.className='daysep';
+  d.innerHTML=`<button type="button" data-day="${k}" `+
+    `title="Show only ${dayLabel(k)}">${dayLabel(k)}</button>`;
+  return d;
+}
+function msgNode(m, opts={}){
+  const grouped = !opts.forceHead && lastMsg && lastMsg.nick===m.nick &&
+                  lastMsg.channel===m.channel && (m.ts-lastMsg.ts)<300 && m.kind===0 && lastMsg.kind===0;
+  const el=document.createElement('div');
+  el.className='msg'+(grouped?'':' head')+(m.kind===1?' action':m.kind===2?' topic':'')
+    +(opts.focus?' focus':'')+(SESSION.nick&&m.nick===SESSION.nick?' mine':'');
+  // rownick, not nick: data-nick marks clickable names, and click delegation
+  // uses closest(), so putting it on the row would swallow every body click
+  el.dataset.id=m.id; el.dataset.rownick=m.nick; el.dataset.ts=m.ts;
+
+  const filtered=state.nicks.has(m.nick);
+  const whoTitle=filtered?'Jump to this message in the full timeline':`Show only ${m.nick}`;
+  // Show the channel whenever the feed can mix them: unfiltered, or 2+ selected
+  const multi=META&&META.channels.length>1&&state.channels.size!==1;
+  const ch=chanStyle(m.channel);
+
+  el.innerHTML =
+    `<div class="gutter">${grouped
+        ? `<span class="time">${hhmm(m.ts)}</span>`
+        : `<span class="av" style="background:${avatarBg(m.nick)}">${esc(m.nick[0]||'?')}</span>`}</div>`+
+    `<div class="body">`+
+      (grouped?'':
+       `<div class="meta">`+
+         `<span class="who" data-nick="${esc(m.nick)}" style="color:${nickColor(m.nick)}" title="${esc(whoTitle)}">${esc(m.nick)}</span>`+
+         `<span class="when" data-ctx="${m.id}" title="${dayKey(m.ts)} ${hhmm(m.ts)} UTC — see context">${hhmm(m.ts)}</span>`+
+         (multi?`<span class="chan" data-chan="${esc(m.channel)}" style="${ch}"
+             title="Show only #${esc(m.channel)}">#${esc(m.channel)}</span>`:'')+
+       `</div>`)+
+      `<div class="txt">${render(m.text)}</div>`+
+      ((m.tags&&m.tags.length)?
+        `<div class="mtags">`+m.tags.map(t=>
+          `<span class="mtag" data-tag="${esc(t.name)}" style="${tagStyle(t.color)}"
+             title="Show everything tagged ${esc(t.label||t.name)}">`+
+          `<i></i>${esc(t.label||t.name)}</span>`).join('')+`</div>`:'')+
+    `</div>`+
+    (opts.plain?'':
+     `<div class="rowact">`+
+       `<button data-tagbtn="${m.id}" title="Tag this message">`+
+         `<svg viewBox="0 0 24 24"><path d="M20.6 13.4 12 22l-9-9V4h9l8.6 8.6a2 2 0 0 1 0 2.8Z"/>`+
+         `<circle cx="7.5" cy="7.5" r="1.4"/></svg></button>`+
+       `<button data-ctx="${m.id}" title="See in context">`+
+         `<svg viewBox="0 0 24 24"><path d="M8 10h8M8 14h5"/><path d="M21 12a9 9 0 1 1-3.2-6.9"/></svg></button>`+
+       `<button data-jump="${m.id}" title="Open in the feed">`+
+         `<svg viewBox="0 0 24 24"><path d="M5 12h14M13 6l6 6-6 6"/></svg></button>`+
+       `<button data-link="${m.id}" title="Copy link to this message">`+
+         `<svg viewBox="0 0 24 24"><path d="M10 13a5 5 0 0 0 7 0l2-2a5 5 0 0 0-7-7l-1 1"/>`+
+         `<path d="M14 11a5 5 0 0 0-7 0l-2 2a5 5 0 0 0 7 7l1-1"/></svg></button>`+
+     `</div>`);
+  lastMsg=m;
+  return el;
+}
+function buildFrag(list){
+  const frag=document.createDocumentFragment();
+  for(const m of list){
+    const k=dayKey(m.ts);
+    if(k!==lastDay){lastDay=k;frag.appendChild(sepNode(k));lastMsg=null}
+    frag.appendChild(msgNode(m));
+  }
+  return {frag,lastDay,lastMsg};
+}
+
+/* ---------------- presence traffic ----------------
+   Fetched for whatever window is on screen rather than paged, so message
+   offsets stay exact. Runs between two messages collapse into one line. */
+const EV_VERB={0:'joined',1:'left',2:'quit',3:'is now known as',4:'was kicked',5:'set mode'};
+const EV_SIG={0:['in','→'],1:['out','←'],2:['out','←'],3:['','⇄'],4:['out','⇐'],5:['','·']};
+
+/* One row per event, in the order it happened. Folding them into
+   "and 6 others" loses the sequence, which is the point of showing them. */
+function evtNode(e){
+  const el=document.createElement('div');
+  el.className='evt';
+  el.dataset.ts=e.ts;
+  const [cls,glyph]=EV_SIG[e.kind]||['','·'];
+  let detail=(e.detail||'').trim();
+  if(e.kind===0)detail='';                       // "joined #chan" is redundant
+  if(e.kind===3)detail=detail?`<b data-nick="${esc(detail)}">${esc(detail)}</b>`:'';
+  else if(detail)detail=`<span class="why">${esc(detail)}</span>`;
+  // Show which channel a per-channel event belongs to when the feed can mix
+  // them; quits and nick changes are network-wide so a badge would mislead.
+  const perChannel=![2,3].includes(e.kind);
+  const multi=META&&META.channels.length>1&&state.channels.size!==1;
+  const badge=(perChannel&&multi&&e.channel)
+    ? `<span class="chan" data-chan="${esc(e.channel)}" style="${chanStyle(e.channel)}"
+         >#${esc(e.channel)}</span> ` : '';
+  el.innerHTML=
+    `<span class="et">${hhmm(e.ts)}</span>`+
+    `<span class="eb"><span class="sig ${cls}">${glyph}</span>`+
+      `${badge}<b data-nick="${esc(e.nick)}">${esc(e.nick)}</b> ${EV_VERB[e.kind]||'—'}`+
+      `${detail?' '+detail:''}`+
+      `${e.count>1?`<span class="xn" title="${e.count} times in this minute">`
+                   +`×${e.count}</span>`:''}</span>`;
+  return el;
+}
+
+let evtTimer=null;
+function scheduleEvents(){
+  clearTimeout(evtTimer);
+  evtTimer=setTimeout(spliceEvents,180);
+}
+async function spliceEvents(){
+  const log=$('#log');
+  if(!state.showEvents){ $$('#log .evt').forEach(e=>e.remove()); return }
+  const rows=$$('#log .msg');
+  if(!rows.length)return;
+  const from=+rows[0].dataset.ts, to=+rows[rows.length-1].dataset.ts;
+  const lo=Math.min(from,to), hi=Math.max(from,to);
+
+  const p=new URLSearchParams();
+  p.set('from',lo);p.set('to',hi);
+  state.channels.forEach(c=>p.append('channel',c));
+  state.nicks.forEach(n=>p.append('nick',n));
+  let data;
+  try{ data=await api('/api/events',p.toString()) }catch(err){ return }
+  if(!state.showEvents)return;
+
+  // Splicing thousands of rows changes the scroll height under the reader.
+  // Remember where they were so the view doesn't move: pinned to the bottom
+  // if they were at the live end, otherwise anchored to the first message
+  // still on screen.
+  const wasAtBottom=log.scrollHeight-log.scrollTop-log.clientHeight<60;
+  const logTop=log.getBoundingClientRect().top;
+  const anchor=$$('#log .msg').find(el=>el.getBoundingClientRect().bottom>logTop);
+  const anchorWas=anchor?anchor.getBoundingClientRect().top:null;
+
+  const restore=()=>{
+    if(wasAtBottom)log.scrollTop=log.scrollHeight;
+    else if(anchor&&anchor.isConnected)
+      log.scrollTop+=anchor.getBoundingClientRect().top-anchorWas;
+    updatePill();
+  };
+
+  $$('#log .evt').forEach(e=>e.remove());
+  let evts=data.events||[];
+
+  // A quit or nick change is a network-wide fact, so it is stored once per
+  // channel the person was in - five channels meant five identical lines on
+  // screen. Collapse rows that differ only by channel.
+  // Quit (2) and nick (3) are network-wide, so identical rows across channels
+  // are one event. Join/part/kick/mode really are per-channel, so those keep
+  // the channel in the key.
+  const NETWIDE=new Set([2,3]);
+  const seenEv=new Set();
+  evts=evts.filter(e=>{
+    const k=NETWIDE.has(e.kind)
+      ? `${e.ts}|${e.nick}|${e.kind}|${e.detail}`
+      : `${e.ts}|${e.nick}|${e.kind}|${e.detail}|${e.channel}`;
+    if(seenEv.has(k))return false;
+    seenEv.add(k);return true;
+  });
+
+  // Genuinely repeated events inside one displayed minute - a flaky client
+  // reconnecting twice - fold into a single row carrying a count, rather than
+  // printing lines that look identical because seconds aren't shown.
+  const folded=[], byMinute=new Map();
+  for(const e of evts){
+    const k=`${hhmm(e.ts)}|${e.nick}|${e.kind}|${e.detail}|${e.channel}`;
+    const seat=byMinute.get(k);
+    if(seat){seat.count=(seat.count||1)+1;continue}
+    const row={...e,count:1};
+    byMinute.set(k,row);
+    folded.push(row);
+  }
+  evts=folded;
+  if(!evts.length){restore();return}
+
+  // Walk messages and events together, dropping each event where it happened
+  const asc=state.order==='asc';
+  const ordered=asc?evts:evts.slice().reverse();
+  let i=0;
+  for(const row of $$('#log .msg')){
+    const ts=+row.dataset.ts;
+    const frag=document.createDocumentFragment();
+    while(i<ordered.length && (asc?ordered[i].ts<=ts:ordered[i].ts>=ts)){
+      frag.appendChild(evtNode(ordered[i++]));
+    }
+    if(frag.childNodes.length)row.parentNode.insertBefore(frag,row);
+  }
+  while(i<ordered.length)log.appendChild(evtNode(ordered[i++]));
+  restore();
+}
+
+/* ---------------- loading ---------------- */
+async function loadForward(clearFirst){
+  // A reset (jump, search, reload) supersedes whatever is in flight. Without
+  // this it would bail on state.loading and leave "Jumping…" on screen until
+  // the page was reloaded.
+  if(!clearFirst&&(state.loading||state.done))return;
+  const mine=++seq;
+  state.loading=true;
+  let data;
+  try{
+    data=await api('/api/messages',params({offset:state.tail,limit:state.limit}));
+  }catch(err){
+    if(mine===seq){state.loading=false;
+      if(clearFirst)$('#log').innerHTML=
+        '<div class="empty"><b>Could not load</b>The server may have stopped.</div>'}
+    return;
+  }
+  if(mine!==seq)return;          // superseded; the newer call owns state.loading
+  const log=$('#log');
+  if(clearFirst){log.innerHTML='';lastDay=null;lastMsg=null}
+  state.total=data.total; $('#count').textContent=fmtN(data.total);
+  if(data.messages.length){
+    log.appendChild(buildFrag(data.messages).frag);
+    state.tail+=data.messages.length;
+  }
+  if(state.tail>=data.total)state.done=true;
+  if(clearFirst&&!data.messages.length){
+    log.innerHTML=`<div class="empty"><b>Nothing found</b>Try a different search or clear the filters.</div>`;
+  }
+  state.loading=false;
+  if(clearFirst)syncComposerChannel();   // keep the composer on the channel in view
+  scheduleEvents();
+}
+async function loadBackward(){
+  if(state.loading||state.doneUp||state.head<=0)return;
+  const mine=++seq;
+  state.loading=true;
+  const want=Math.min(state.limit,state.head), off=state.head-want;
+  let data;
+  try{ data=await api('/api/messages',params({offset:off,limit:want})); }
+  catch(err){ if(mine===seq)state.loading=false; return; }
+  if(mine!==seq)return;
+  const log=$('#log');
+  if(data.messages.length){
+    const savedDay=lastDay,savedMsg=lastMsg;
+    lastDay=null;lastMsg=null;
+    const {frag}=buildFrag(data.messages);
+    const endDay=lastDay;
+    lastDay=savedDay;lastMsg=savedMsg;
+    // drop a duplicate day heading where the two blocks meet
+    const firstOld=log.querySelector('.daysep');
+    if(firstOld&&firstOld.textContent===dayLabel(endDay))firstOld.remove();
+    const h0=log.scrollHeight,t0=log.scrollTop;
+    log.insertBefore(frag,log.firstChild);
+    log.scrollTop=t0+(log.scrollHeight-h0);
+    state.head=off;
+  }
+  if(state.head<=0)state.doneUp=true;
+  state.loading=false;
+  scheduleEvents();
+}
+/* Open at the newest messages and scroll up for history, the way a chat client
+   does - starting in 2021 and paging forward through five years was never how
+   anyone actually reads a channel. */
+async function reload(){
+  state.anchor=null;newCount=0;$('#newpill').classList.remove('on');
+  $('#log').innerHTML='<div class="loading">Loading…</div>';
+
+  let total=0;
+  try{
+    const d=await api('/api/messages',params({limit:1,offset:0,order:'desc'}));
+    total=d.total;
+  }catch(err){
+    $('#log').innerHTML='<div class="empty"><b>Could not load</b>The server may have stopped.</div>';
+    return;
+  }
+  state.total=total;
+  $('#count').textContent=fmtN(total);
+
+  // Descending puts newest at offset 0; ascending puts them on the last page
+  const head=state.order==='desc'?0:Math.max(0,total-state.limit);
+  state.head=head;state.tail=head;
+  state.done=false;state.doneUp=head===0;
+
+  await loadForward(true);
+  const log=$('#log');
+  log.scrollTop=state.order==='asc'?log.scrollHeight:0;
+  updatePill();syncHash();
+}
+
+function awayFromLatest(){
+  const log=$('#log');
+  if(state.anchor)return true;
+  if(state.order==='desc')return state.head>0||log.scrollTop>400;
+  return !state.done||log.scrollHeight-log.scrollTop-log.clientHeight>400;
+}
+function updatePill(){
+  const pill=$('#newpill');
+  if(newCount>0){
+    pill.textContent=`↓ ${fmtN(newCount)} new message${newCount===1?'':'s'}`;
+    pill.classList.add('on');
+  }else if(awayFromLatest()){
+    // "latest", not "present": under a filter the newest match may be years old
+    pill.textContent='↓ Jump to latest';
+    pill.classList.add('on');
+  }else pill.classList.remove('on');
+}
+function refresh(){drawApplied();reload();loadStrip()}
+
+/* jump to a message in the unfiltered timeline */
+async function jumpTo(id){
+  closeAll();
+  clearFilters({silent:true});
+  const log=$('#log');
+  log.innerHTML='<div class="loading">Jumping…</div>';
+  // in_channel=1: index is computed within the message's own channel, and the
+  // channel comes back so we can reflect it without a second round trip
+  const myJump=++jumpSeq;
+  let loc;
+  try{
+    loc=await api('/api/locate',
+      new URLSearchParams({id,in_channel:'1',order:state.order}).toString());
+  }catch(err){
+    if(myJump===jumpSeq)log.innerHTML=
+      '<div class="empty"><b>Could not load</b>The server may have stopped.</div>';
+    return;
+  }
+  if(myJump!==jumpSeq)return;        // a newer jump superseded this one
+  if(!loc||loc.index<0){log.innerHTML='<div class="empty"><b>Message not found</b></div>';return}
+
+  // Adopt its channel so the surrounding context reads as one conversation.
+  // Must happen before loading, since params() feeds the same filter the
+  // index was computed under.
+  if(loc.channel){
+    state.channels.clear();state.channels.add(loc.channel);
+    $$('#rail .chip').forEach(c=>c.setAttribute('aria-pressed',c.dataset.chan===loc.channel));
+  }
+  state.total=loc.total; $('#count').textContent=fmtN(loc.total);
+  const head=Math.max(0,loc.index-70);
+  state.head=head;state.tail=head;state.done=false;state.doneUp=head===0;state.anchor=id;
+  await loadForward(true);
+  const el=log.querySelector(`.msg[data-id="${id}"]`);
+  if(el){
+    el.classList.add('focus','jumped');
+    el.scrollIntoView({block:'center'});
+    setTimeout(()=>el.classList.remove('jumped'),2400);
+  }
+  drawApplied();loadStrip();syncHash();
+}
+
+async function loadStrip(){
+  const data=await api('/api/activity',params());
+  const box=$('#strip');box.innerHTML='';
+  if(!data.months.length)return;
+  const max=Math.max(...data.months.map(m=>m.count));
+  for(const m of data.months){
+    const b=document.createElement('div');
+    b.className='bar';b.style.height=Math.max(2,(m.count/max)*20+2)+'px';
+    b.title=`${m.month} · ${fmtN(m.count)}`;
+    b.onclick=()=>{
+      const [y,mo]=m.month.split('-').map(Number);
+      const end=new Date(Date.UTC(y,mo,0));
+      $('#from').value=state.from=`${y}-${pad(mo)}-01`;
+      $('#to').value=state.to=`${y}-${pad(mo)}-${pad(end.getUTCDate())}`;
+      refresh();
+    };
+    box.appendChild(b);
+  }
+}
+
+/* ---------------- people ---------------- */
+/* The panel exists twice - sidebar on desktop, sheet on mobile - so these use
+   classes, not ids, and every copy is kept in sync. */
+function asideHTML(){
+  return `<div class="aside-head">
+      <div class="row"><h2>People</h2>
+        <select class="nicksort">
+          <option value="count">Most active</option>
+          <option value="name">A–Z</option>
+          <option value="recent">Recently active</option>
+        </select></div>
+      <input class="nickfilter" type="search" placeholder="Find someone" autocomplete="off">
+    </div><div class="nicklist"></div>`;
+}
+function drawNicks(){
+  if(!META)return;
+  let list=META.nicks.slice();
+  if(nickFilter){const f=nickFilter.toLowerCase();list=list.filter(n=>n.name.toLowerCase().includes(f))}
+  if(nickSort==='name')list.sort((a,b)=>a.name.localeCompare(b.name));
+  else if(nickSort==='recent')list.sort((a,b)=>b.last-a.last);
+  else list.sort((a,b)=>b.count-a.count);
+  const shown=list.slice(0,400);
+
+  for(const box of $$('.nicklist')){
+    box.innerHTML='';
+    const frag=document.createDocumentFragment();
+    for(const n of shown){
+      const row=document.createElement('div');
+      row.className='person'+(state.nicks.has(n.name)?' on':'');
+      row.innerHTML=`<span class="av" style="background:${avatarBg(n.name)}">${esc(n.name[0]||'?')}</span>`+
+        `<span class="nm">${esc(n.name)}</span><span class="ct">${fmtN(n.count)}</span>`;
+      row.onclick=()=>{toggleNick(n.name);if(!sidebarPinned())closeAll()};
+      frag.appendChild(row);
+    }
+    box.appendChild(frag);
+    if(list.length>400)box.insertAdjacentHTML('beforeend',
+      `<div class="loading">+${fmtN(list.length-400)} more — search to narrow</div>`);
+  }
+  $$('.nicksort').forEach(sel=>{
+    if(document.activeElement!==sel)sel.value=nickSort;
+    sel.onchange=e=>{nickSort=e.target.value;drawNicks()}});
+  $$('.nickfilter').forEach(fil=>{
+    // Never reassign the field being typed in: it resets the caret, and on
+    // mobile that reads as the keyboard fighting you.
+    if(document.activeElement!==fil)fil.value=nickFilter;
+    fil.oninput=e=>{nickFilter=e.target.value;drawNicks()}});
+}
+/* Every selection lives in the search box as a token, so there is one visible
+   source of truth whether you clicked a chip or typed it. */
+function toggleToken(kind,value){
+  const p=parseQuery($('#q').value);
+  const set={nick:p.nicks,chan:p.chans,tag:p.tags}[kind];
+  set.has(value)?set.delete(value):set.add(value);
+  writeQueryBox(p.nicks,p.text,p.chans,p.tags);
+  applyQueryBox();
+}
+const toggleNick    = n => toggleToken('nick',n);
+const toggleTag     = t => toggleToken('tag',t);
+const toggleChannel = c => toggleToken('chan',c);
+
+function selectDay(k){
+  // k is a local calendar day; params() turns it into local-midnight bounds
+  state.from=k;state.to=k;state.anchor=null;
+  $('#from').value=k;$('#to').value=k;
+  refresh();
+}
+/* .evt rows use the same badge styling as messages */
+
+function selectOnlyChannel(name){
+  const p=parseQuery($('#q').value);
+  writeQueryBox(p.nicks,p.text,new Set([name]),p.tags);
+  applyQueryBox();
+}
+/* The composer follows what you're looking at: a single selected channel wins,
+   otherwise the channel of the newest message on screen. */
+function syncComposerChannel(){
+  const sel=$('#sendchan');
+  if(!sel||!sel.options.length)return;
+  let want=null;
+  if(state.channels.size===1)want=[...state.channels][0];
+  else{
+    const rows=$$('#log .msg .chan');
+    if(rows.length)want=rows[rows.length-1].dataset.chan;
+    else{
+      const any=$$('#log .msg');
+      if(any.length&&META&&META.channels.length===1)want=META.channels[0].name;
+    }
+  }
+  if(!want)return;
+  const match=[...sel.options].find(o=>o.value.replace(/^#/,'')===want.replace(/^#/,''));
+  if(match&&sel.value!==match.value)sel.value=match.value;
+}
+
+/* ---------------- tags ---------------- */
+function tagDefs(){return (META&&META.tags)||[]}
+
+function drawTagList(){
+  for(const box of $$('.taglist')){
+    box.innerHTML='';
+    for(const t of tagDefs()){
+      const row=document.createElement('div');
+      row.className='tagrow'+(state.tags.has(t.name)?' on':'');
+      row.style.cssText=tagStyle(t.color);
+      row.innerHTML=`<span class="swatch"></span><span class="nm">${esc(t.label||t.name)}</span>`+
+        `<span class="ct">${fmtN(t.count)}</span>`+
+        (t.builtin?'':`<button class="del" title="Delete tag" data-del="${esc(t.name)}">×</button>`);
+      row.onclick=e=>{
+        if(e.target.closest('[data-del]'))return deleteTag(e.target.closest('[data-del]').dataset.del);
+        toggleTag(t.name);if(!sidebarPinned())closeAll();
+      };
+      box.appendChild(row);
+    }
+    if(!tagDefs().length)box.innerHTML='<div class="loading">No tags yet</div>';
+  }
+}
+/* Full tag manager: rename, recolour, delete, create. */
+const TAG_COLOR_LIST=['red','orange','yellow','green','blue','purple','pink','grey'];
+
+function drawTagManager(){
+  const box=$('#tags-content');
+  if(!SESSION.signedIn){
+    box.innerHTML=`<div class="note">Sign in to create or edit tags. You can still
+      filter by the existing ones.</div>
+      <div class="taglist"></div>
+      <button class="btn" id="tags-signin">Sign in</button>`;
+    drawTagList();
+    $('#tags-signin').onclick=()=>{closeAll();$('#live-btn').click()};
+    return;
+  }
+  box.innerHTML=
+    tagDefs().map(t=>`
+      <div class="tagedit" data-name="${esc(t.name)}" style="${tagStyle(t.color)}">
+        <span class="swatch"></span>
+        <input class="lbl" value="${esc(t.label||t.name)}" maxlength="32" aria-label="Tag label">
+        <span class="slug">&amp;${esc(t.name)}</span>
+        <select class="col" aria-label="Tag colour">${TAG_COLOR_LIST.map(c=>
+          `<option value="${c}"${c===t.color?' selected':''}>${c}</option>`).join('')}</select>
+        <span class="ct">${fmtN(t.count)}</span>
+        <button class="del" title="${t.builtin?'Built-in tags can be deleted too':'Delete'}">×</button>
+      </div>`).join('')+
+    `<div class="field" style="margin-top:6px">
+       <label>New tag</label>
+       <div class="tagedit new">
+         <input class="lbl" id="mk-name" placeholder="e.g. gpu" maxlength="24" autocomplete="off">
+         <select class="col" id="mk-color">${TAG_COLOR_LIST.map(c=>
+           `<option value="${c}">${c}</option>`).join('')}</select>
+         <button class="btn" id="mk-go" style="width:auto;padding:0 14px;height:36px">Add</button>
+       </div>
+       <div class="hint">Use it in search as <code>&amp;name</code>. Colours are searchable
+         too — <code>&amp;red</code> finds every red tag.</div>
+     </div>
+     <div id="tags-err"></div>`;
+
+  const err=m=>$('#tags-err').innerHTML=`<div class="note err">${esc(m)}</div>`;
+
+  for(const row of $$('#tags-content .tagedit:not(.new)')){
+    const name=row.dataset.name;
+    const save=async patch=>{
+      const r=await post('/api/tags/update',{name,...patch});
+      if(r.error)return err(r.error);
+      await refreshTags();drawTagManager();
+    };
+    row.querySelector('.lbl').onchange=e=>save({label:e.target.value.trim()});
+    row.querySelector('.col').onchange=e=>save({color:e.target.value});
+    row.querySelector('.del').onclick=()=>deleteTag(name);
+  }
+  const go=$('#mk-go');
+  if(go)go.onclick=async()=>{
+    const name=$('#mk-name').value.trim();
+    if(!name)return;
+    const r=await post('/api/tags',{name,color:$('#mk-color').value});
+    if(r.error)return err(r.error);
+    $('#mk-name').value='';
+    await refreshTags();drawTagManager();
+  };
+}
+
+async function refreshTags(){
+  const d=await api('/api/tags');
+  if(META)META.tags=d.tags;
+  drawTagList();drawApplied();
+}
+async function deleteTag(name){
+  if(!SESSION.signedIn)return toast('Sign in to manage tags');
+  if(!confirm(`Delete the "${name}" tag everywhere?`))return;
+  const r=await post('/api/tags/delete',{name});
+  if(r.error)return toast(r.error);
+  state.tags.delete(name);
+  await refreshTags();applyStateToBox();refresh();
+}
+
+/* One popover, two modes: the actions for a message, and the tag list. */
+let pickerFor=null;
+
+function placePopover(anchorEl){
+  const box=$('#picker');
+  const r=anchorEl.getBoundingClientRect();
+  const W=250;
+  const left=r.width>320 ? r.left+r.width/2-W/2 : r.left-W+r.width+8;
+  box.style.left=Math.max(8,Math.min(innerWidth-W-8,left))+'px';
+  box.classList.add('on');
+  const h=box.offsetHeight||320;
+  box.style.top=(r.bottom+h+8>innerHeight ? Math.max(8,r.top-h-6) : r.bottom+6)+'px';
+}
+
+/* Clicking a message offers choices rather than acting immediately - jumping
+   or filtering out from under someone mid-read is hostile. */
+function openRowMenu(id,anchorEl){
+  pickerFor=id;
+  const box=$('#picker');
+  const row=$(`#log .msg[data-id="${id}"]`);
+  const nick=row?row.dataset.rownick:'';
+  box.innerHTML=`<div class="hd">Message</div>`+
+    `<div class="tagrow" data-act="jump"><span class="nm">Jump to this message</span></div>`+
+    `<div class="tagrow" data-act="ctx"><span class="nm">See in context</span></div>`+
+    (nick?`<div class="tagrow" data-act="only"><span class="nm">Show only ${esc(nick)}</span></div>`:'')+
+    `<div class="tagrow" data-act="copy"><span class="nm">Copy link</span></div>`+
+    `<div class="tagrow" data-act="tag"><span class="nm">Tag…</span></div>`;
+  placePopover(anchorEl);
+}
+
+function openPicker(id,anchorEl){
+  if(!SESSION.signedIn)return toast('Sign in to tag messages');
+  pickerFor=id;
+  const row=$(`#log .msg[data-id="${id}"]`);
+  const have=new Set([...(row?row.querySelectorAll('.mtag'):[])].map(e=>e.dataset.tag));
+  const box=$('#picker');
+  box.innerHTML=`<div class="hd">Flag this message</div>`+
+    tagDefs().map(t=>
+      `<div class="tagrow" data-pick="${esc(t.name)}" style="${tagStyle(t.color)}">`+
+      `<span class="swatch"></span><span class="nm">${esc(t.label||t.name)}</span>`+
+      `${have.has(t.name)?'<span class="check">✓</span>':''}</div>`).join('')+
+    `<div class="newrow">
+       <input id="newtag" placeholder="New tag…" maxlength="24" autocomplete="off">
+       <select id="newcolor">${['red','orange','yellow','green','blue','purple','pink','grey']
+         .map(c=>`<option value="${c}">${c}</option>`).join('')}</select>
+     </div>`;
+  placePopover(anchorEl);
+  $('#newtag').onkeydown=async e=>{
+    if(e.key!=='Enter')return;
+    e.preventDefault();
+    const name=$('#newtag').value.trim();
+    if(!name)return;
+    const r2=await post('/api/tags',{name,color:$('#newcolor').value});
+    if(r2.error)return toast(r2.error);
+    await refreshTags();
+    await applyTag(pickerFor,name.toLowerCase().replace(/^&/,''),true);
+    box.classList.remove('on');
+  };
+}
+$('#picker').onclick=async e=>{
+  const act=e.target.closest('[data-act]');
+  if(act){
+    const id=pickerFor, row=$(`#log .msg[data-id="${id}"]`);
+    const kind=act.dataset.act;
+    if(kind!=='tag')$('#picker').classList.remove('on');
+    if(kind==='jump')return jumpTo(id);
+    if(kind==='ctx')return showContext(id);
+    if(kind==='copy')return copyPermalink(id,null),toast('Link copied');
+    if(kind==='only')return toggleNick(row.dataset.rownick);
+    if(kind==='tag')return openPicker(id,row||act);
+  }
+  const pick=e.target.closest('[data-pick]');
+  if(!pick)return;
+  const name=pick.dataset.pick;
+  const on=!pick.querySelector('.check');
+  await applyTag(pickerFor,name,on);
+  $('#picker').classList.remove('on');
+};
+async function applyTag(id,name,on){
+  const r=await post('/api/message/tag',{message_id:id,tag:name,on});
+  if(r.error)return toast(r.error);
+  // repaint just this row's tag strip
+  for(const row of $$(`.msg[data-id="${id}"]`)){
+    let strip=row.querySelector('.mtags');
+    if(!strip){strip=document.createElement('div');strip.className='mtags';
+      row.querySelector('.body').appendChild(strip)}
+    strip.innerHTML=r.tags.map(t=>
+      `<span class="mtag" data-tag="${esc(t.name)}" style="${tagStyle(t.color)}">`+
+      `<i></i>${esc(t.label||t.name)}</span>`).join('');
+  }
+  refreshTags();
+}
+
+/* ---------------- applied filter tags ---------------- */
+function drawApplied(){
+  const box=$('#applied');box.innerHTML='';
+  const tags=[];
+  state.channels.forEach(c=>tags.push({label:'#'+c,clear:()=>toggleChannel(c)}));
+  state.nicks.forEach(n=>tags.push({label:'@'+n,clear:()=>toggleNick(n)}));
+  state.tags.forEach(t=>tags.push({label:'&'+t,tag:t,clear:()=>toggleTag(t)}));
+  state.kinds.forEach(k=>tags.push({label:['messages','actions','topics'][k],
+    clear:()=>{state.kinds.delete(k);syncKindChips();refresh()}}));
+  if(state.from||state.to)tags.push({label:`${state.from||'start'} → ${state.to||'now'}`,
+    clear:()=>{state.from=state.to='';$('#from').value='';$('#to').value='';refresh()}});
+  if(state.anchor)tags.push({label:'jumped to a message',clear:()=>{state.anchor=null;refresh()}});
+
+  for(const t of tags){
+    const el=document.createElement('span');
+    el.className='tag';
+    if(t.tag){
+      const def=(META&&META.tags||[]).find(x=>x.name===t.tag);
+      if(def)el.style.cssText=tagStyle(def.color);
+    }
+    el.innerHTML=`${esc(t.label)}<button title="Remove">×</button>`;
+    el.querySelector('button').onclick=t.clear;
+    box.appendChild(el);
+  }
+  if(tags.length){
+    const a=document.createElement('button');
+    a.className='linkbtn';a.textContent='Clear all';
+    a.onclick=()=>clearFilters();
+    box.appendChild(a);
+  }
+  box.classList.toggle('on',tags.length>0);
+}
+function clearFilters(opts={}){
+  state.q='';state.nicks.clear();state.channels.clear();state.kinds.clear();
+  state.tags.clear();state.from='';state.to='';state.anchor=null;
+  $('#q').value='';$('#qclear').classList.remove('on');$('#suggest').classList.remove('on');
+  $('#from').value='';$('#to').value='';
+  $$('#rail .chip').forEach(c=>c.setAttribute('aria-pressed','false'));
+  syncKindChips();drawNicks();drawTagList();
+  if(!opts.silent){drawApplied();reload();loadStrip()}
+}
+function syncKindChips(){
+  $$('#kinds .chip').forEach(c=>c.setAttribute('aria-pressed',state.kinds.has(+c.dataset.kind)));
+}
+
+/* ---------------- URL state ---------------- */
+function syncHash(){
+  const p=new URLSearchParams();
+  if(state.q)p.set('q',state.q);
+  if(state.nicks.size)p.set('nick',[...state.nicks].join(','));
+  if(state.channels.size)p.set('chan',[...state.channels].join(','));
+  if(state.kinds.size)p.set('kind',[...state.kinds].join(','));
+  if(state.tags.size)p.set('tag',[...state.tags].join(','));
+  if(state.from)p.set('from',state.from);
+  if(state.to)p.set('to',state.to);
+  if(state.order!=='asc')p.set('order',state.order);
+  if(state.anchor)p.set('msg',state.anchor);
+  const h=p.toString();
+  history.replaceState(null,'',h?'#'+h:location.pathname);
+}
+function readHash(){
+  const p=new URLSearchParams(location.hash.slice(1));
+  state.q=p.get('q')||'';state.from=p.get('from')||'';state.to=p.get('to')||'';
+  state.order=p.get('order')==='desc'?'desc':'asc';
+  state.anchor=p.get('msg')?+p.get('msg'):null;
+  (p.get('nick')||'').split(',').filter(Boolean).forEach(n=>state.nicks.add(n));
+  (p.get('chan')||'').split(',').filter(Boolean).forEach(c=>state.channels.add(c));
+  (p.get('kind')||'').split(',').filter(Boolean).forEach(k=>state.kinds.add(+k));
+  (p.get('tag')||'').split(',').filter(Boolean).forEach(t=>state.tags.add(t));
+}
+
+/* ---------------- context sheet ---------------- */
+async function showContext(id){
+  const data=await api('/api/context',`id=${id}&span=28`);
+  const body=$('#ctxbody');body.innerHTML='';
+  ctxFocus=id;
+  const savedDay=lastDay,savedMsg=lastMsg;
+  lastDay=null;lastMsg=null;
+  for(const m of data.messages){
+    const k=dayKey(m.ts);
+    if(k!==lastDay){lastDay=k;lastMsg=null;body.appendChild(sepNode(k))}
+    // plain: the sheet has its own "Open in feed" action in the header
+    body.appendChild(msgNode(m,{focus:m.id===data.focus,plain:true}));
+  }
+  lastDay=savedDay;lastMsg=savedMsg;
+  openSheet('#ctxsheet');
+  body.querySelector('.focus')?.scrollIntoView({block:'center'});
+}
+
+/* ---------------- sheets ---------------- */
+function openSheet(sel){
+  $$('.sheet, #ctxsheet').forEach(s=>s.classList.remove('on'));
+  $(sel).classList.add('on');$('#scrim').classList.add('on');
+}
+function closeAll(){
+  $$('.sheet, #ctxsheet').forEach(s=>s.classList.remove('on'));
+  $('#picker').classList.remove('on');
+  $('#scrim').classList.remove('on');
+  $$('.iconbtn').forEach(b=>b.setAttribute('aria-pressed','false'));
+  // On desktop the People button reflects a docked panel, not an open sheet
+  if(sidebarPinned())
+    $('#people-btn').setAttribute('aria-pressed',
+      !document.body.classList.contains('no-people'));
+}
+$('#scrim').onclick=closeAll;
+// The tag popover is anchored to a row, so any scroll or outside click drops it
+document.addEventListener('click',e=>{
+  if(!e.target.closest('#picker')&&!e.target.closest('[data-tagbtn]'))
+    $('#picker').classList.remove('on');
+},true);
+$('#log').addEventListener('scroll',()=>$('#picker').classList.remove('on'),{passive:true});
+
+/* Touch has no hover, so the row actions never appear there. Long-press a
+   message to reach the tag picker instead. */
+let pressTimer=null,pressRow=null;
+$('#log').addEventListener('touchstart',e=>{
+  const row=e.target.closest('.msg');
+  if(!row||e.target.closest('a,[data-tag]'))return;
+  pressRow=row;
+  pressTimer=setTimeout(()=>{
+    pressTimer=null;
+    if(navigator.vibrate)navigator.vibrate(12);
+    openRowMenu(+row.dataset.id,row);
+  },480);
+},{passive:true});
+const cancelPress=()=>{clearTimeout(pressTimer);pressTimer=null;pressRow=null};
+$('#log').addEventListener('touchmove',cancelPress,{passive:true});
+$('#log').addEventListener('touchend',cancelPress,{passive:true});
+$('#log').addEventListener('touchcancel',cancelPress,{passive:true});
+
+/* ---------------- live / sign-in ---------------- */
+function liveHTML(){
+  const l=SESSION.live||{};
+  const dot=`<span class="dot ${l.connected?'live':''}"></span>`;
+  const status=l.connected
+    ? `<div class="note">${dot} Connected as <b>${esc(l.nick||'?')}</b> ·
+         ${l.channels.length} channels · recording.</div>`
+    : `<div class="note">${dot} <b>Not connected.</b> Start a capture with
+         <br><code>./archive.py live --nick YOUR_NICK</code></div>`;
+
+  // First run: nobody has claimed this archive yet
+  if(SESSION.setupNeeded){
+    return status+
+      `<div class="note">No owner account yet. Create one to unlock sending,
+        tagging and settings. Reading stays open to everyone either way.</div>
+       <div class="field"><label>Username</label>
+         <input id="su-user" placeholder="you" autocomplete="username"></div>
+       <div class="field"><label>IRC nick</label>
+         <input id="su-nick" placeholder="the nick you'll post under" autocomplete="off"></div>
+       <div class="field"><label>Password</label>
+         <input id="su-pw1" type="password" placeholder="at least 8 characters"
+                autocomplete="new-password"></div>
+       <div class="field"><label>Repeat</label>
+         <input id="su-pw2" type="password" autocomplete="new-password"></div>
+       <div id="in-err"></div>
+       <button class="btn" id="do-setup">Create owner account</button>`;
+  }
+  if(INVITE){
+    return status+
+      `<div class="note">You've been invited. Pick a username and password.</div>
+       <div class="field"><label>Username</label>
+         <input id="rd-user" placeholder="you" autocomplete="username"></div>
+       <div class="field"><label>Password</label>
+         <input id="rd-pw" type="password" placeholder="at least 8 characters"
+                autocomplete="new-password"></div>
+       <div id="in-err"></div>
+       <button class="btn" id="do-redeem">Join</button>`;
+  }
+  if(!SESSION.signedIn){
+    return status+
+      `<div class="field"><label>Username</label>
+         <input id="li-user" placeholder="username" autocomplete="username"></div>
+       <div class="field"><label>Password</label>
+         <input id="li-pw" type="password" autocomplete="current-password"
+                enterkeyhint="go"></div>
+       <div class="field" id="totp-field" style="display:none">
+         <label>Authenticator code</label>
+         <input id="li-totp" inputmode="numeric" placeholder="000000" autocomplete="one-time-code"></div>
+       <div class="hint">Reading needs no account. Signing in allows sending,
+         tagging and settings.</div>
+       <div id="in-err"></div>
+       <button class="btn" id="do-login">Sign in</button>
+       <button class="btn ghost" id="do-pk" style="margin-top:8px">Use a passkey</button>`;
+  }
+  const u=SESSION.user||{};
+  return status+
+    `<div class="note">Signed in as <b>${esc(u.name||'?')}</b>
+       (${esc(u.role||'member')}) · posting as <b>${esc(u.nick||'?')}</b></div>
+     <button class="btn" id="open-settings">Settings</button>
+     <button class="btn ghost" id="do-signout" style="margin-top:8px">Sign out</button>`;
+}
+function adoptSession(r){
+  SESSION={...SESSION,signedIn:true,user:r.user,nick:r.nick,
+           live:r.live||SESSION.live,setupNeeded:false};
+  CSRF=r.csrf||'';
+  INVITE='';
+  history.replaceState(null,'',location.pathname+location.hash.replace(/[#&]invite=[^&]*/,''));
+  applyLook();drawLive();syncComposer();drawTagList();refreshSaved();
+}
+
+function drawLive(){
+  $('#live-title').textContent=SESSION.setupNeeded?'Set up'
+    :INVITE?'Invitation':SESSION.signedIn?'Account':'Sign in';
+  $('#live-content').innerHTML=liveHTML();
+  const err=m=>$('#in-err').innerHTML=`<div class="note err">${esc(m)}</div>`;
+
+  const setup=$('#do-setup');
+  if(setup)setup.onclick=async()=>{
+    if($('#su-pw1').value!==$('#su-pw2').value)return err("Those don't match.");
+    setup.disabled=true;
+    const r=await post('/api/setup',{username:$('#su-user').value.trim(),
+      password:$('#su-pw1').value,nick:$('#su-nick').value.trim()||undefined});
+    setup.disabled=false;
+    if(r.error)return err(r.error);
+    adoptSession(r);toast('Owner account created');
+  };
+
+  const redeem=$('#do-redeem');
+  if(redeem)redeem.onclick=async()=>{
+    redeem.disabled=true;
+    const r=await post('/api/redeem',{token:INVITE,
+      username:$('#rd-user').value.trim(),password:$('#rd-pw').value});
+    redeem.disabled=false;
+    if(r.error)return err(r.error);
+    adoptSession(r);toast('Welcome');
+  };
+
+  const login=$('#do-login');
+  if(login){
+    const go=async()=>{
+      login.disabled=true;
+      const r=await post('/api/login',{username:$('#li-user').value.trim(),
+        password:$('#li-pw').value,totp:($('#li-totp')||{}).value});
+      login.disabled=false;
+      if(r.totpRequired){
+        $('#totp-field').style.display='';$('#li-totp').focus();
+        return err('Enter your authenticator code.');
+      }
+      if(r.error)return err(r.error);
+      adoptSession(r);toast('Signed in');
+    };
+    login.onclick=go;
+    const pk=$('#do-pk');
+    if(pk){
+      if(!pkUsable()){
+        pk.disabled=true;
+        pk.title=pkSupported()
+          ? 'Passkeys need HTTPS (or localhost) — this page is on '+location.origin
+          : 'This browser does not support passkeys';
+      }
+      pk.onclick=async()=>{
+        pk.disabled=true;
+        try{ adoptSession(await pkLogin()); toast('Signed in') }
+        catch(e){ err(e.name==='NotAllowedError'?'Cancelled':e.message) }
+        finally{ pk.disabled=false }
+      };
+    }
+    for(const id of ['#li-user','#li-pw','#li-totp']){
+      const f=$(id);
+      if(f)f.onkeydown=e=>{if(e.key==='Enter'){e.preventDefault();go()}};
+    }
+  }
+
+  const st=$('#open-settings');
+  if(st)st.onclick=()=>{closeAll();openSettings()};
+
+  const so=$('#do-signout');
+  if(so)so.onclick=async()=>{
+    await post('/api/signout');
+    SESSION.signedIn=false;SESSION.user=null;SESSION.nick=null;CSRF='';
+    applyLook();drawLive();syncComposer();toast('Signed out');
+  };
+}
+/* Publish the composer's real height so the pill can sit above it. Measured
+   rather than hard-coded, because the textarea grows with a long message. */
+function measureComposer(){
+  const c=$('#composer');
+  const h=c.classList.contains('on')?Math.round(c.getBoundingClientRect().height):0;
+  document.documentElement.style.setProperty('--composer-h',h+'px');
+}
+if(window.ResizeObserver)new ResizeObserver(measureComposer).observe($('#composer'));
+
+function syncComposer(){
+  const on=SESSION.signedIn&&SESSION.live&&SESSION.live.connected;
+  $('#composer').classList.toggle('on',on);
+  measureComposer();
+  $('#live-btn').classList.toggle('on',!!(SESSION.live&&SESSION.live.connected));
+  if(on){
+    const sel=$('#sendchan');
+    if(sel.options.length!==SESSION.live.channels.length){
+      sel.innerHTML=SESSION.live.channels.map(c=>`<option value="${esc(c)}">${esc(c)}</option>`).join('');
+      syncComposerChannel();
+    }
+  }
+  $('#sendbtn').disabled=!on||!$('#sendtext').value.trim();
+}
+/* True when the user is typing inside `container`. Redrawing a panel replaces
+   its innerHTML, which destroys the focused field and everything typed into
+   it - so background refreshes must never do that mid-entry. */
+function busyTyping(container){
+  const el=document.activeElement;
+  if(!el||!container||!container.contains(el))return false;
+  return /^(INPUT|TEXTAREA|SELECT)$/.test(el.tagName)||el.isContentEditable;
+}
+
+async function refreshSession(){
+  try{
+    const s=await api('/api/session');
+    const wasIn=SESSION.signedIn;
+    SESSION={...SESSION,...s};
+    CSRF=s.csrf||'';
+    syncComposer();
+    if(wasIn!==SESSION.signedIn)applyLook();   // anonymous is pinned to Noir
+    // Only repaint the panels when nobody is mid-way through a field
+    if($('#live-sheet').classList.contains('on')&&!busyTyping($('#live-content')))
+      drawLive();
+  }catch(e){}
+}
+
+/* ---------------- live tail ---------------- */
+/* ---------------- live stream ---------------- */
+let es=null, lastSeen=0, newCount=0;
+
+/* "Live end" differs by sort order. Ascending, it is the bottom, reached only
+   once everything is loaded. Descending, the newest messages are the FIRST
+   page, so it is the top with head at 0 - gating that on state.done (which
+   means "paged back to 2021") made live updates impossible in desc order. */
+function atLiveEnd(){
+  const log=$('#log');
+  if(state.anchor)return false;
+  if(state.order==='desc')return state.head===0&&log.scrollTop<80;
+  return state.done&&log.scrollHeight-log.scrollTop-log.clientHeight<140;
+}
+/* Does an incoming row belong in the view as currently filtered?
+   Text search is left out on purpose - the server owns that. */
+function passesFilters(m){
+  if(state.q)return false;
+  if(state.channels.size&&!state.channels.has(m.channel))return false;
+  if(state.nicks.size&&!state.nicks.has(m.nick))return false;
+  if(state.kinds.size&&!state.kinds.has(m.kind))return false;
+  if(state.to)return false;
+  return true;
+}
+function appendLive(m){
+  const log=$('#log');
+  const k=dayKey(m.ts);
+  if(k!==lastDay){lastDay=k;lastMsg=null;log.appendChild(sepNode(k))}
+  log.appendChild(msgNode(m));
+}
+function prependLive(m){
+  const log=$('#log');
+  const k=dayKey(m.ts);
+  const firstSep=log.querySelector('.daysep');
+  // Build a full header row: it has no predecessor to group with
+  const saveDay=lastDay,saveMsg=lastMsg;
+  lastDay=null;lastMsg=null;
+  const node=msgNode(m,{forceHead:true});
+  lastDay=saveDay;lastMsg=saveMsg;
+
+  if(firstSep&&firstSep.textContent===dayLabel(k)){
+    firstSep.after(node);                 // same day already headed
+  }else{
+    log.insertBefore(node,log.firstChild);
+    log.insertBefore(sepNode(k),node);
+  }
+}
+/* Re-read the archive's shape. Needed when a channel or person appears that
+   wasn't there at boot - most visibly on a first run, where META was fetched
+   from an empty archive and so had no channels to draw badges or chips from. */
+async function refreshMeta(){
+  const m=await api('/api/meta');
+  if(!m||!m.total)return;
+  META=m;
+  if(m.appName){APPNAME=m.appName;applyAppName()}
+  buildNickSet();
+  $('#subtitle').textContent=fmtN(META.total)+' messages';
+  $('#q').placeholder=`Search ${fmtN(META.total)} messages`;
+  const rail=$('#rail');
+  const have=new Set([...rail.querySelectorAll('.chip')].map(c=>c.dataset.chan));
+  for(const c of META.channels){
+    if(have.has(c.name))continue;
+    const b=document.createElement('button');
+    b.className='chip';b.dataset.chan=c.name;
+    b.setAttribute('aria-pressed',state.channels.has(c.name));
+    b.innerHTML=`#${esc(c.name)} <span class="n">${fmtN(c.count)}</span>`;
+    b.onclick=()=>toggleChannel(c.name);
+    rail.appendChild(b);
+  }
+  drawNicks();drawTagList();
+}
+
+let bootedEmpty=false, metaTimer=null;
+/* Debounced: a burst of arrivals should cost one refresh, not one each. */
+function scheduleMetaRefresh(){
+  clearTimeout(metaTimer);
+  metaTimer=setTimeout(()=>refreshMeta().catch(()=>{}),1200);
+}
+function onLiveRows(rows){
+  const log=$('#log');
+  // First messages into a fresh archive: adopt the real shape rather than
+  // limping along with the empty snapshot taken at boot.
+  if(bootedEmpty&&rows.length){
+    bootedEmpty=false;
+    refreshMeta().then(()=>reload());
+    return;
+  }
+  // A channel or person we've never seen means the cached shape is stale:
+  // counts, rail chips and badges would all be wrong until a reload.
+  if(META&&rows.some(m=>
+      !META.channels.some(c=>c.name===m.channel)||!NICKSET.has(m.nick.toLowerCase())))
+    scheduleMetaRefresh();
+  const desc=state.order==='desc';
+  const live=atLiveEnd();
+  let shown=0,queued=0;
+
+  // Descending renders newest-first, so insert in the reverse of arrival
+  for(const m of (desc?rows.slice().reverse():rows)){
+    lastSeen=Math.max(lastSeen,m.id);
+    // A pending echo of our own message gets replaced by the real row
+    const pend=log.querySelector(`.msg.sending[data-text="${CSS.escape(m.text)}"]`);
+    if(pend)pend.remove();
+    if(!passesFilters(m)||!live){queued++;continue}
+    const atTop=log.scrollTop<80;
+    desc?prependLive(m):appendLive(m);
+    // one more row is rendered, so the next page boundary moves with it
+    state.tail++;
+    if(desc&&atTop)log.scrollTop=0;
+    shown++;
+  }
+
+  state.total+=rows.length;
+  $('#count').textContent=fmtN(state.total);
+  if(shown&&!desc){
+    const stick=log.scrollHeight-log.scrollTop-log.clientHeight<260;
+    if(stick)log.scrollTop=log.scrollHeight;
+  }
+  if(queued)newCount+=queued;
+  updatePill();
+  if(shown)scheduleEvents();
+}
+function startStream(){
+  if(es){es.close();es=null}
+  es=new EventSource('/api/stream'+(lastSeen?`?since=${lastSeen}`:''));
+  es.addEventListener('hello',e=>{
+    const d=JSON.parse(e.data);
+    if(!lastSeen)lastSeen=d.last;
+  });
+  es.addEventListener('messages',e=>{
+    try{onLiveRows(JSON.parse(e.data))}catch(err){}
+  });
+  // EventSource reconnects on its own; ?since= means nothing is missed
+  es.onerror=()=>{};
+}
+
+/* Only runs if the SSE stream dies in a way EventSource can't recover from. */
+let tailTimer=null;
+async function tail(){
+  const prev=state.total;
+  let d;
+  try{ d=await api('/api/messages',params({limit:1,offset:0,order:'desc'})) }
+  catch(err){ return }
+  if(!d||d.total===prev)return;
+  if(atLiveEnd())return jumpToLatest();
+  newCount+=Math.max(0,d.total-prev);
+  state.total=d.total;$('#count').textContent=fmtN(d.total);
+  updatePill();
+}
+
+/* ---------------- wiring ---------------- */
+let deb;
+$('#q').oninput=e=>{
+  $('#qclear').classList.toggle('on',!!e.target.value);
+  updateSuggest();
+  clearTimeout(deb);
+  deb=setTimeout(applyQueryBox,240);
+};
+$('#q').addEventListener('keydown',e=>{
+  const box=$('#suggest');
+  if(!box.classList.contains('on'))return;
+  const items=[...box.querySelectorAll('button')];
+  let i=items.findIndex(b=>b.classList.contains('sel'));
+  if(e.key==='ArrowDown'||e.key==='ArrowUp'){
+    e.preventDefault();
+    i=e.key==='ArrowDown'?Math.min(i+1,items.length-1):Math.max(i-1,0);
+    items.forEach(b=>b.classList.remove('sel'));
+    if(items[i]){items[i].classList.add('sel');items[i].scrollIntoView({block:'nearest'})}
+  }else if(e.key==='Enter'){
+    e.preventDefault();
+    const b=items[i>=0?i:0]||items[0];
+    if(b)acceptSuggestion(b.dataset.accept,b.dataset.sigil);
+  }else if(e.key==='Escape'){box.classList.remove('on')}
+});
+$('#q').addEventListener('blur',()=>setTimeout(()=>$('#suggest').classList.remove('on'),180));
+$('#suggest').onclick=e=>{
+  const b=e.target.closest('[data-accept]');
+  if(b)acceptSuggestion(b.dataset.accept,b.dataset.sigil);
+};
+$('#qclear').onclick=()=>{$('#q').value='';$('#qclear').classList.remove('on');
+  $('#suggest').classList.remove('on');applyQueryBox();$('#q').focus()};
+
+$('#people-btn').onclick=()=>{
+  if(sidebarPinned()){
+    // On desktop the panel is docked, so the button collapses it instead
+    const hide=!document.body.classList.contains('no-people');
+    document.body.classList.toggle('no-people',hide);
+    $('#people-btn').setAttribute('aria-pressed',!hide);
+    try{localStorage.setItem('people',hide?'0':'1')}catch(e){}
+    return;
+  }
+  const open=$('#people-sheet').classList.contains('on');
+  closeAll();
+  if(!open){openSheet('#people-sheet');$('#people-btn').setAttribute('aria-pressed','true');drawNicks()}
+};
+$('#filter-btn').onclick=()=>{
+  const open=$('#filter-sheet').classList.contains('on');
+  closeAll(); if(!open){openSheet('#filter-sheet');$('#filter-btn').setAttribute('aria-pressed','true')}
+};
+$('#live-btn').onclick=async()=>{
+  const open=$('#live-sheet').classList.contains('on');
+  closeAll();
+  if(!open){await refreshSession();drawLive();openSheet('#live-sheet');
+    $('#live-btn').setAttribute('aria-pressed','true')}
+};
+$('#manage-tags').onclick=e=>{
+  e.preventDefault();
+  closeAll();drawTagManager();openSheet('#tags-sheet');
+};
+$('#tags-close').onclick=closeAll;
+$('#live-close').onclick=closeAll;
+$('#ctx-close').onclick=closeAll;
+$('#ctx-jump').onclick=()=>{if(ctxFocus)jumpTo(ctxFocus)};
+$('#clear-filters').onclick=()=>{clearFilters();closeAll()};
+
+$$('#order-seg button').forEach(b=>b.onclick=()=>{
+  state.order=b.dataset.order;
+  $$('#order-seg button').forEach(x=>x.setAttribute('aria-pressed',x===b));
+  refresh();
+});
+$('#show-events').onclick=e=>{
+  state.showEvents=!state.showEvents;
+  e.target.setAttribute('aria-pressed',state.showEvents);
+  try{localStorage.setItem('events',state.showEvents?'1':'0')}catch(err){}
+  spliceEvents();
+};
+$$('#kinds .chip').forEach(b=>b.onclick=()=>{
+  const k=+b.dataset.kind;
+  state.kinds.has(k)?state.kinds.delete(k):state.kinds.add(k);
+  syncKindChips();refresh();
+});
+$$('#presets .chip').forEach(b=>b.onclick=()=>{
+  const days=+b.dataset.days;
+  if(!days){state.from=state.to=''}
+  else{
+    const end=new Date(),start=new Date(Date.now()-(days-1)*86400000);
+    const iso=d=>d.toISOString().slice(0,10);
+    state.from=iso(start);state.to=iso(end);
+  }
+  $('#from').value=state.from;$('#to').value=state.to;
+  refresh();
+});
+$('#from').onchange=e=>{state.from=e.target.value;refresh()};
+$('#to').onchange=e=>{state.to=e.target.value;refresh()};
+
+$('#log').onclick=e=>{
+  // Selecting text must never trigger navigation
+  const sel=window.getSelection&&String(window.getSelection());
+  if(sel&&sel.trim())return;
+  if(e.target.closest('a'))return;                 // real links behave normally
+
+  const day=e.target.closest('[data-day]');
+  if(day)return selectDay(day.dataset.day);
+  const tg=e.target.closest('[data-tag]');
+  if(tg)return toggleTag(tg.dataset.tag);
+  const tb=e.target.closest('[data-tagbtn]');
+  if(tb)return openPicker(+tb.dataset.tagbtn,tb);
+  const link=e.target.closest('[data-link]');
+  if(link)return copyPermalink(+link.dataset.link,link);
+  const go=e.target.closest('[data-jump]');
+  if(go)return jumpTo(+go.dataset.jump);
+  const chan=e.target.closest('[data-chan]');
+  if(chan)return selectOnlyChannel(chan.dataset.chan);
+  const when=e.target.closest('[data-ctx]');
+  if(when)return showContext(+when.dataset.ctx);
+
+  // A name - in the header or addressed mid-message - filters to that person
+  const who=e.target.closest('[data-nick]');
+  if(who)return toggleNick(who.dataset.nick);
+
+  // Anywhere else on the row: offer the choices instead of acting
+  const row=e.target.closest('.msg');
+  if(row)return openRowMenu(+row.dataset.id,row);
+};
+$('#ctxbody').onclick=e=>{
+  const row=e.target.closest('.msg');
+  if(row&&e.target.closest('[data-nick]'))jumpTo(+row.dataset.id);
+};
+
+/* paging by scroll - simpler and more reliable than sentinels */
+let ticking=false;
+$('#log').addEventListener('scroll',()=>{
+  if(ticking)return;ticking=true;
+  requestAnimationFrame(()=>{
+    ticking=false;
+    const log=$('#log');
+    // Scrolling up walks back through history; down catches up to the present
+    if(log.scrollTop<600)loadBackward();
+    else if(log.scrollHeight-log.scrollTop-log.clientHeight<800)loadForward();
+    updatePill();
+  });
+},{passive:true});
+
+$('#copy').onclick=()=>{
+  const lines=$$('#log .msg').map(el=>{
+    const w=el.querySelector('.who'),t=el.querySelector('.when');
+    return (t?t.title.split(' — ')[0]:'')+'  '+(w?'<'+w.textContent+'>':'')+' '
+      +el.querySelector('.txt').textContent;
+  });
+  navigator.clipboard.writeText(lines.join('\n')).then(()=>{
+    $('#copy').textContent=`Copied ${lines.length}`;
+    setTimeout(()=>$('#copy').textContent='Copy',1600);
+  });
+};
+/* ---------------- passkeys ---------------- */
+const pkSupported = () => !!(window.PublicKeyCredential && navigator.credentials);
+/* WebAuthn is only exposed in a secure context: https, or localhost. Over
+   plain http on a LAN address the browser hides the API entirely. */
+const pkUsable = () => pkSupported() && window.isSecureContext;
+const b64u = buf => btoa(String.fromCharCode(...new Uint8Array(buf)))
+  .replace(/\+/g,'-').replace(/\//g,'_').replace(/=+$/,'');
+const unb64u = s => Uint8Array.from(
+  atob(String(s).replace(/-/g,'+').replace(/_/g,'/')
+    .padEnd(Math.ceil(String(s).length/4)*4,'=')), c => c.charCodeAt(0));
+
+async function pkRegister(label){
+  const b = await post('/api/me/passkey',{action:'begin'});
+  if(b.error) throw new Error(b.error);
+  const cred = await navigator.credentials.create({publicKey:{
+    challenge: unb64u(b.challenge),
+    rp: {id: b.rpId, name: b.rpName},
+    user: {id: unb64u(b.userId), name: b.userName, displayName: b.userName},
+    pubKeyCredParams: [{type:'public-key',alg:-7},{type:'public-key',alg:-257}],
+    authenticatorSelection: {residentKey:'preferred', userVerification:'preferred'},
+    excludeCredentials: (b.exclude||[]).map(id=>({type:'public-key',id:unb64u(id)})),
+    timeout: 120000, attestation: 'none',
+  }});
+  const r = await post('/api/me/passkey',{action:'finish', challenge:b.challenge, label,
+    clientDataJSON: b64u(cred.response.clientDataJSON),
+    attestationObject: b64u(cred.response.attestationObject)});
+  if(r.error) throw new Error(r.error);
+  return r.passkeys;
+}
+
+async function pkLogin(){
+  const b = await post('/api/passkey/begin',{});
+  if(b.error) throw new Error(b.error);
+  const cred = await navigator.credentials.get({publicKey:{
+    challenge: unb64u(b.challenge), rpId: b.rpId,
+    userVerification: 'preferred', timeout: 120000,
+  }});
+  const r = await post('/api/passkey/finish',{challenge:b.challenge,
+    credentialId: b64u(cred.rawId),
+    clientDataJSON: b64u(cred.response.clientDataJSON),
+    authenticatorData: b64u(cred.response.authenticatorData),
+    signature: b64u(cred.response.signature)});
+  if(r.error) throw new Error(r.error);
+  return r;
+}
+
+async function drawTokens(){
+  const box=$('#st-tokens');
+  if(!box)return;
+  const r=await post('/api/tokens',{action:'list'});
+  const t=r.tokens||[];
+  box.innerHTML = t.length ? t.map(k=>`
+    <div class="saved"><span class="nm">${esc(k.name)}</span>
+      <span class="qq">${k.last_used?'used '+dayKey(k.last_used):'never used'}${
+        k.uses?' · '+fmtN(k.uses)+' calls':''}</span>
+      <button class="del danger" data-tkdel="${k.id}" aria-label="Revoke">${BIN}</button>
+    </div>`).join('') : '<div class="loading">None yet</div>';
+}
+
+async function drawPasskeys(){
+  const box=$('#st-keys');
+  if(!box)return;
+  const r=await post('/api/me/passkey',{action:'list'});
+  const keys=r.passkeys||[];
+  box.innerHTML = keys.length ? keys.map(k=>`
+    <div class="saved"><span class="nm">${esc(k.label||'Passkey')}</span>
+      <span class="qq">${k.last_used?'used '+dayKey(k.last_used):'never used'}</span>
+      <button class="del danger" data-pkdel="${k.id}" aria-label="Remove">${BIN}</button>
+    </div>`).join('') : '<div class="loading">None yet</div>';
+  const hint=$('#pk-hint'), add=$('#pk-add');
+  if(!pkUsable()&&hint){
+    hint.innerHTML = pkSupported()
+      ? `Your browser hides passkeys on insecure origins. This page is on
+         <code>${esc(location.origin)}</code> — passkeys need HTTPS, or
+         <code>localhost</code>.`
+      : 'This browser does not support passkeys.';
+    if(add)add.disabled=true;
+  }
+}
+
+/* ---------------- settings ---------------- */
+const BIN=`<svg viewBox="0 0 24 24" width="15" height="15" fill="none"
+  stroke="currentColor" stroke-width="1.9" stroke-linecap="round"
+  stroke-linejoin="round"><path d="M4 7h16M10 11v6M14 11v6"/>
+  <path d="M6 7l1 12.5a1.5 1.5 0 0 0 1.5 1.4h7a1.5 1.5 0 0 0 1.5-1.4L18 7"/>
+  <path d="M9.5 7V5.2A1.2 1.2 0 0 1 10.7 4h2.6a1.2 1.2 0 0 1 1.2 1.2V7"/></svg>`;
+let INVITE='';
+
+async function openSettings(){
+  openSheet('#set-sheet');
+  await drawSettings(true);      // opening always draws
+}
+let setTab='account';
+async function drawSettings(force){
+  const box=$('#set-content');
+  // The settings page is a wall of fields; rebuilding it under someone's
+  // fingers would lose whatever they had half-entered.
+  if(!force&&busyTyping(box))return;
+  if(!SESSION.signedIn){
+    box.innerHTML=`<div class="note">Sign in to reach settings.</div>`;
+    return;
+  }
+  const u=SESSION.user||{};
+  const owner=u.role==='owner';
+  if(!owner&&setTab!=='account')setTab='account';
+  box.innerHTML=`<div class="loading">Loading…</div>`;
+
+  const [sess,users,invites,nets]=await Promise.all([
+    api('/api/sessions').catch(()=>({sessions:[]})),
+    owner?api('/api/users').catch(()=>({users:[]})):Promise.resolve({users:[]}),
+    owner?api('/api/invites').catch(()=>({invites:[]})):Promise.resolve({invites:[]}),
+    owner?api('/api/networks').catch(()=>({networks:[]})):Promise.resolve({networks:[]}),
+  ]);
+
+  const tabs=[['account','Account']].concat(owner
+    ? [['server','Server'],['people','People']] : []);
+
+  const account=()=>`
+    <div class="field"><label>Username</label>
+      <div class="formrow">
+        <input id="st-user" value="${esc(u.name||'')}" autocomplete="username">
+        <button class="btn" id="st-user-save">Save</button></div>
+      <div class="hint">How you sign in. Changing it does not sign you out.</div>
+    </div>
+
+    <div class="field"><label>IRC nick</label>
+      <div class="formrow">
+        <input id="st-nick" value="${esc(u.nick||'')}" autocomplete="off">
+        <button class="btn" id="st-nick-save">Save</button></div>
+      <div class="hint">Messages you send go out under this name.</div>
+    </div>
+
+    <div class="field"><label>Password</label>
+      <input id="st-cur" type="password" placeholder="current password"
+             autocomplete="current-password">
+      <input id="st-new" type="password" placeholder="new password"
+             autocomplete="new-password" style="margin-top:6px">
+      <button class="btn ghost" id="st-pw" style="margin-top:8px">Change password</button>
+      <div class="hint">Other signed-in devices are signed out when it changes.</div>
+    </div>
+
+    <div class="field"><label>Two-factor</label><div id="st-totp"></div></div>
+
+    <div class="field"><label>Passkeys</label>
+      <div id="st-keys"></div>
+      <div class="formrow" style="margin-top:6px">
+        <input id="pk-label" placeholder="name this device" maxlength="40">
+        <button class="btn" id="pk-add">Add a passkey</button></div>
+      <div class="hint" id="pk-hint">Sign in with Face ID, Touch ID, Windows Hello
+        or a security key instead of a password.</div>
+    </div>
+
+    <div class="field"><label>Agent tokens</label>
+      <div id="st-tokens"></div>
+      <div class="formrow" style="margin-top:6px">
+        <input id="tk-name" placeholder="what is it for, e.g. laptop" maxlength="40">
+        <button class="btn" id="tk-add">Create token</button></div>
+      <div id="tk-out"></div>
+      <div class="hint">Lets an agent query this archive over MCP, read-only.
+        Shown once when created — only a hash is kept, so save it then.</div>
+    </div>
+
+    <div class="field"><label>Signed-in devices</label>
+      ${sess.sessions.map(s=>`
+        <div class="saved"><span class="nm">${esc((s.agent||'unknown device').slice(0,44))}${
+          s.current?' · this one':''}</span>
+          <span class="qq">${esc(s.ip||'')}</span>
+          ${s.current?'':`<button class="del danger" data-revoke="${esc(s.id)}"
+            title="Sign this device out" aria-label="Sign out">${BIN}</button>`}
+        </div>`).join('')||'<div class="loading">None</div>'}
+      <button class="btn ghost" id="st-revoke-all" style="margin-top:8px">
+        Sign out every other device</button>
+    </div>`;
+
+  const server=()=>`
+    <div class="field"><label>Server name</label>
+      <div class="formrow">
+        <input id="st-appname" value="${esc(APPNAME)}" maxlength="48"
+               placeholder="IRC Client">
+        <button class="btn" id="st-appname-save">Save</button></div>
+      <div class="hint">Shown in the header and the browser tab.</div>
+    </div>
+
+    ${nets.networks.map(n=>`
+      <div class="field"><label>${esc(n.label||n.name)}
+        <button class="linkbtn" data-netdel="${n.id}" style="float:right">Remove</button></label>
+        <div class="formrow">
+          <input data-nethost="${n.id}" value="${esc(n.host)}" placeholder="host">
+          <input data-netport="${n.id}" value="${n.port}" style="flex:0 0 90px;min-width:80px">
+          <input data-netnick="${n.id}" value="${esc(n.archivist_nick)}" placeholder="archivist nick">
+          <button class="btn" data-netsave="${n.id}">Save</button>
+        </div>
+        <label class="sub">Channels</label>
+        ${(n.channels||[]).map(c=>`
+          <div class="saved"><span class="nm">#${esc(c)}</span>
+            <span class="qq">archiving</span>
+            <button class="del" data-chpause="${esc(c)}" data-net="${n.id}"
+              title="Stop archiving">⏸</button>
+            <button class="del danger" data-chdel="${esc(c)}" data-net="${n.id}"
+              title="Remove entirely" aria-label="Remove">${BIN}</button></div>`).join('')}
+        ${(n.paused||[]).map(c=>`
+          <div class="saved" style="opacity:.6"><span class="nm">#${esc(c)}</span>
+            <span class="qq">paused</span>
+            <button class="del" data-chresume="${esc(c)}" data-net="${n.id}"
+              title="Resume archiving">▶</button>
+            <button class="del danger" data-chdel="${esc(c)}" data-net="${n.id}"
+              title="Remove entirely" aria-label="Remove">${BIN}</button></div>`).join('')}
+        <div class="formrow" style="margin-top:8px">
+          <input data-chadd="${n.id}" placeholder="add a channel">
+          <button class="btn" data-chgo="${n.id}">Add</button></div>
+      </div>`).join('')}
+
+    <div class="field"><label>Add a network</label>
+      <div class="formrow">
+        <input id="nn-name" placeholder="short name, e.g. libera">
+        <input id="nn-host" placeholder="irc.libera.chat"></div>
+      <div class="formrow" style="margin-top:6px">
+        <input id="nn-port" value="6697" style="flex:0 0 90px;min-width:80px">
+        <input id="nn-nick" placeholder="archivist nick" value="aurora">
+        <button class="btn" id="nn-go">Create</button></div>
+      <div class="hint">Restart <code>./archive.py live</code> for connection
+        changes to take effect.</div>
+    </div>`;
+
+  const people=()=>`
+    <div class="field"><label>People</label>
+      ${users.users.map(x=>`
+        <div class="saved"><span class="nm">${esc(x.name)}${
+            x.disabled?' · disabled':''}</span>
+          <span class="qq">${x.root?'owner · root':esc(x.role)}${x.totp?' · 2FA':''}${
+            x.name===u.name?' · you':''}</span>
+          ${(x.root||x.name===u.name)?'':`
+            <button class="del" data-role="${esc(x.name)}"
+              data-to="${x.role==='owner'?'member':'owner'}"
+              title="Make ${x.role==='owner'?'member':'owner'}">${
+              x.role==='owner'?'↓':'↑'}</button>
+            <button class="del" data-toggle="${esc(x.name)}" data-on="${x.disabled?1:0}"
+              title="${x.disabled?'Enable':'Disable'}">${x.disabled?'✓':'⦸'}</button>
+            <button class="del danger" data-user="${esc(x.name)}" title="Remove ${esc(x.name)}"
+              aria-label="Remove">${BIN}</button>`}
+        </div>`).join('')||'<div class="loading">None</div>'}
+    </div>
+
+    <div class="field"><label>Invite someone</label>
+      <div class="formrow">
+        <input id="st-inv-user" placeholder="username (optional)">
+        <select id="st-inv-role"><option value="member">member</option>
+          <option value="owner">owner</option></select>
+        <button class="btn" id="st-invite">Create link</button></div>
+      <div id="st-inv-out"></div>
+      ${invites.invites.length?`<div class="hint">${invites.invites.length}
+        invite(s) outstanding</div>`:''}
+    </div>
+
+    <div class="field"><label>Or create an account directly</label>
+      <div class="formrow">
+        <input id="na-user" placeholder="username">
+        <input id="na-pass" type="password" placeholder="password"></div>
+      <div class="formrow" style="margin-top:6px">
+        <select id="na-role"><option value="member">member</option>
+          <option value="owner">owner</option></select>
+        <button class="btn" id="na-go">Create</button></div>
+    </div>`;
+
+  box.innerHTML=
+    `<div class="seg" id="set-tabs">${tabs.map(([k,l])=>
+      `<button data-tab="${k}" aria-pressed="${k===setTab}">${l}</button>`).join('')}</div>`+
+    (setTab==='account'?account():setTab==='server'?server():people())+
+    `<div id="st-err"></div>`;
+
+  $$('#set-tabs button').forEach(b=>b.onclick=()=>{setTab=b.dataset.tab;drawSettings(true)});
+  if(setTab==='account')drawTotp();
+  wireSettings(box);
+}
+
+function wireSettings(box){
+  const err=m=>{const e=$('#st-err');if(e)e.innerHTML=`<div class="note err">${esc(m)}</div>`};
+  const ok=m=>{toast(m);drawSettings(true)};
+  const S=id=>document.getElementById(id);
+
+  if(S('st-user-save'))S('st-user-save').onclick=async()=>{
+    const r=await post('/api/me',{username:S('st-user').value.trim()});
+    if(r.error)return err(r.error);
+    if(r.user)SESSION.user={...SESSION.user,...r.user};
+    ok('Username updated');
+  };
+  if(S('st-nick-save'))S('st-nick-save').onclick=async()=>{
+    const r=await post('/api/me',{nick:S('st-nick').value.trim()});
+    if(r.error)return err(r.error);
+    if(r.user)SESSION.user={...SESSION.user,...r.user};
+    ok('Nick updated');
+  };
+  if(S('st-pw'))S('st-pw').onclick=async()=>{
+    const r=await post('/api/me',{current:S('st-cur').value,password:S('st-new').value});
+    if(r.error)return err(r.error);
+    S('st-cur').value=S('st-new').value='';
+    ok('Password changed');
+  };
+  if(S('pk-add'))S('pk-add').onclick=async()=>{
+    try{ await pkRegister(S('pk-label').value.trim()||'Passkey');
+         S('pk-label').value=''; await drawPasskeys(); toast('Passkey added') }
+    catch(e){ err(e.name==='NotAllowedError'?'Cancelled':e.message) }
+  };
+  if(S('tk-add'))S('tk-add').onclick=async()=>{
+    const r=await post('/api/tokens',
+      {action:'create',name:S('tk-name').value.trim()||'agent'});
+    if(r.error)return err(r.error);
+    S('tk-name').value='';
+    // The only time this value exists in the clear, so make it easy to keep
+    S('tk-out').innerHTML=`<div class="note">Copy it now — it will not be shown
+      again:<br><code style="word-break:break-all">${esc(r.token)}</code></div>`;
+    navigator.clipboard&&navigator.clipboard.writeText(r.token);
+    await drawTokens(); toast('Token copied to clipboard');
+  };
+  if(S('st-tokens'))drawTokens();
+  if(S('st-keys'))drawPasskeys();
+  if(S('st-revoke-all'))S('st-revoke-all').onclick=async()=>{
+    await post('/api/sessions/revoke',{all:true});ok('Other devices signed out');
+  };
+  if(S('st-appname-save'))S('st-appname-save').onclick=async()=>{
+    const r=await post('/api/appname',{name:S('st-appname').value.trim()});
+    if(r.error)return err(r.error);
+    APPNAME=r.appName;applyAppName();ok('Renamed');
+  };
+  if(S('nn-go'))S('nn-go').onclick=async()=>{
+    const r=await post('/api/networks',{name:S('nn-name').value.trim(),
+      host:S('nn-host').value.trim(),port:+S('nn-port').value||6697,
+      nick:S('nn-nick').value.trim()||'aurora'});
+    if(r.error)return err(r.error);
+    ok('Network added — restart the live process to connect');
+  };
+  if(S('st-invite'))S('st-invite').onclick=async()=>{
+    const r=await post('/api/invites',{username:S('st-inv-user').value.trim()||undefined,
+      role:S('st-inv-role').value});
+    if(r.error)return err(r.error);
+    const link=location.origin+location.pathname+'#invite='+r.token;
+    S('st-inv-out').innerHTML=`<div class="note">Valid ${r.expiresHours}h:<br>
+      <code style="word-break:break-all">${esc(link)}</code></div>`;
+    navigator.clipboard&&navigator.clipboard.writeText(link);
+    toast('Invite link copied');
+  };
+  if(S('na-go'))S('na-go').onclick=async()=>{
+    const r=await post('/api/users/create',{username:S('na-user').value.trim(),
+      password:S('na-pass').value,role:S('na-role').value});
+    if(r.error)return err(r.error);
+    ok('Account created');
+  };
+
+  box.onclick=async e=>{
+    const t=e.target.closest('button');
+    if(!t)return;
+    const d=t.dataset;
+    if(d.revoke){await post('/api/sessions/revoke',{id:d.revoke});return ok('Signed out')}
+    if(d.pkdel){await post('/api/me/passkey',{action:'delete',id:+d.pkdel});
+      await drawPasskeys();return toast('Passkey removed')}
+    if(d.tkdel){
+      if(!confirm('Revoke this token? Any agent using it stops working at once.'))return;
+      await post('/api/tokens',{action:'revoke',id:+d.tkdel});
+      await drawTokens();return toast('Token revoked')}
+    if(d.netsave!==undefined){
+      const id=+d.netsave;
+      const r=await post('/api/networks/update',{id,
+        host:box.querySelector(`[data-nethost="${id}"]`).value.trim(),
+        port:+box.querySelector(`[data-netport="${id}"]`).value||6697,
+        nick:box.querySelector(`[data-netnick="${id}"]`).value.trim()});
+      return r.error?err(r.error):ok('Network saved');
+    }
+    if(d.netdel){
+      let r=await post('/api/networks/delete',{id:+d.netdel});
+      if(r.needsForce){
+        if(!confirm(`This network holds ${r.messages.toLocaleString()} archived `+
+                    `messages. Remove the network anyway? The messages are kept.`))return;
+        r=await post('/api/networks/delete',{id:+d.netdel,force:true});
+      }
+      return r.error?err(r.error):ok('Network removed');
+    }
+    if(d.chgo!==undefined){
+      const id=+d.chgo, f=box.querySelector(`[data-chadd="${id}"]`);
+      const r=await post('/api/networks/channels',{network_id:id,channel:f.value.trim()});
+      return r.error?err(r.error):ok('Channel added');
+    }
+    if(d.chpause){
+      const r=await post('/api/networks/channels',
+        {network_id:+d.net,channel:d.chpause,archived:false});
+      return r.error?err(r.error):ok('Paused — restart live to leave it');
+    }
+    if(d.chresume){
+      const r=await post('/api/networks/channels',
+        {network_id:+d.net,channel:d.chresume,archived:true});
+      return r.error?err(r.error):ok('Resumed — restart live to join');
+    }
+    if(d.chdel){
+      let r=await post('/api/networks/channels',
+        {network_id:+d.net,channel:d.chdel,delete:true});
+      if(r.needsForce){
+        if(!confirm(`#${d.chdel} holds ${r.messages.toLocaleString()} archived `+
+                    `messages. Remove the channel? Its messages stay in the archive.`))return;
+        r=await post('/api/networks/channels',
+          {network_id:+d.net,channel:d.chdel,delete:true,force:true});
+      }
+      return r.error?err(r.error):ok('Channel removed');
+    }
+    if(d.role){
+      const r=await post('/api/users/update',{username:d.role,role:d.to});
+      return r.error?err(r.error):ok(`${d.role} is now ${d.to}`);
+    }
+    if(d.toggle){
+      const r=await post('/api/users/update',
+        {username:d.toggle,disabled:d.on==='0'});
+      return r.error?err(r.error):ok('Updated');
+    }
+    if(d.user){
+      if(!confirm(`Remove ${d.user}? They are signed out immediately.`))return;
+      const r=await post('/api/users/update',{username:d.user,delete:true});
+      return r.error?err(r.error):ok('Removed');
+    }
+  };
+}
+
+async function drawTotp(){
+  const box=$('#st-totp');
+  if(!box)return;
+  const on=SESSION.user&&SESSION.user.totp;
+  box.innerHTML=on
+    ? `<div class="note">Two-factor is on.</div>
+       <button class="btn ghost" id="totp-off">Turn off</button>`
+    : `<div class="hint">Adds an authenticator code to sign-in. Optional.</div>
+       <button class="btn ghost" id="totp-on">Set up two-factor</button>
+       <div id="totp-setup"></div>`;
+  const off=$('#totp-off');
+  if(off)off.onclick=async()=>{
+    await post('/api/me/totp',{action:'disable'});
+    if(SESSION.user)SESSION.user.totp=false;
+    drawTotp();toast('Two-factor off');
+  };
+  const start=$('#totp-on');
+  if(start)start.onclick=async()=>{
+    const r=await post('/api/me/totp',{action:'begin'});
+    if(r.error)return toast(r.error);
+    $('#totp-setup').innerHTML=
+      `<div class="note">Add this secret to your authenticator, then confirm:
+        <br><code style="word-break:break-all">${esc(r.secret)}</code></div>
+       <input id="totp-code" inputmode="numeric" placeholder="000000" autocomplete="one-time-code">
+       <button class="btn" id="totp-confirm" style="margin-top:8px">Confirm</button>`;
+    $('#totp-confirm').onclick=async()=>{
+      const c=await post('/api/me/totp',{action:'confirm',code:$('#totp-code').value});
+      if(c.error)return toast(c.error);
+      if(SESSION.user)SESSION.user.totp=true;
+      drawTotp();toast('Two-factor on');
+    };
+  };
+}
+$('#set-close').onclick=closeAll;
+
+/* ---------------- appearance ---------------- */
+const ACCENTS=['#2563d8','#5b9dff','#7c5cff','#c2410c','#e11d48',
+               '#0f9d58','#0d9488','#b45309','#6b7280'];
+const look={theme:'',accent:'',bg:'',strength:35,blur:0,scrim:50};
+
+function loadLook(){
+  try{
+    const raw=localStorage.getItem('look');
+    if(raw)Object.assign(look,JSON.parse(raw));
+    if(!('bg' in look))look.bg='';
+  }catch(e){}
+  applyLook();
+}
+function saveLook(){
+  try{localStorage.setItem('look',JSON.stringify(look))}
+  catch(e){toast('Could not save — the image may be too large')}
+}
+/* white or near-black text on the accent, whichever actually reads */
+function accentFg(hex){
+  const m=/^#?([0-9a-f]{6})$/i.exec(hex||'');
+  if(!m)return null;
+  const n=parseInt(m[1],16), r=n>>16&255, g=n>>8&255, b=n&255;
+  const L=(0.2126*r+0.7152*g+0.0722*b)/255;
+  return L>0.6?'#10131a':'#ffffff';
+}
+function applyLook(){
+  const el=document.documentElement;
+  // The public, unauthenticated view is always Noir: no theme, accent or
+  // background from a visitor's device. Personalisation is for accounts.
+  if(!SESSION.signedIn){
+    el.setAttribute('data-theme','noir');
+    el.style.removeProperty('--accent');el.style.removeProperty('--accent-fg');
+    document.body.classList.remove('has-bg');
+    $('#bgimg').style.backgroundImage='';
+    document.body.classList.add('public');
+    drawLook();
+    return;
+  }
+  document.body.classList.remove('public');
+  look.theme?el.setAttribute('data-theme',look.theme):el.removeAttribute('data-theme');
+  if(look.accent){
+    el.style.setProperty('--accent',look.accent);
+    const fg=accentFg(look.accent);
+    if(fg)el.style.setProperty('--accent-fg',fg);
+  }else{
+    el.style.removeProperty('--accent');el.style.removeProperty('--accent-fg');
+  }
+  const img=$('#bgimg');
+  document.body.classList.toggle('has-bg',!!look.bg);
+  img.style.backgroundImage=look.bg?`url(${look.bg})`:'';
+  el.style.setProperty('--bg-strength',(look.strength/100).toFixed(2));
+  el.style.setProperty('--bg-blur',look.blur+'px');
+  el.style.setProperty('--bg-scrim',(look.scrim/100).toFixed(2));
+  $('#bgcontrols').style.display=look.bg?'block':'none';
+  drawLook();
+}
+function drawLook(){
+  $$('#theme-seg button').forEach(b=>
+    b.setAttribute('aria-pressed',(b.dataset.th||'')===(look.theme||'')));
+  const box=$('#accents');
+  if(box&&!box.dataset.built){
+    box.dataset.built='1';
+    box.innerHTML=ACCENTS.map(c=>
+      `<button class="swatch-btn" data-accent="${c}" style="background:${c}"
+         title="${c}" aria-pressed="false"></button>`).join('');
+    box.onclick=e=>{
+      const b=e.target.closest('[data-accent]');
+      if(!b)return;
+      look.accent=b.dataset.accent;saveLook();applyLook();
+    };
+  }
+  $$('#accents .swatch-btn').forEach(b=>
+    b.setAttribute('aria-pressed',b.dataset.accent===look.accent));
+  const c=$('#accent-custom');
+  if(c&&look.accent&&/^#[0-9a-f]{6}$/i.test(look.accent))c.value=look.accent;
+  $('#bgstrength').value=look.strength;
+  $('#bgblur').value=look.blur;
+  $('#bgscrim').value=look.scrim;
+}
+
+/* Downscale before storing: a phone photo would blow the localStorage quota */
+function shrinkImage(file,maxW=1920,quality=0.82){
+  return new Promise((resolve,reject)=>{
+    const fr=new FileReader();
+    fr.onerror=()=>reject(new Error('could not read that file'));
+    fr.onload=()=>{
+      const im=new Image();
+      im.onerror=()=>reject(new Error('that does not look like an image'));
+      im.onload=()=>{
+        const scale=Math.min(1,maxW/im.width);
+        const cv=document.createElement('canvas');
+        cv.width=Math.round(im.width*scale);cv.height=Math.round(im.height*scale);
+        cv.getContext('2d').drawImage(im,0,0,cv.width,cv.height);
+        resolve(cv.toDataURL('image/jpeg',quality));
+      };
+      im.src=fr.result;
+    };
+    fr.readAsDataURL(file);
+  });
+}
+
+$('#theme').onclick=()=>{closeAll();drawLook();openSheet('#look-sheet')};
+$('#look-close').onclick=closeAll;
+$$('#theme-seg button').forEach(b=>b.onclick=()=>{
+  look.theme=b.dataset.th||'';saveLook();applyLook();
+});
+$('#accent-custom').oninput=e=>{look.accent=e.target.value;saveLook();applyLook()};
+$('#accent-reset').onclick=()=>{look.accent='';saveLook();applyLook()};
+$('#bgfile').onchange=async e=>{
+  const f=e.target.files&&e.target.files[0];
+  if(!f)return;
+  try{
+    const data=await shrinkImage(f);
+    if(data.length>3_500_000)return toast('That image is too large even resized');
+    look.bg=data;saveLook();applyLook();toast('Background set');
+  }catch(err){toast(err.message||'Could not use that image')}
+  e.target.value='';
+};
+$('#bgclear').onclick=()=>{look.bg='';saveLook();applyLook()};
+for(const [id,key] of [['#bgstrength','strength'],['#bgblur','blur'],['#bgscrim','scrim']]){
+  $(id).oninput=e=>{look[key]=+e.target.value;applyLook()};
+  $(id).onchange=saveLook;
+}
+
+/* ---------------- saved searches ---------------- */
+let SAVED=[];
+function currentSearchState(){
+  return {from:state.from,to:state.to,order:state.order,
+          kinds:[...state.kinds],events:state.showEvents};
+}
+function drawSaved(){
+  const box=$('#savedlist');
+  if(!box)return;
+  if(!SAVED.length){box.innerHTML='<div class="loading">Nothing saved yet</div>';return}
+  box.innerHTML='';
+  for(const s of SAVED){
+    const row=document.createElement('div');
+    row.className='saved';
+    row.innerHTML=`<span class="nm">${esc(s.name)}</span>`+
+      `<span class="qq">${esc(s.query||'everything')}</span>`+
+      `<button class="del" title="Delete" data-del="${esc(s.name)}">×</button>`;
+    row.onclick=e=>{
+      if(e.target.closest('[data-del]'))return deleteSaved(s.name);
+      applySaved(s);
+    };
+    box.appendChild(row);
+  }
+}
+async function refreshSaved(){
+  try{ const d=await api('/api/searches'); SAVED=d.searches||[] }catch(e){}
+  drawSaved();
+}
+function applySaved(s){
+  let extra={};
+  try{ extra=JSON.parse(s.extra||'{}') }catch(e){}
+  state.from=extra.from||'';state.to=extra.to||'';
+  state.order=extra.order==='desc'?'desc':'asc';
+  state.kinds=new Set(extra.kinds||[]);
+  state.showEvents=!!extra.events;
+  $('#from').value=state.from;$('#to').value=state.to;
+  $('#show-events').setAttribute('aria-pressed',state.showEvents);
+  $$('#order-seg button').forEach(x=>x.setAttribute('aria-pressed',x.dataset.order===state.order));
+  syncKindChips();
+  $('#q').value=s.query||'';
+  applyQueryBox();
+  closeAll();
+  post('/api/searches/used',{name:s.name});
+}
+async function deleteSaved(name){
+  if(!SESSION.signedIn)return toast('Sign in to manage saved searches');
+  const r=await post('/api/searches/delete',{name});
+  if(r.error)return toast(r.error);
+  SAVED=r.searches||[];drawSaved();
+}
+$('#save-search').onclick=async e=>{
+  e.preventDefault();
+  if(!SESSION.signedIn)return toast('Sign in to save searches');
+  const q=$('#q').value.trim();
+  const suggested=q||'Everything';
+  const name=prompt('Name this search',suggested);
+  if(!name)return;
+  const r=await post('/api/searches',{name:name.trim(),query:q,extra:currentSearchState()});
+  if(r.error)return toast(r.error);
+  SAVED=r.searches||[];drawSaved();toast('Saved');
+};
+
+/* composer */
+const ta=$('#sendtext');
+ta.addEventListener('input',()=>{
+  ta.style.height='auto';ta.style.height=Math.min(ta.scrollHeight,140)+'px';
+  syncComposer();
+  measureComposer();   // directly, not via ResizeObserver, which can lag or not fire
+});
+ta.addEventListener('keydown',e=>{
+  if(e.key==='Enter'&&!e.shiftKey){e.preventDefault();$('#composer').requestSubmit()}
+});
+function copyPermalink(id,btn){
+  const row=$(`#log .msg[data-id="${id}"]`);
+  const chan=row?.querySelector('[data-chan]')?.dataset.chan||[...state.channels][0];
+  const p=new URLSearchParams();
+  if(chan)p.set('chan',chan);
+  p.set('msg',id);
+  const url=location.origin+location.pathname+'#'+p.toString();
+  navigator.clipboard.writeText(url).then(()=>{
+    if(!btn)return;
+    btn.style.color='var(--ok)';
+    setTimeout(()=>btn.style.color='',1200);
+  });
+}
+
+function toast(msg){
+  let el=$('#toast');
+  if(!el){el=document.createElement('div');el.id='toast';document.body.appendChild(el)}
+  el.textContent=msg;el.classList.add('on');
+  clearTimeout(toast._t);
+  toast._t=setTimeout(()=>el.classList.remove('on'),2600);
+}
+function applyStateToBox(){
+  writeQueryBox(state.nicks,state.q,state.channels,state.tags);
+}
+
+function sendStatus(msg,{busy=false,error=false}={}){
+  const el=$('#sendstatus');
+  el.className='sendstatus'+(msg?' on':'')+(error?' err':'');
+  el.innerHTML=(busy?'<span class="spin"></span>':'')+esc(msg||'');
+}
+
+$('#composer').onsubmit=async e=>{
+  e.preventDefault();
+  const text=ta.value.trim(),channel=$('#sendchan').value;
+  if(!text)return;
+  ta.value='';ta.style.height='auto';syncComposer();sendStatus('');
+
+  // Sending means joining the current conversation, so make sure we're looking
+  // at the live end rather than somewhere back in history.
+  if(state.order!=='asc'){
+    state.order='asc';
+    $$('#order-seg button').forEach(x=>x.setAttribute('aria-pressed',x.dataset.order==='asc'));
+    await jumpToLatest();
+  }else if(!atLiveEnd()){
+    await jumpToLatest();
+  }
+
+  // Optimistic echo - on screen immediately, dimmed until the wire confirms it.
+  // Your own nick, not the archivist's: they are different identities now.
+  const nick=(SESSION.user&&SESSION.user.nick)||SESSION.nick||'you';
+  const echo=msgNode({id:'pending',ts:Math.floor(Date.now()/1000),kind:0,text,
+                      channel:channel.replace(/^#/,''),nick,source:'live'});
+  echo.classList.add('sending');
+  echo.dataset.text=text;
+  const log=$('#log');
+  log.appendChild(echo);log.scrollTop=log.scrollHeight;
+
+  const r=await post('/api/send',{channel,text});
+  if(r.error){
+    echo.remove();
+    sendStatus('Not sent — '+r.error,{error:true});
+    ta.value=text;syncComposer();return;   // give the text back, don't lose it
+  }
+  // The stream replaces this echo with the real row once it is on the wire.
+  setTimeout(()=>{
+    if(document.body.contains(echo))
+      sendStatus('Sent, but not confirmed yet — check live.log',{error:true});
+  },9000);
+};
+
+/* Move to the newest end of the current view, whatever the sort order. */
+/* Same thing reload() does now, so it simply reuses it. */
+async function jumpToLatest(){
+  newCount=0;
+  await reload();
+  drawApplied();
+}
+$('#newpill').onclick=jumpToLatest;
+
+/* Anything the user could be typing into swallows shortcuts entirely. */
+function isTyping(){
+  const el=document.activeElement;
+  if(!el)return false;
+  return /^(INPUT|TEXTAREA|SELECT)$/.test(el.tagName)||el.isContentEditable;
+}
+document.onkeydown=e=>{
+  if(e.key==='Escape'){
+    if(isTyping())document.activeElement.blur();
+    return closeAll();
+  }
+  if(isTyping()||e.metaKey||e.ctrlKey||e.altKey)return;
+  const k=e.key.toLowerCase();
+  if(k==='/'||k==='s'){e.preventDefault();$('#q').focus();$('#q').select()}
+  else if(k==='p'){e.preventDefault();$('#people-btn').click()}
+  else if(k==='f'){e.preventDefault();$('#filter-btn').click()}
+  else if(k==='l'){e.preventDefault();$('#live-btn').click()}
+  else if(k==='g'){e.preventDefault();jumpToLatest()}
+};
+
+/* ---------------- boot ---------------- */
+(async function init(){
+  // Migrate the old single 'theme' key into the richer appearance settings
+  try{
+    const old=localStorage.getItem('theme');
+    if(old!==null&&!localStorage.getItem('look')){
+      look.theme=old==='dark'?'noir':old;
+      localStorage.setItem('look',JSON.stringify(look));
+      localStorage.removeItem('theme');
+    }
+  }catch(e){}
+  // An invite link lands as #invite=<token>; capture it before the hash is
+  // parsed as filters, and offer the join form.
+  const inv=/[#&]invite=([^&]+)/.exec(location.hash);
+  if(inv){INVITE=inv[1];location.hash=location.hash.replace(/[#&]invite=[^&]*/,'')}
+
+  loadLook();
+  $('#desktop-aside').innerHTML=asideHTML();
+  readHash();
+
+  META=await api('/api/meta');
+  if(META&&META.appName){APPNAME=META.appName;applyAppName()}
+  // An empty archive is the *first-run* case, so it must not short-circuit
+  // setup — otherwise a fresh install can never create its owner account.
+  const empty=!META.total;
+  bootedEmpty=empty;
+  if(empty){
+    $('#log').innerHTML=`<div class="empty"><b>Nothing archived yet</b>
+      Messages appear here as they arrive. Import history with
+      <code>./archive.py ingest</code> or <code>import</code>.</div>`;
+    $('#subtitle').textContent='waiting for messages';
+  }else{
+    $('#subtitle').textContent=fmtN(META.total)+' messages';
+    $('#q').placeholder=`Search ${fmtN(META.total)} messages`;
+  }
+
+  const rail=$('#rail');
+  for(const c of META.channels){
+    const b=document.createElement('button');
+    b.className='chip';b.dataset.chan=c.name;
+    b.setAttribute('aria-pressed',state.channels.has(c.name));
+    b.innerHTML=`#${esc(c.name)} <span class="n">${fmtN(c.count)}</span>`;
+    b.onclick=()=>toggleChannel(c.name);
+    rail.appendChild(b);
+  }
+
+  // Reflect any tokens from the URL back into the search box
+  applyStateToBox();
+  drawTagList();
+  $('#from').value=state.from;$('#to').value=state.to;
+  $$('#order-seg button').forEach(x=>x.setAttribute('aria-pressed',x.dataset.order===state.order));
+  syncKindChips();
+
+  // sidebar on desktop, sheet on mobile - both populated, CSS decides which shows
+  $('#mobile-aside').innerHTML=asideHTML();
+  buildNickSet();
+  // Hidden by default; only an explicit "shown" brings it back
+  let wantPeople=false;
+  try{ wantPeople=localStorage.getItem('people')==='1' }catch(e){}
+  document.body.classList.toggle('no-people',!wantPeople);
+  try{ state.showEvents=localStorage.getItem('events')==='1' }catch(e){}
+  $('#show-events').setAttribute('aria-pressed',state.showEvents);
+  if(sidebarPinned())
+    $('#people-btn').setAttribute('aria-pressed',
+      !document.body.classList.contains('no-people'));
+  drawNicks();drawTagList();drawApplied();refreshSaved();
+
+  if(!empty){
+    if(state.anchor){await jumpTo(state.anchor)}
+    else{await reload();loadStrip()}
+  }
+
+  await refreshSession();
+  applyLook();
+  // An invite or an unclaimed archive should announce itself, not hide behind
+  // an icon nobody knows to press.
+  if(INVITE||SESSION.setupNeeded){drawLive();openSheet('#live-sheet')}
+  setInterval(refreshSession,15000);
+
+  // Live updates are pushed over SSE; the slow poll is only a safety net for
+  // the case where the stream dies in a way EventSource doesn't recover from.
+  startStream();
+  tailTimer=setInterval(()=>{if(!es||es.readyState===2)tail()},30000);
+})();
+</script>
+</body>
+</html>

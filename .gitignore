@@ -1,0 +1,23 @@
+# The archive itself: messages, accounts, password hashes, sessions, tokens.
+# Never commit this.
+archive.db
+archive.db-wal
+archive.db-shm
+*.db
+*.db-wal
+*.db-shm
+
+# Runtime output and local secrets
+*.log
+.send_token
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+
+# Editors / OS
+.DS_Store
+.idea/
+.vscode/
