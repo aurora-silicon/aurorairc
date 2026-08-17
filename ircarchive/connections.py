@@ -164,6 +164,10 @@ class Manager:
         if not channels:
             self.log(f"[{net['name']}] no archived channels yet, not connecting")
             return
+        # Reserve the slot before the thread starts. The thread fills in the
+        # real object, and until it does a config sync would otherwise see an
+        # empty slot and start a second connection to the same network.
+        self.archivists.setdefault(net["id"], None)
         t = threading.Thread(target=self._run_archivist, args=(net, channels),
                              name=f"archivist-{net['name']}", daemon=True)
         t.start()
@@ -204,6 +208,24 @@ class Manager:
                 self.senders.pop((net["id"], nick), None)
                 self.log(f"   send failed as {nick}: {exc}")
 
+    def sync_config(self, con):
+        """Pick up channel and network edits made in Settings.
+
+        Owners change these from the web UI, so the running process has to
+        notice by itself - telling someone to restart a daemon is not a
+        feature.
+        """
+        for net in db.networks(con, enabled_only=True):
+            wanted = db.network_channels(con, net["id"])
+            if net["id"] not in self.archivists:
+                if wanted:                     # a network added since we started
+                    self.log(f"[{net['name']}] newly configured, connecting")
+                    self.start_archivist(net)
+                continue
+            bot = self.archivists.get(net["id"])
+            if bot is not None:                # still starting up, try next pass
+                bot.want_channels(wanted)
+
     def reap(self):
         now = time.time()
         for key, s in list(self.senders.items()):
@@ -237,6 +259,10 @@ class Manager:
                 try:
                     self.pump(con)
                     self.reap()
+                    now = time.time()
+                    if now - getattr(self, "_last_sync", 0) > 10:
+                        self._last_sync = now
+                        self.sync_config(con)
                 except Exception as exc:
                     self.log(f"   pump error: {exc}")
                 self._stop.wait(0.4)

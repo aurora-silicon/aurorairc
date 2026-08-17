@@ -452,6 +452,12 @@ mark{background:var(--mark);color:var(--mark-fg);border-radius:3px;padding:0 2px
 }
 .field input:focus,.field select:focus{outline:none;border-color:var(--accent);background:var(--surface)}
 .field .hint{font-size:12.5px;color:var(--fg-3);line-height:1.45}
+.field label .opt{margin-left:6px;font-size:10.5px;font-weight:600;
+  padding:1px 6px;border-radius:99px;background:var(--raised);color:var(--fg-3);
+  text-transform:none;letter-spacing:0}
+/* A label carrying an explanation gets a quiet cue that it is hoverable */
+.field label[title]{cursor:help;text-decoration:underline dotted var(--line);
+  text-underline-offset:3px}
 .dates{display:flex;gap:8px}
 .dates input{flex:1;min-width:0}
 /* Mixed input+select+button rows. Without a real basis the text field
@@ -767,8 +773,8 @@ input[type=color]{flex:1;height:42px;padding:3px;border-radius:10px;
     <div class="field">
       <label>Sort</label>
       <div class="seg" id="order-seg">
-        <button data-order="asc">Oldest first</button>
-        <button data-order="desc">Newest first</button>
+        <button data-order="asc">Newest first</button>
+        <button data-order="desc">Oldest first</button>
       </div>
     </div>
     <div class="field">
@@ -782,27 +788,25 @@ input[type=color]{flex:1;height:42px;padding:3px;border-radius:10px;
         <button class="chip" data-days="7">7 days</button>
         <button class="chip" data-days="30">30 days</button>
         <button class="chip" data-days="365">1 year</button>
-        <button class="chip" data-days="0">All time</button>
+        <button class="chip" data-days="0">All</button>
       </div>
     </div>
     <div class="field">
-      <label>Saved searches
+      <label title="Stored on the server, so they follow you between devices.">Saved searches
         <button class="linkbtn" id="save-search" style="float:right">Save current</button></label>
       <div id="savedlist"></div>
-      <div class="hint">Stored on the server, so they follow you between devices.</div>
     </div>
     <div class="field">
       <label>Tags <button class="linkbtn" id="manage-tags" style="float:right">Manage</button></label>
       <div class="taglist"></div>
-      <div class="hint">Or type <code>&amp;important</code> / <code>&amp;red</code> in the search bar.</div>
+      <div class="hint">Type <code>&amp;tagname</code> in the search bar to quickly sort by tag.</div>
     </div>
     <div class="field">
       <label>Presence</label>
       <div class="presets">
         <button class="chip" id="show-events" aria-pressed="false">Show joins &amp; quits</button>
       </div>
-      <div class="hint">Folded into single lines between messages, and kept out of
-        search and the MCP tools entirely.</div>
+      <div class="hint">Excluded from MCP tools entirely. Front-end only.</div>
     </div>
     <div class="field">
       <label>Message types</label>
@@ -1417,30 +1421,33 @@ async function reload(){
   $('#count').textContent=fmtN(total);
 
   // Descending puts newest at offset 0; ascending puts them on the last page
-  const head=state.order==='desc'?0:Math.max(0,total-state.limit);
+  // Whichever way round it reads, you start at the end you asked for and
+  // scroll up for more. Ascending puts the newest at the bottom; descending
+  // puts the oldest there, with newer messages above.
+  const head=Math.max(0,total-state.limit);
   state.head=head;state.tail=head;
   state.done=false;state.doneUp=head===0;
 
   await loadForward(true);
   const log=$('#log');
-  log.scrollTop=state.order==='asc'?log.scrollHeight:0;
+  log.scrollTop=log.scrollHeight;      // the anchored end, both ways round
   updatePill();syncHash();
 }
 
 function awayFromLatest(){
   const log=$('#log');
   if(state.anchor)return true;
-  if(state.order==='desc')return state.head>0||log.scrollTop>400;
   return !state.done||log.scrollHeight-log.scrollTop-log.clientHeight>400;
 }
+const anchorLabel = () => state.order==='desc' ? 'oldest' : 'latest';
 function updatePill(){
   const pill=$('#newpill');
   if(newCount>0){
     pill.textContent=`↓ ${fmtN(newCount)} new message${newCount===1?'':'s'}`;
     pill.classList.add('on');
   }else if(awayFromLatest()){
-    // "latest", not "present": under a filter the newest match may be years old
-    pill.textContent='↓ Jump to latest';
+    // Names the end you anchored to, which the sort toggle decides
+    pill.textContent='↓ Jump to '+anchorLabel();
     pill.classList.add('on');
   }else pill.classList.remove('on');
 }
@@ -2121,7 +2128,9 @@ let es=null, lastSeen=0, newCount=0;
 function atLiveEnd(){
   const log=$('#log');
   if(state.anchor)return false;
-  if(state.order==='desc')return state.head===0&&log.scrollTop<80;
+  // Reading oldest-first puts you at the far end of the archive, so a new
+  // message belongs nowhere near the viewport - count it, do not splice it.
+  if(state.order==='desc')return false;
   return state.done&&log.scrollHeight-log.scrollTop-log.clientHeight<140;
 }
 /* Does an incoming row belong in the view as currently filtered?
@@ -2531,18 +2540,16 @@ async function drawSettings(force){
     ? [['server','Server'],['people','People']] : []);
 
   const account=()=>`
-    <div class="field"><label>Username</label>
+    <div class="field"><label title="How you sign in. Changing it does not sign you out.">Username</label>
       <div class="formrow">
         <input id="st-user" value="${esc(u.name||'')}" autocomplete="username">
         <button class="btn" id="st-user-save">Save</button></div>
-      <div class="hint">How you sign in. Changing it does not sign you out.</div>
     </div>
 
-    <div class="field"><label>IRC nick</label>
+    <div class="field"><label title="Messages you send go out under this name.">IRC nick</label>
       <div class="formrow">
         <input id="st-nick" value="${esc(u.nick||'')}" autocomplete="off">
         <button class="btn" id="st-nick-save">Save</button></div>
-      <div class="hint">Messages you send go out under this name.</div>
     </div>
 
     <div class="field"><label>Password</label>
@@ -2554,25 +2561,24 @@ async function drawSettings(force){
       <div class="hint">Other signed-in devices are signed out when it changes.</div>
     </div>
 
-    <div class="field"><label>Two-factor</label><div id="st-totp"></div></div>
+    <div class="field"><label>Two-factor <span class="opt">Optional</span></label>
+      <div id="st-totp"></div></div>
 
-    <div class="field"><label>Passkeys</label>
+    <div class="field"><label title="Sign in with Face ID, Touch ID, Windows Hello or a security key instead of a password.">Passkeys <span class="opt">Optional</span></label>
       <div id="st-keys"></div>
       <div class="formrow" style="margin-top:6px">
         <input id="pk-label" placeholder="name this device" maxlength="40">
         <button class="btn" id="pk-add">Add a passkey</button></div>
-      <div class="hint" id="pk-hint">Sign in with Face ID, Touch ID, Windows Hello
-        or a security key instead of a password.</div>
+      <div class="hint" id="pk-hint"></div>
     </div>
 
-    <div class="field"><label>Agent tokens</label>
+    <div class="field"><label title="Lets an agent query this archive over MCP, read-only. Shown once when created — only a hash is kept, so save it then.">Agent tokens</label>
       <div id="st-tokens"></div>
       <div class="formrow" style="margin-top:6px">
         <input id="tk-name" placeholder="what is it for, e.g. laptop" maxlength="40">
         <button class="btn" id="tk-add">Create token</button></div>
       <div id="tk-out"></div>
-      <div class="hint">Lets an agent query this archive over MCP, read-only.
-        Shown once when created — only a hash is kept, so save it then.</div>
+
     </div>
 
     <div class="field"><label>Signed-in devices</label>
@@ -2633,8 +2639,7 @@ async function drawSettings(force){
         <input id="nn-port" value="6697" style="flex:0 0 90px;min-width:80px">
         <input id="nn-nick" placeholder="archivist nick" value="aurora">
         <button class="btn" id="nn-go">Create</button></div>
-      <div class="hint">Restart <code>./archive.py live</code> for connection
-        changes to take effect.</div>
+
     </div>`;
 
   const people=()=>`
@@ -2742,7 +2747,7 @@ function wireSettings(box){
       host:S('nn-host').value.trim(),port:+S('nn-port').value||6697,
       nick:S('nn-nick').value.trim()||'aurora'});
     if(r.error)return err(r.error);
-    ok('Network added — restart the live process to connect');
+    ok('Network added — connecting shortly');
   };
   if(S('st-invite'))S('st-invite').onclick=async()=>{
     const r=await post('/api/invites',{username:S('st-inv-user').value.trim()||undefined,
@@ -2797,12 +2802,12 @@ function wireSettings(box){
     if(d.chpause){
       const r=await post('/api/networks/channels',
         {network_id:+d.net,channel:d.chpause,archived:false});
-      return r.error?err(r.error):ok('Paused — restart live to leave it');
+      return r.error?err(r.error):ok('Paused — leaving the channel');
     }
     if(d.chresume){
       const r=await post('/api/networks/channels',
         {network_id:+d.net,channel:d.chresume,archived:true});
-      return r.error?err(r.error):ok('Resumed — restart live to join');
+      return r.error?err(r.error):ok('Resumed — joining the channel');
     }
     if(d.chdel){
       let r=await post('/api/networks/channels',
@@ -2839,8 +2844,7 @@ async function drawTotp(){
   box.innerHTML=on
     ? `<div class="note">Two-factor is on.</div>
        <button class="btn ghost" id="totp-off">Turn off</button>`
-    : `<div class="hint">Adds an authenticator code to sign-in. Optional.</div>
-       <button class="btn ghost" id="totp-on">Set up two-factor</button>
+    : `<button class="btn ghost" id="totp-on">Set up two-factor</button>
        <div id="totp-setup"></div>`;
   const off=$('#totp-off');
   if(off)off.onclick=async()=>{

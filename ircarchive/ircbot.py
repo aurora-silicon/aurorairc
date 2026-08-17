@@ -94,6 +94,7 @@ class Logger:
         self._buf = b""
         self._last_beat = 0
         self._last_pump = 0
+        self._wanted = None
         self.registered = False
 
     # -- plumbing ---------------------------------------------------------
@@ -159,6 +160,7 @@ class Logger:
         if time.time() - self._last_pump < 0.25:
             return
         self._last_pump = time.time()
+        self.apply_channels()
         now = int(time.time())
         if now - self._last_beat >= 10:
             self._last_beat = now
@@ -175,6 +177,31 @@ class Logger:
                 db.setting(self.con, "live_nick", self.nick)
 
     # -- inbound ----------------------------------------------------------
+
+    def want_channels(self, wanted):
+        """Ask for a different channel set. Safe to call from another thread.
+
+        Only records the wish - the socket is written to solely by this
+        connection's own thread, so the manager must not send on it directly.
+        """
+        self._wanted = sorted({c if c.startswith("#") else "#" + c for c in wanted})
+
+    def apply_channels(self):
+        """Act on a pending channel change, from our own thread."""
+        want = getattr(self, "_wanted", None)
+        if want is None or not self.registered:
+            return
+        self._wanted = None
+        have = set(self.channels)
+        if set(want) == have:
+            return
+        for ch in sorted(set(want) - have):
+            self.send(f"JOIN {ch}")
+            print(f"   joining {ch}")
+        for ch in sorted(have - set(want)):
+            self.send(f"PART {ch}")
+            print(f"   leaving {ch}")
+        self.channels = want
 
     def note(self, channel, nick, kind, detail):
         """Record presence traffic. Separate table, never mixed with chat."""
