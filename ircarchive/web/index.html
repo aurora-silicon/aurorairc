@@ -524,7 +524,10 @@ input[type=color]{flex:1;height:42px;padding:3px;border-radius:10px;
    so they need that same rhythm rather than inheriting nothing. Placeholders
    are hidden while empty instead of contributing a gap to nothing. */
 .stack{display:flex;flex-direction:column;gap:7px}
-.stack > :empty{display:none}
+/* Only containers. `:empty` matches any element with no children, and a
+   void element like <input> never has any - so an unqualified rule here
+   hides the very fields it is meant to be spacing out. */
+.stack > div:empty{display:none}
 .saved:hover{background:var(--raised)}
 .saved .nm{flex:1;font-size:14px;font-weight:560;overflow:hidden;
   text-overflow:ellipsis;white-space:nowrap}

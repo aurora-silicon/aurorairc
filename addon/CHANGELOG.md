@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.0.2
+
+- Fix the two-factor code field being invisible. A rule meant to hide empty
+  placeholder containers also matched every `<input>`, because a void element
+  has no children and so is always `:empty`.
+
 ## 1.0.1
 
 - Adopt an archive left at `/share/aurorairc-import.db` on start, after

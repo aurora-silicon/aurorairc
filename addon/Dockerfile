@@ -9,7 +9,7 @@ FROM ${BUILD_FROM}
 # branch keeps the same URL, so the build cache would happily reuse a layer
 # holding last week's code; bumping the version changes the URL and the fetch
 # re-runs on its own.
-ARG AURORAIRC_REF=v1.0.1
+ARG AURORAIRC_REF=v1.0.2
 ARG AURORAIRC_URL=https://codeload.github.com/aurora-silicon/aurorairc/tar.gz/refs/tags/${AURORAIRC_REF}
 
 # python3 is the whole dependency list. tzdata so timestamps follow the
@@ -31,4 +31,4 @@ RUN chmod +x /etc/s6-overlay/scripts/import \
              /etc/s6-overlay/s6-rc.d/aurorairc-live/run \
              /etc/s6-overlay/s6-rc.d/aurorairc-live/finish
 
-LABEL io.hass.name="AuroraIRC" io.hass.type="addon" io.hass.version="1.0.1"
+LABEL io.hass.name="AuroraIRC" io.hass.type="addon" io.hass.version="1.0.2"
