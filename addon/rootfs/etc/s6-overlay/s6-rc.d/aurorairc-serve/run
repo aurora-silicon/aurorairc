@@ -1,0 +1,10 @@
+#!/command/with-contenv bashio
+# The archive lives in /data, which is the only directory the Supervisor keeps
+# across add-on updates and restarts.
+declare -a opts=()
+if bashio::config.true 'behind_proxy'; then
+    opts+=(--behind-proxy --proxy-hops "$(bashio::config 'proxy_hops')")
+fi
+bashio::log.info "Starting the web client on 8420"
+exec python3 /opt/aurorairc/archive.py --db /data/archive.db \
+     serve --host 0.0.0.0 --port 8420 "${opts[@]}"

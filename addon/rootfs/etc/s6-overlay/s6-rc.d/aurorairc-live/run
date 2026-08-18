@@ -1,0 +1,5 @@
+#!/command/with-contenv bashio
+# Nothing is connected until networks and channels are configured in Settings;
+# until then this exits promptly and s6 simply starts it again.
+bashio::log.info "Starting the archivist and send queue"
+exec python3 /opt/aurorairc/archive.py --db /data/archive.db live

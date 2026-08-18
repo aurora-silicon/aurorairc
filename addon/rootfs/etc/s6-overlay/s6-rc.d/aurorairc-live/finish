@@ -1,0 +1,5 @@
+#!/command/with-contenv sh
+# s6 restarts a longrun the instant it exits. Should one ever fail fast, this
+# keeps it to one attempt every few seconds instead of a spin that fills the
+# log and the SD card.
+sleep 3

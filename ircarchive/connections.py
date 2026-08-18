@@ -305,8 +305,11 @@ class Manager:
         con = db.connect(self.dbpath)
         nets = db.networks(con, enabled_only=True)
         if not nets:
-            print("No networks configured yet.")
-            return
+            # Wait rather than exit. Networks are added from Settings while
+            # this is running, and sync_config picks them up within ten
+            # seconds. Exiting here means a fresh install respawns this
+            # process forever under any supervisor that restarts it.
+            print("No networks configured yet - waiting for one to be added.")
         for net in nets:
             self.start_archivist(net)
 

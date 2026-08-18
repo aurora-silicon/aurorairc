@@ -1,0 +1,23 @@
+name: AuroraIRC
+version: "1.0.0"
+slug: aurorairc
+description: IRC client and searchable archive, with a read-only MCP endpoint for agents
+url: https://github.com/aurora-silicon/aurorairc
+arch:
+  - aarch64
+  - amd64
+  - armv7
+# s6-overlay in the base image is the init, so the Supervisor must not add its own
+init: false
+startup: application
+boot: auto
+ports:
+  8420/tcp: 8420
+ports_description:
+  8420/tcp: Web client, JSON API and MCP endpoint
+options:
+  behind_proxy: false
+  proxy_hops: 1
+schema:
+  behind_proxy: bool
+  proxy_hops: int(0,10)

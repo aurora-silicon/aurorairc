@@ -48,13 +48,14 @@ def cmd_live(args):
     from ircarchive.connections import Manager
 
     con = db.connect(args.db)
-    nets = db.networks(con, enabled_only=True)
-    if not nets:
-        print("No networks configured. Add one in Settings, or:")
+    if not db.networks(con, enabled_only=True):
+        # Say so, but stay running. A network can be added from Settings at any
+        # moment and the manager notices within ten seconds. Exiting instead
+        # makes a fresh install respawn forever under systemd or s6.
+        print("No networks configured yet. Add one in Settings, or:")
         print("  ./archive.py network add libera --host irc.libera.chat "
               "--channels mychannel")
-        con.close()
-        return
+        print("Waiting for a network to be configured...")
     con.close()
 
     mgr = Manager(args.db, verbose=not args.quiet)

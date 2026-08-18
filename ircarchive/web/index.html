@@ -1218,9 +1218,50 @@ const _trPairs=new Map();       // "src>dst" -> Promise<Translator>
 
 const canTranslate=()=>'Translator' in self;
 
-async function trDetect(text){
+/* Nothing here settles quickly the first time. Both the detector and each
+   language pair are models that have to be fetched, and a fetch that stalls
+   used to leave "Translating…" on screen for ever with nothing to act on.
+   So: say which stage we are at, show download progress for both models -
+   not just the translator - and give up out loud rather than sit there. */
+const TR_STALL = 25000;    // no progress for this long: explain the wait
+const TR_GIVEUP = 300000;  // still nothing: stop claiming to be working
+
+function trStage(box,msg){ box.className='tr pending'; box.textContent=msg; }
+function trFail(box,msg){ box.className='tr'; box.textContent=msg; }
+
+/* Rejects if `pr` has produced neither a result nor any progress in time.
+   bump() is handed to the caller so a download tick can reset the clock. */
+function trWatch(pr,box,waiting){
+  let stall, giveup, done=false;
+  const bump=()=>{
+    clearTimeout(stall);
+    if(done)return;
+    stall=setTimeout(()=>!done&&trStage(box,waiting),TR_STALL);
+  };
+  bump();
+  return Promise.race([
+    pr.finally(()=>{ done=true; clearTimeout(stall); clearTimeout(giveup); }),
+    new Promise((_,rej)=>{ giveup=setTimeout(()=>rej(
+      new Error('the model did not finish downloading')),TR_GIVEUP); }),
+  ]).then(v=>({v,bump})).catch(e=>{ throw e; }).finally(()=>{
+    clearTimeout(stall); clearTimeout(giveup);
+  });
+}
+
+/* Chrome refuses to start a model download outside a user gesture, and the
+   gesture from the click that got us here does not survive a long await. */
+const trNeedsGesture = err =>
+  /user gesture|user activation/i.test(String(err&&err.message||err));
+
+async function trDetect(text,onProgress){
   if(!('LanguageDetector' in self))return null;
-  _trDetector=_trDetector||LanguageDetector.create();
+  if(!_trDetector){
+    if(await LanguageDetector.availability()==='unavailable')return null;
+    _trDetector=LanguageDetector.create({
+      monitor(m){ m.addEventListener('downloadprogress',
+        e=>onProgress&&onProgress(Math.round(e.loaded*100))); },
+    }).catch(err=>{ _trDetector=null; throw err; });
+  }
   const hits=await (await _trDetector).detect(text);
   const best=hits&&hits[0];
   return best&&best.confidence>0.35?best.detectedLanguage:null;
@@ -1259,16 +1300,39 @@ async function translateRow(id,btn){
 
   if(_trCache.has(id))return trShow(box,_trCache.get(id));
   try{
-    const from=await trDetect(src);
-    if(!from)     { box.className='tr'; box.textContent='Could not tell what language this is'; return; }
-    if(from===TR_TO){ box.className='tr'; box.textContent=`Already in ${trName(TR_TO)}`; return; }
-    const t=await trFor(from,p=>{ box.textContent=`Downloading ${trName(from)} model… ${p}%`; });
-    const out=await t.translate(src);
+    trStage(box,'Working out the language…');
+    let tick;
+    const detected=trDetect(src,p=>{
+      trStage(box,`Downloading the language detector… ${p}%`);
+      tick&&tick();
+    });
+    const d=await trWatch(detected,box,
+      'Fetching the language detector. This happens once and can take a while.');
+    tick=d.bump;
+    const from=d.v;
+    if(!from)       return trFail(box,'Could not tell what language this is');
+    if(from===TR_TO)return trFail(box,`Already in ${trName(TR_TO)}`);
+
+    if(await Translator.availability({sourceLanguage:from,targetLanguage:TR_TO})==='unavailable')
+      return trFail(box,`${trName(from)} → ${trName(TR_TO)} is not available in this browser`);
+
+    trStage(box,'Translating…');
+    let tick2;
+    const built=trFor(from,p=>{
+      trStage(box,`Downloading the ${trName(from)} model… ${p}%`);
+      tick2&&tick2();
+    });
+    const b=await trWatch(built,box,
+      `Fetching the ${trName(from)} model. This happens once per language.`);
+    tick2=b.bump;
+    const out=await b.v.translate(src);
     _trCache.set(id,{from,text:out});
     trShow(box,{from,text:out});
   }catch(err){
-    box.className='tr';
-    box.textContent='Could not translate — '+(err&&err.message||err);
+    if(trNeedsGesture(err))
+      return trFail(box,'Press translate again to start the one-off model '+
+                        'download — the browser only allows it straight after a tap.');
+    trFail(box,'Could not translate — '+(err&&err.message||err));
   }
 }
 
