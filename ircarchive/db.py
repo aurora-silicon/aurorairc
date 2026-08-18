@@ -314,6 +314,13 @@ def insert_messages(con, ids, rows, source):
     live = source == "live"
     payload = []
     for channel, nick, ts, kind, text in rows:
+        # Trailing whitespace survives in a web export but not in what a live
+        # client sees, and `text` is part of the dedupe key - so the same line
+        # arriving both ways was stored twice. Normalise here, where every
+        # caller passes through, rather than in each parser.
+        text = text.strip()
+        if not text:
+            continue
         cid, nid = ids.channel(channel), ids.nick(nick)
         ts = int(ts)
         ts_min = (ts // 60) * 60

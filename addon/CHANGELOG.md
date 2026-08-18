@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.0.3
+
+- Normalise message text on the way in. Trailing whitespace survives in a web
+  export but not in live capture, and the text is part of the dedupe key, so a
+  line seen both ways was stored twice.
+
 ## 1.0.2
 
 - Fix the two-factor code field being invisible. A rule meant to hide empty
