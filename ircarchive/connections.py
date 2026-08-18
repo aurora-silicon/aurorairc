@@ -27,6 +27,7 @@ from .ircbot import Logger, parse_line
 
 IDLE_CLOSE = 300          # seconds a send-only connection lingers unused
 CONNECT_TIMEOUT = 30
+PREWARM_MAX_AGE = 90      # ignore pre-open requests older than this
 
 
 class Sender:
@@ -99,6 +100,21 @@ class Sender:
                 self.sock.settimeout(CONNECT_TIMEOUT)
             except OSError:
                 pass
+
+    def ensure(self, channel=None):
+        """Open, and optionally join, before there is anything to say.
+
+        Registering and joining costs about twelve seconds. Paying it while the
+        user is still typing is what makes the send itself look instant. Shares
+        `lock` with say() so the two can never open two sockets for one nick.
+        """
+        with self.lock:
+            if not self.ready:
+                self.connect()
+            if channel and channel not in self.joined:
+                self._send(f"JOIN {channel}")
+                self.joined.add(channel)
+            self.drain()
 
     def say(self, channel, text):
         with self.lock:
@@ -208,6 +224,46 @@ class Manager:
                 self.senders.pop((net["id"], nick), None)
                 self.log(f"   send failed as {nick}: {exc}")
 
+    def prewarm(self, con):
+        """Honour requests from the web server to open a sender in advance.
+
+        The two processes only share the database, so the request arrives as a
+        settings row. Connecting happens on its own thread: it can take the
+        full connect timeout, and the outbox must not stall behind it.
+        """
+        rows = con.execute(
+            "SELECT key, value FROM settings WHERE key LIKE 'prewarm:%'").fetchall()
+        if not rows:
+            return
+        nets = {n["id"]: n for n in db.networks(con, enabled_only=True)}
+        now = int(time.time())
+        for row in rows:
+            con.execute("DELETE FROM settings WHERE key = ?", (row["key"],))
+            try:
+                _, nid, nick = row["key"].split(":", 2)
+                asked, _, channel = str(row["value"] or "").partition("|")
+                nid, asked = int(nid), int(asked)
+            except ValueError:
+                continue
+            # A stale request means the process was down; the user is long gone.
+            if now - asked > PREWARM_MAX_AGE:
+                continue
+            net = nets.get(nid)
+            if not net or not nick or (nid, nick) in self.senders:
+                continue
+            sender = self.sender_for(net, nick)
+            threading.Thread(target=self._warm, args=(sender, nick, channel),
+                             name=f"prewarm-{nick}", daemon=True).start()
+
+    def _warm(self, sender, nick, channel):
+        try:
+            sender.ensure(channel or None)
+            self.log(f"   ready to send as {nick}"
+                     + (f" in {channel}" if channel else ""))
+        except Exception as exc:
+            # Not fatal: the send path will simply open it the slow way.
+            self.log(f"   could not pre-open {nick}: {exc}")
+
     def sync_config(self, con):
         """Pick up channel and network edits made in Settings.
 
@@ -258,6 +314,7 @@ class Manager:
             while not self._stop.is_set():
                 try:
                     self.pump(con)
+                    self.prewarm(con)
                     self.reap()
                     now = time.time()
                     if now - getattr(self, "_last_sync", 0) > 10:

@@ -338,6 +338,30 @@ mark{background:var(--mark);color:var(--mark-fg);border-radius:3px;padding:0 2px
 @media (min-width:768px){ .evt{grid-template-columns:44px 1fr;padding-inline:16px} }
 @media (min-width:1200px){ .evt{max-width:var(--feed-max);margin-inline:auto} }
 
+.imgs{display:flex;flex-wrap:wrap;gap:6px;margin:5px 0 2px}
+.imgw{display:block;line-height:0;border-radius:10px;overflow:hidden;
+  border:1px solid var(--line);max-width:min(360px,100%)}
+.imgw img{max-width:100%;max-height:240px;height:auto;display:block;background:var(--sunken)}
+.imgw:hover{border-color:var(--accent)}
+.imgfb{display:none}
+.tr{margin:5px 0 2px;padding:6px 10px;border-left:2px solid var(--accent);
+  background:var(--sunken);border-radius:0 9px 9px 0;font-size:13.5px;
+  line-height:1.45;color:var(--fg)}
+.tr .trhead{display:block;font-size:11px;letter-spacing:.02em;color:var(--dim);
+  margin-bottom:3px}
+.tr.pending{color:var(--dim);font-style:italic}
+.rowact button.on{background:var(--raised);color:var(--accent)}
+/* A dead link should collapse quietly rather than leave a broken-image box */
+/* A picture that will not load must never swallow its own link: the URL has
+   already been stripped out of the text above, so this chip is all that is
+   left of it. Matrix authenticated media 404s for anyone without a token. */
+.imgw.broken{border-style:dashed;line-height:normal}
+.imgw.broken img{display:none}
+.imgw.broken .imgfb{display:inline-flex;align-items:center;gap:6px;
+  padding:6px 10px;font-size:12px;color:var(--dim);white-space:nowrap}
+.imgw.broken:hover .imgfb{color:var(--accent)}
+.imgfb svg{width:14px;height:14px;fill:none;stroke:currentColor;stroke-width:1.8}
+
 .empty{padding:56px 24px;text-align:center;color:var(--fg-3);font-size:14px}
 .empty b{display:block;color:var(--fg-2);font-size:15px;margin-bottom:5px}
 .loading{padding:16px;text-align:center;color:var(--fg-3);font-size:13px}
@@ -496,6 +520,11 @@ input[type=color]{flex:1;height:42px;padding:3px;border-radius:10px;
 /* saved searches */
 .saved{display:flex;align-items:center;gap:9px;padding:8px 9px;border-radius:10px;
   cursor:pointer;min-height:42px}
+/* Blocks that script fills in sit inside a .field but stack their own children,
+   so they need that same rhythm rather than inheriting nothing. Placeholders
+   are hidden while empty instead of contributing a gap to nothing. */
+.stack{display:flex;flex-direction:column;gap:7px}
+.stack > :empty{display:none}
 .saved:hover{background:var(--raised)}
 .saved .nm{flex:1;font-size:14px;font-weight:560;overflow:hidden;
   text-overflow:ellipsis;white-space:nowrap}
@@ -854,6 +883,14 @@ input[type=color]{flex:1;height:42px;padding:3px;border-radius:10px;
       </div>
     </div>
     <div class="field">
+      <label title="Loads pictures from wherever they are hosted, which tells those servers your IP address.">Inline images</label>
+      <div class="presets">
+        <button class="chip" id="img-toggle" aria-pressed="true">Show images</button>
+      </div>
+      <div class="hint">Fetching a picture tells whoever hosts it your IP
+        address. Turn this off to stop that.</div>
+    </div>
+    <div class="field">
       <label>Background</label>
       <div class="dates">
         <label class="btn ghost" for="bgfile" style="cursor:pointer">Choose image…</label>
@@ -1111,22 +1148,166 @@ function buildNickSet(){
   const names=(META&&META.speakers)||((META?META.nicks:[]).map(n=>n.name));
   NICKSET=new Map(names.map(n=>[n.toLowerCase(),n]));
 }
-// IRC nicks allow these alongside word characters
-const MENTION=/(^|[\s(])([A-Za-z_\[\]\\^{}|`][\w\-\[\]\\^{}|`]{0,29})(?=[:,](?:\s|$))/g;
+/* IRC nicks allow these alongside word characters. Addressing someone is a
+   *prefix*: "alice:", "alice, bob:" or "alice," at the very start of the
+   line. A comma later in a sentence is just punctuation - matching on it
+   anywhere turns ordinary words that happen to be nicks into people, as in
+   "Mac mini, I'll have one". So commas only count inside the leading list,
+   and a colon still counts anywhere. */
+const NICK_RE=String.raw`[A-Za-z_\[\]\\^{}|\`][\w\-\[\]\\^{}|\`]{0,29}`;
+const MENTION=new RegExp(`(^|[\\s(])(${NICK_RE})(?=:(?:\\s|$))`,'g');
+const ADDRESSED=new RegExp(`^(${NICK_RE})((?:\\s*,\\s*${NICK_RE})*)\\s*([:,])(?:\\s|$)`);
+const NICK_TOKEN=new RegExp(NICK_RE,'g');
+
+/* "hi," and "hello," open a sentence far more often than they address the
+   people actually nicked hi and hello, and busy channels do have such nicks.
+   A colon is unambiguous, so they stay reachable as "hi:"; only the comma
+   form is refused. */
+const OPENERS=new Set(('hi hello hey yo hiya greetings ok okay k idk thanks thx ty '+
+  'well so ah oh hm hmm mmm huh yes no yeah yep nope nah sure right sorry '+
+  'wait also and but actually btw imo imho fwiw afaik lol heh ugh oops '+
+  'what why how who when where guys all everyone folks').split(' '));
+
+function linkNick(name){
+  const canon=NICKSET.get(name.toLowerCase());
+  return canon?`<span class="mention" data-nick="${esc(canon)}" `+
+    `title="Show only ${esc(canon)}">${name}</span>`:name;
+}
+
+/* Bridged uploads arrive as "uploaded an image: caption (410KiB) < URL >".
+   Matrix media links carry no file extension, so they are matched by path. */
+const IMG_EXT=/\.(png|jpe?g|gif|webp|avif)(\?|#|$)/i;
+const IMG_PATH=/\/media\/(download|thumbnail)\//;
+const imageUrls = text =>
+  (String(text).match(/https?:\/\/[^\s<>"')\]]+/g)||[])
+    .filter(u => IMG_EXT.test(u) || IMG_PATH.test(u));
+
+function imagesFor(m){
+  if(!look.images)return '';
+  const urls=[...new Set(imageUrls(m.text))].slice(0,4);
+  if(!urls.length)return '';
+  return `<div class="imgs">`+urls.map(u=>{
+    let host=u; try{ host=new URL(u).hostname.replace(/^www\./,''); }catch(e){}
+    return `<a class="imgw" href="${esc(u)}" target="_blank" rel="noopener noreferrer"`+
+      ` title="${esc(u)}">`+
+      `<img src="${esc(u)}" alt="" loading="lazy" decoding="async"`+
+      ` referrerpolicy="no-referrer"`+
+      ` onerror="this.closest('.imgw').classList.add('broken')">`+
+      `<span class="imgfb">`+
+        `<svg viewBox="0 0 24 24"><rect x="3" y="3" width="18" height="18" rx="2"/>`+
+        `<path d="m3 16 5-5 4 4 3-3 6 6"/></svg>`+
+        `image on ${esc(host)} — open</span></a>`;
+  }).join('')+`</div>`;
+}
+
+/* ---------------------------------------------------------------- translate
+   Uses the browser's built-in on-device translator. Nothing leaves the
+   machine, which matters when the archive holds private channels, and it
+   keeps the no-dependency rule intact. The first use of a language pair
+   downloads a model; progress is shown rather than looking hung. Browsers
+   without the API get told so plainly instead of a button that does nothing. */
+const TR_TO=(navigator.language||'en').split('-')[0].toLowerCase();
+const _trCache=new Map();       // message id -> translated text
+let _trDetector=null;
+const _trPairs=new Map();       // "src>dst" -> Promise<Translator>
+
+const canTranslate=()=>'Translator' in self;
+
+async function trDetect(text){
+  if(!('LanguageDetector' in self))return null;
+  _trDetector=_trDetector||LanguageDetector.create();
+  const hits=await (await _trDetector).detect(text);
+  const best=hits&&hits[0];
+  return best&&best.confidence>0.35?best.detectedLanguage:null;
+}
+
+function trFor(src,onProgress){
+  const key=src+'>'+TR_TO;
+  if(!_trPairs.has(key))
+    _trPairs.set(key,Translator.create({
+      sourceLanguage:src,targetLanguage:TR_TO,
+      monitor(m){ m.addEventListener('downloadprogress',
+        e=>onProgress&&onProgress(Math.round(e.loaded*100))); },
+    }).catch(err=>{ _trPairs.delete(key); throw err; }));
+  return _trPairs.get(key);
+}
+
+async function translateRow(id,btn){
+  const row=$(`#log .msg[data-id="${id}"]`);
+  if(!row)return;
+  const shown=row.querySelector('.tr');
+  if(shown){                                   // second click puts it away
+    shown.remove(); btn&&btn.classList.remove('on');
+    return;
+  }
+  if(!canTranslate())
+    return toast('This browser has no built-in translator — Chrome 138+ and '+
+                 'Edge do, and it runs offline on your machine');
+  const src=(row.querySelector('.txt')||{}).textContent||'';
+  if(!src.trim())return;
+
+  const box=document.createElement('div');
+  box.className='tr pending';
+  box.textContent='Translating…';
+  row.querySelector('.txt').after(box);   // directly under the original line
+  btn&&btn.classList.add('on');
+
+  if(_trCache.has(id))return trShow(box,_trCache.get(id));
+  try{
+    const from=await trDetect(src);
+    if(!from)     { box.className='tr'; box.textContent='Could not tell what language this is'; return; }
+    if(from===TR_TO){ box.className='tr'; box.textContent=`Already in ${trName(TR_TO)}`; return; }
+    const t=await trFor(from,p=>{ box.textContent=`Downloading ${trName(from)} model… ${p}%`; });
+    const out=await t.translate(src);
+    _trCache.set(id,{from,text:out});
+    trShow(box,{from,text:out});
+  }catch(err){
+    box.className='tr';
+    box.textContent='Could not translate — '+(err&&err.message||err);
+  }
+}
+
+function trShow(box,{from,text}){
+  box.className='tr';
+  box.innerHTML=`<span class="trhead">${esc(trName(from))} → ${esc(trName(TR_TO))}</span>`+
+                esc(text);
+}
+
+function trName(code){
+  try{ return new Intl.DisplayNames([TR_TO],{type:'language'}).of(code)||code; }
+  catch(e){ return code; }
+}
 
 function render(text){
+  // "caption < https://... >" reads better as just "caption" once the picture
+  // is shown underneath. Only for images, and only the bracket wrapper.
+  if(look.images){
+    for(const u of imageUrls(text))
+      text = text.split('< '+u+' >').join('').split('<'+u+'>').join('').trimEnd();
+  }
   let html = esc(text).replace(/\bhttps?:\/\/[^\s<>"')\]]+/g,
     m=>`<a href="${m}" target="_blank" rel="noopener noreferrer">${m}</a>`);
 
-  // "sven: ..." addressed to someone -> clickable, when that nick is real
+  // The leading address list, where a comma separates people rather than
+  // clauses. Only trusted when the first name is someone who has actually
+  // spoken, so "Mac mini, ..." is left alone.
+  let head='';
+  const addr=html.match(ADDRESSED);
+  if(addr&&NICKSET.has(addr[1].toLowerCase())&&
+     !(addr[3]===','&&OPENERS.has(addr[1].toLowerCase()))){
+    head=addr[0].replace(NICK_TOKEN,linkNick);
+    html=html.slice(addr[0].length);
+  }
+
+  // "alice: ..." addressed to someone -> clickable, when that nick is real.
+  // Runs on the remainder only, so names already linked above are not
+  // matched a second time through their own markup.
   html=html.split(/(<[^>]+>)/g).map(p=>p.startsWith('<')?p:
     p.replace(MENTION,(all,pre,name)=>{
       const canon=NICKSET.get(name.toLowerCase());
-      return canon
-        ? `${pre}<span class="mention" data-nick="${esc(canon)}" `+
-          `title="Show only ${esc(canon)}">${name}</span>`
-        : all;
+      return canon?`${pre}${linkNick(name)}`:all;
     })).join('');
+  html=head+html;
 
   for(const t of terms()){
     const re=new RegExp('('+t.replace(/[.*+?^${}()|[\]\\]/g,'\\$&')+')','gi');
@@ -1188,6 +1369,7 @@ function msgNode(m, opts={}){
              title="Show only #${esc(m.channel)}">#${esc(m.channel)}</span>`:'')+
        `</div>`)+
       `<div class="txt">${render(m.text)}</div>`+
+      imagesFor(m)+
       ((m.tags&&m.tags.length)?
         `<div class="mtags">`+m.tags.map(t=>
           `<span class="mtag" data-tag="${esc(t.name)}" style="${tagStyle(t.color)}"
@@ -1196,6 +1378,14 @@ function msgNode(m, opts={}){
     `</div>`+
     (opts.plain?'':
      `<div class="rowact">`+
+       `<button data-reply="${esc(m.nick)}" data-rchan="${esc(m.channel)}"
+          title="Reply to ${esc(m.nick)}">`+
+         `<svg viewBox="0 0 24 24"><path d="M9 14 4 9l5-5"/>`+
+         `<path d="M4 9h9a7 7 0 0 1 7 7v4"/></svg></button>`+
+       `<button data-tr="${m.id}" title="Translate this message">`+
+         `<svg viewBox="0 0 24 24"><path d="M3 6h10M8 4v2c0 5-2 8-5 9.5"/>`+
+         `<path d="M5 11c0 3 3.5 5.2 8 5.8"/><path d="M12.5 21 17 10l4.5 11"/>`+
+         `<path d="M14.4 17.5h5.2"/></svg></button>`+
        `<button data-tagbtn="${m.id}" title="Tag this message">`+
          `<svg viewBox="0 0 24 24"><path d="M20.6 13.4 12 22l-9-9V4h9l8.6 8.6a2 2 0 0 1 0 2.8Z"/>`+
          `<circle cx="7.5" cy="7.5" r="1.4"/></svg></button>`+
@@ -1729,6 +1919,7 @@ function openRowMenu(id,anchorEl){
   box.innerHTML=`<div class="hd">Message</div>`+
     `<div class="tagrow" data-act="jump"><span class="nm">Jump to this message</span></div>`+
     `<div class="tagrow" data-act="ctx"><span class="nm">See in context</span></div>`+
+    (nick?`<div class="tagrow" data-act="reply"><span class="nm">Reply to ${esc(nick)}</span></div>`:'')+
     (nick?`<div class="tagrow" data-act="only"><span class="nm">Show only ${esc(nick)}</span></div>`:'')+
     `<div class="tagrow" data-act="copy"><span class="nm">Copy link</span></div>`+
     `<div class="tagrow" data-act="tag"><span class="nm">Tag…</span></div>`;
@@ -1774,6 +1965,8 @@ $('#picker').onclick=async e=>{
     if(kind==='ctx')return showContext(id);
     if(kind==='copy')return copyPermalink(id,null),toast('Link copied');
     if(kind==='only')return toggleNick(row.dataset.rownick);
+    if(kind==='reply')return replyTo(row.dataset.rownick,
+      (row.querySelector('[data-chan]')||{}).dataset?.chan);
     if(kind==='tag')return openPicker(id,row||act);
   }
   const pick=e.target.closest('[data-pick]');
@@ -2373,6 +2566,10 @@ $('#log').onclick=e=>{
   if(day)return selectDay(day.dataset.day);
   const tg=e.target.closest('[data-tag]');
   if(tg)return toggleTag(tg.dataset.tag);
+  const rb=e.target.closest('[data-reply]');
+  if(rb)return replyTo(rb.dataset.reply,rb.dataset.rchan);
+  const trb=e.target.closest('[data-tr]');
+  if(trb)return translateRow(+trb.dataset.tr,trb);
   const tb=e.target.closest('[data-tagbtn]');
   if(tb)return openPicker(+tb.dataset.tagbtn,tb);
   const link=e.target.closest('[data-link]');
@@ -2562,10 +2759,10 @@ async function drawSettings(force){
     </div>
 
     <div class="field"><label>Two-factor <span class="opt">Optional</span></label>
-      <div id="st-totp"></div></div>
+      <div id="st-totp" class="stack"></div></div>
 
     <div class="field"><label title="Sign in with Face ID, Touch ID, Windows Hello or a security key instead of a password.">Passkeys <span class="opt">Optional</span></label>
-      <div id="st-keys"></div>
+      <div id="st-keys" class="stack"></div>
       <div class="formrow" style="margin-top:6px">
         <input id="pk-label" placeholder="name this device" maxlength="40">
         <button class="btn" id="pk-add">Add a passkey</button></div>
@@ -2573,7 +2770,7 @@ async function drawSettings(force){
     </div>
 
     <div class="field"><label title="Lets an agent query this archive over MCP, read-only. Shown once when created — only a hash is kept, so save it then.">Agent tokens</label>
-      <div id="st-tokens"></div>
+      <div id="st-tokens" class="stack"></div>
       <div class="formrow" style="margin-top:6px">
         <input id="tk-name" placeholder="what is it for, e.g. laptop" maxlength="40">
         <button class="btn" id="tk-add">Create token</button></div>
@@ -2597,7 +2794,7 @@ async function drawSettings(force){
     <div class="field"><label>Server name</label>
       <div class="formrow">
         <input id="st-appname" value="${esc(APPNAME)}" maxlength="48"
-               placeholder="IRC Client">
+               placeholder="AuroraIRC">
         <button class="btn" id="st-appname-save">Save</button></div>
       <div class="hint">Shown in the header and the browser tab.</div>
     </div>
@@ -2845,7 +3042,7 @@ async function drawTotp(){
     ? `<div class="note">Two-factor is on.</div>
        <button class="btn ghost" id="totp-off">Turn off</button>`
     : `<button class="btn ghost" id="totp-on">Set up two-factor</button>
-       <div id="totp-setup"></div>`;
+       <div id="totp-setup" class="stack"></div>`;
   const off=$('#totp-off');
   if(off)off.onclick=async()=>{
     await post('/api/me/totp',{action:'disable'});
@@ -2860,7 +3057,7 @@ async function drawTotp(){
       `<div class="note">Add this secret to your authenticator, then confirm:
         <br><code style="word-break:break-all">${esc(r.secret)}</code></div>
        <input id="totp-code" inputmode="numeric" placeholder="000000" autocomplete="one-time-code">
-       <button class="btn" id="totp-confirm" style="margin-top:8px">Confirm</button>`;
+       <button class="btn" id="totp-confirm">Confirm</button>`;
     $('#totp-confirm').onclick=async()=>{
       const c=await post('/api/me/totp',{action:'confirm',code:$('#totp-code').value});
       if(c.error)return toast(c.error);
@@ -2874,7 +3071,7 @@ $('#set-close').onclick=closeAll;
 /* ---------------- appearance ---------------- */
 const ACCENTS=['#2563d8','#5b9dff','#7c5cff','#c2410c','#e11d48',
                '#0f9d58','#0d9488','#b45309','#6b7280'];
-const look={theme:'',accent:'',bg:'',strength:35,blur:0,scrim:50};
+const look={theme:'',accent:'',bg:'',strength:35,blur:0,scrim:50,images:true};
 
 function loadLook(){
   try{
@@ -2946,6 +3143,8 @@ function drawLook(){
     b.setAttribute('aria-pressed',b.dataset.accent===look.accent));
   const c=$('#accent-custom');
   if(c&&look.accent&&/^#[0-9a-f]{6}$/i.test(look.accent))c.value=look.accent;
+  const it=$('#img-toggle');
+  if(it)it.setAttribute('aria-pressed',look.images!==false);
   $('#bgstrength').value=look.strength;
   $('#bgblur').value=look.blur;
   $('#bgscrim').value=look.scrim;
@@ -2977,6 +3176,11 @@ $('#look-close').onclick=closeAll;
 $$('#theme-seg button').forEach(b=>b.onclick=()=>{
   look.theme=b.dataset.th||'';saveLook();applyLook();
 });
+$('#img-toggle').onclick=e=>{
+  look.images=!look.images;
+  e.target.setAttribute('aria-pressed',look.images);
+  saveLook();reload();
+};
 $('#accent-custom').oninput=e=>{look.accent=e.target.value;saveLook();applyLook()};
 $('#accent-reset').onclick=()=>{look.accent='';saveLook();applyLook()};
 $('#bgfile').onchange=async e=>{
@@ -3067,6 +3271,23 @@ ta.addEventListener('input',()=>{
 ta.addEventListener('keydown',e=>{
   if(e.key==='Enter'&&!e.shiftKey){e.preventDefault();$('#composer').requestSubmit()}
 });
+
+/* Start opening the IRC connection the moment someone begins writing, so the
+   twelve seconds of TLS, registration and JOIN are spent while they type
+   instead of after they press send. Fire and forget: if it misses, the send
+   path opens the connection itself, just more slowly. */
+let warmedFor='',warmedAt=0;
+function prewarmSend(){
+  if(!SESSION.signedIn)return;
+  const chan=$('#sendchan').value;
+  if(!chan)return;
+  const now=Date.now();
+  if(chan===warmedFor&&now-warmedAt<120000)return;   // still warm
+  warmedFor=chan;warmedAt=now;
+  post('/api/prewarm',{channel:chan}).catch(()=>{});
+}
+ta.addEventListener('focus',prewarmSend);
+$('#sendchan').addEventListener('change',prewarmSend);
 function copyPermalink(id,btn){
   const row=$(`#log .msg[data-id="${id}"]`);
   const chan=row?.querySelector('[data-chan]')?.dataset.chan||[...state.channels][0];
@@ -3090,6 +3311,26 @@ function toast(msg){
 }
 function applyStateToBox(){
   writeQueryBox(state.nicks,state.q,state.channels,state.tags);
+}
+
+/* Start a reply: address the person, in their channel, cursor ready.
+   Replacing an existing "someone: " prefix rather than stacking them, so
+   clicking reply twice does not produce "a: b: ...". */
+function replyTo(nick,channel){
+  if(!nick)return;
+  if(!SESSION.signedIn)return toast('Sign in to reply');
+  if(!(SESSION.live&&SESSION.live.connected))return toast('Not connected to IRC');
+  const sel=$('#sendchan'), ta=$('#sendtext');
+  if(channel){
+    const want=[...sel.options].find(o=>
+      o.value.replace(/^#/,'')===String(channel).replace(/^#/,''));
+    if(want)sel.value=want.value;
+  }
+  const rest=ta.value.replace(/^\s*[^\s:]+:\s*/,'');
+  ta.value=nick+': '+rest;
+  ta.dispatchEvent(new Event('input'));
+  ta.focus();
+  ta.setSelectionRange(ta.value.length,ta.value.length);
 }
 
 function sendStatus(msg,{busy=false,error=false}={}){
@@ -3130,12 +3371,40 @@ $('#composer').onsubmit=async e=>{
     sendStatus('Not sent — '+r.error,{error:true});
     ta.value=text;syncComposer();return;   // give the text back, don't lose it
   }
-  // The stream replaces this echo with the real row once it is on the wire.
-  setTimeout(()=>{
-    if(document.body.contains(echo))
-      sendStatus('Sent, but not confirmed yet — check live.log',{error:true});
-  },9000);
+  watchSend(r.queued,echo);
 };
+
+/* Ask the server what actually happened rather than guessing on a timer.
+   Opening a connection for a nick that has not posted recently really does
+   take about twelve seconds, and calling that a failure was simply wrong. */
+async function watchSend(id,echo){
+  const done=()=>!document.body.contains(echo);   // the stream took over
+  sendStatus('Sending…',{busy:true});
+  for(let waited=0;waited<75&&!done();){
+    const step=waited<6?0.8:2;
+    await new Promise(r=>setTimeout(r,step*1000));
+    waited+=step;
+    if(done())break;
+    let st;
+    try{ st=await api('/api/send/status','id='+encodeURIComponent(id)); }
+    catch(e){ continue; }                          // transient, keep watching
+    if(st.state==='failed'){
+      echo.remove();
+      ta.value=echo.dataset.text;syncComposer();   // don't lose what they wrote
+      return sendStatus('Not sent — '+st.error,{error:true});
+    }
+    if(st.state==='sent'){
+      sendStatus('Sent');
+      return setTimeout(()=>sendStatus(''),2000);
+    }
+    if(waited>5)
+      sendStatus('Connecting to IRC as '+
+        ((SESSION.user&&SESSION.user.nick)||'you')+'…',{busy:true});
+  }
+  if(done())return sendStatus('');
+  sendStatus('Still waiting on IRC — your message is queued and will go out',
+             {error:true});
+}
 
 /* Move to the newest end of the current view, whatever the sort order. */
 /* Same thing reload() does now, so it simply reuses it. */

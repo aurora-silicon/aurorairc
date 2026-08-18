@@ -186,7 +186,8 @@ class Handler(SimpleHTTPRequestHandler):
                          "default-src 'self'; "
                          "script-src 'self' 'unsafe-inline'; "
                          "style-src 'self' 'unsafe-inline'; "
-                         "img-src 'self' data:; "
+                         "img-src 'self' data: https:; "   # inline images from anywhere
+                         "media-src 'self' https:; "
                          "connect-src 'self'; "
                          "frame-ancestors 'none'; "
                          "base-uri 'none'; "
@@ -356,6 +357,29 @@ class Handler(SimpleHTTPRequestHandler):
                     channels=p.get("channel", []),
                     nicks=p.get("nick", []),
                     limit=int(p.get("limit", ["4000"])[0]))})
+            if url.path == "/api/send/status":
+                # What actually happened to a queued line. The client used to
+                # guess with a timer, which called a slow-but-fine send a
+                # failure; a cold connection legitimately takes ~12s.
+                s = self._need_auth(csrf=False)
+                if not s:
+                    return
+                try:
+                    mid = int(p.get("id", ["0"])[0])
+                except ValueError:
+                    return self._json({"error": "bad id"}, 400)
+                row = con.execute(
+                    "SELECT sent_at, error, created FROM outbox "
+                    "WHERE id = ? AND user_id = ?", (mid, s["user_id"])).fetchone()
+                if not row:
+                    return self._json({"state": "unknown"})
+                if row["error"]:
+                    return self._json({"state": "failed", "error": row["error"]})
+                if row["sent_at"] is None:
+                    return self._json({"state": "queued",
+                                       "waited": int(time.time()) - row["created"]})
+                return self._json({"state": "sent", "at": row["sent_at"]})
+
             if url.path == "/api/session":
                 s = self._session()
                 return self._json({
@@ -1029,6 +1053,23 @@ class Handler(SimpleHTTPRequestHandler):
                 con.execute("UPDATE outbox SET network_id = ? WHERE id = ?", (nid, mid))
                 return self._json({"queued": mid, "channel": channel, "text": text,
                                    "nick": s["irc_nick"]})
+
+            if url.path == "/api/prewarm":
+                # Opening a send-only connection costs ~12s (TCP, TLS, register,
+                # JOIN, settle). Doing that when the user starts typing, rather
+                # than when they hit send, is the difference between instant and
+                # apparently broken. Best effort: a miss just means a slow send.
+                s = self._need_auth()
+                if not s:
+                    return
+                channel = str(body.get("channel", "")).strip()
+                nid = channel_network(con, channel) if channel else None
+                if not nid or not s["irc_nick"]:
+                    return self._json({"ok": False})
+                chan = channel if channel.startswith("#") else "#" + channel
+                db.setting(con, f"prewarm:{nid}:{s['irc_nick']}",
+                           f"{int(time.time())}|{chan}")
+                return self._json({"ok": True})
 
             if url.path == "/api/tags":
                 if not self._need_auth():
