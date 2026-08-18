@@ -1,0 +1,42 @@
+#!/command/with-contenv bashio
+# Adopt an archive dropped into /share, once, before anything opens the
+# database. Home Assistant OS has no shell of its own, so this is the supported
+# way to move an existing archive onto it, or to restore one.
+IMPORT=/share/aurorairc-import.db
+TARGET=/data/archive.db
+
+[ -f "${IMPORT}" ] || exit 0
+
+bashio::log.info "Found ${IMPORT} - checking it before adopting it"
+if ! python3 - "${IMPORT}" <<'PY'
+import sqlite3, sys
+db = sys.argv[1]
+con = sqlite3.connect(f"file:{db}?mode=ro", uri=True)
+if con.execute("PRAGMA integrity_check").fetchone()[0] != "ok":
+    sys.exit("integrity check failed")
+have = {r[0] for r in con.execute("SELECT name FROM sqlite_master WHERE type='table'")}
+missing = {"messages", "channels", "nicks", "users"} - have
+if missing:
+    sys.exit(f"not an AuroraIRC archive - missing {', '.join(sorted(missing))}")
+n = con.execute("SELECT COUNT(*) FROM messages").fetchone()[0]
+print(f"{n} messages")
+PY
+then
+    bashio::log.error "Refusing to adopt ${IMPORT} - leaving it alone"
+    exit 0
+fi
+
+if [ -f "${TARGET}" ]; then
+    KEEP="${TARGET}.replaced-$(date +%Y%m%d-%H%M%S)"
+    bashio::log.warning "Moving the existing archive aside to ${KEEP}"
+    mv "${TARGET}" "${KEEP}"
+    rm -f "${TARGET}-wal" "${TARGET}-shm"
+fi
+
+mv "${IMPORT}" "${TARGET}"
+# Sidecars belong to the copy that was just moved; leaving them in /share is
+# both untidy and confusing next time someone looks in there.
+rm -f "${IMPORT}-wal" "${IMPORT}-shm"
+# The marker keeps a restart from importing a second time.
+touch "${IMPORT}.imported"
+bashio::log.info "Archive adopted. Delete ${IMPORT}.imported when you are happy."

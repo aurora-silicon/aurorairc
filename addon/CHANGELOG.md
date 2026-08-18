@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.0.1
+
+- Adopt an archive left at `/share/aurorairc-import.db` on start, after
+  checking it really is one. Home Assistant OS has no shell, so this is how an
+  existing archive gets in, and how one is restored.
+- Any archive already in place is moved aside rather than overwritten.
+
 ## 1.0.0
 
 First add-on release.
