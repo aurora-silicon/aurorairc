@@ -514,14 +514,19 @@ class Handler(SimpleHTTPRequestHandler):
         so an agent cannot write to the archive however it authenticates.
         """
         ip = self._ip()
-        wait = A.throttle_check(con, ip)
-        if wait:
-            return self._json({"error": f"rate limited, wait {wait}s"}, 429)
-
         auth_hdr = self.headers.get("Authorization") or ""
         token = auth_hdr[7:].strip() if auth_hdr[:7].lower() == "bearer " else ""
+
+        # Check the token before the backoff, not after. Looking one up is a
+        # hash and an index hit, so it is safe to do first - and doing it last
+        # meant a blocked address could never present a good token to clear
+        # itself, which is precisely the NAT case the backoff is meant to
+        # tolerate. Only failures are rate limited.
         who = A.token_owner(con, token) if token else None
         if not who:
+            wait = A.throttle_check(con, ip)
+            if wait:
+                return self._json({"error": f"rate limited, wait {wait}s"}, 429)
             A.throttle_fail(con, ip)
             A.log(con, "mcp_denied", ip=ip)
             self.send_response(401)

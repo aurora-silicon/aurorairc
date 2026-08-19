@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.0.4
+
+- A throttled address can present a valid agent token again. The backoff was
+  checked before the token, so the code that clears it on a good token could
+  never run - locking out legitimate agents for up to fifteen minutes, which
+  is the exact case the backoff was written to tolerate.
+
 ## 1.0.3
 
 - Normalise message text on the way in. Trailing whitespace survives in a web
