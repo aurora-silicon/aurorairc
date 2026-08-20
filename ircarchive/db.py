@@ -199,21 +199,19 @@ DEFAULT_NETWORK = {
 
 
 def migrate(con):
-    """Additive migrations, safe to run on every open. Never drops data."""
-    ob = {r[1] for r in con.execute("PRAGMA table_info(outbox)")}
-    if "user_id" not in ob:
-        # Whose IRC identity should carry this line out
-        con.execute("ALTER TABLE outbox ADD COLUMN user_id INTEGER")
-    if "nick" not in ob:
-        con.execute("ALTER TABLE outbox ADD COLUMN nick TEXT")
-    if "network_id" not in ob:
-        con.execute("ALTER TABLE outbox ADD COLUMN network_id INTEGER")
+    """Additive migrations, safe to run on every open. Never drops data.
 
-    ch = {r[1] for r in con.execute("PRAGMA table_info(channels)")}
-    if "network_id" not in ch:
-        con.execute("ALTER TABLE channels ADD COLUMN network_id INTEGER")
-    if "archived" not in ch:
-        con.execute("ALTER TABLE channels ADD COLUMN archived INTEGER NOT NULL DEFAULT 1")
+    Three processes share this file and any of them may be the first to open it
+    after an upgrade, so every ALTER here has to survive another one having got
+    there a millisecond earlier - see auth.add_column.
+    """
+    from .auth import add_column
+    # Whose IRC identity should carry this line out
+    add_column(con, "outbox", "user_id", "INTEGER")
+    add_column(con, "outbox", "nick", "TEXT")
+    add_column(con, "outbox", "network_id", "INTEGER")
+    add_column(con, "channels", "network_id", "INTEGER")
+    add_column(con, "channels", "archived", "INTEGER NOT NULL DEFAULT 1")
 
     # Adopt any pre-network channels into a first network, so an archive that
     # predates multi-network support keeps every message reachable.

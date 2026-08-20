@@ -34,8 +34,13 @@ Endpoints:
   POST /api/send             {channel, text}                       (auth)
   POST /api/tags|tags/update|tags/delete|message/tag               (auth)
   POST /api/searches|searches/delete|searches/used                 (auth)
-  POST /api/invites          {username?, role}                     (owner)
+  POST /api/history          {action: record|clear, query}        (auth)
+  POST /api/invites          {role, uses?, label?}                (owner)
+  POST /api/invites/revoke   {token}                              (owner)
+  POST /api/networks/test    {host, port, tls, nick}              (owner)
   POST /api/users/update     {username, role?, disabled?, delete?} (owner)
+  GET  /api/users/detail?username=   join provenance for one account (owner)
+  GET  /api/history          recent searches for this account       (auth)
 """
 
 import json
@@ -403,15 +408,34 @@ class Handler(SimpleHTTPRequestHandler):
                     {"name": r["username"], "role": r["role"], "nick": r["irc_nick"],
                      "totp": bool(r["totp_enabled"]), "disabled": bool(r["disabled"]),
                      "root": r["id"] == root,
+                     "joinMethod": r["join_method"] or A.JOIN_MANUAL,
                      "created": r["created"], "lastSeen": r["last_seen"]}
                     for r in con.execute("SELECT * FROM users ORDER BY role, username")]})
+            if url.path == "/api/users/detail":
+                # Provenance for one account, behind a button rather than in
+                # the list: useful when you need it, clutter when you do not.
+                if not self._need_owner(csrf=False):
+                    return
+                detail = A.user_detail(con, p.get("username", [""])[0])
+                if not detail:
+                    return self._json({"error": "no such user"}, 404)
+                return self._json(detail)
+            if url.path == "/api/history":
+                s = self._session()
+                if not s:
+                    # History is an account feature; anonymous readers get none
+                    return self._json({"history": []})
+                return self._json({"history": A.search_history(
+                    con, s["user_id"],
+                    limit=int(p.get("limit", ["12"])[0]))})
             if url.path == "/api/invites":
                 if not self._need_owner(csrf=False):
                     return
-                return self._json({"invites": [dict(r) for r in con.execute(
-                    "SELECT token, username, role, created, expires, used_by "
-                    "FROM invites WHERE used_by IS NULL AND expires > ? "
-                    "ORDER BY created DESC", (int(time.time()),))]})
+                # Dead links are listed too: "who came in on that pass" is the
+                # question an owner asks *after* the pass has been used up.
+                return self._json({"invites": A.invites(con, include_dead=True),
+                                   "expiresHours": A.INVITE_HOURS,
+                                   "maxUses": A.MAX_PASS_USES})
             if url.path == "/api/sessions":
                 s = self._need_auth(csrf=False)
                 if not s:
@@ -608,9 +632,15 @@ class Handler(SimpleHTTPRequestHandler):
                 try:
                     uid = A.create_user(con, body.get("username"),
                                         str(body.get("password", "")), role="owner",
-                                        irc_nick=body.get("nick"))
+                                        irc_nick=body.get("nick"),
+                                        join_method=A.JOIN_SETUP)
                 except ValueError as exc:
                     return self._json({"error": str(exc)}, 400)
+                # The wizard names the server before the account exists, so it
+                # arrives here rather than through /api/appname (owners only).
+                app_name = str(body.get("appName") or "").strip()[:48]
+                if app_name:
+                    db.setting(con, "app_name", app_name)
                 # Remember who founded this archive; they stay root forever
                 db.setting(con, "root_user_id", uid)
                 A.log(con, "setup", username=str(body.get("username")), ip=ip)
@@ -845,17 +875,49 @@ class Handler(SimpleHTTPRequestHandler):
                 s = self._need_owner()
                 if not s:
                     return
+                role = str(body.get("role", "member"))
+                uses = body.get("uses", 1)
                 try:
-                    token = A.create_invite(con, s["user_id"],
-                                            username=body.get("username"),
-                                            role=str(body.get("role", "member")))
+                    token = A.create_invite(con, s["user_id"], role=role,
+                                            uses=uses,
+                                            label=body.get("label"))
                 except ValueError as exc:
                     return self._json({"error": str(exc)}, 400)
                 A.log(con, "invite_created", username=s["username"], ip=ip,
-                      detail=str(body.get("username") or "any"))
+                      detail=f"{role} x{int(uses or 1)}")
                 return self._json({"token": token,
                                    "url": f"/#invite={token}",
-                                   "expiresHours": A.INVITE_HOURS})
+                                   "role": role, "uses": int(uses or 1),
+                                   "expiresHours": A.INVITE_HOURS,
+                                   "invites": A.invites(con, include_dead=True)})
+
+            if url.path == "/api/invites/revoke":
+                s = self._need_owner()
+                if not s:
+                    return
+                token = str(body.get("token", "")).strip()
+                if not token:
+                    return self._json({"error": "token required"}, 400)
+                A.revoke_invite(con, token)
+                A.log(con, "invite_revoked", username=s["username"], ip=ip)
+                return self._json({"ok": True,
+                                   "invites": A.invites(con, include_dead=True)})
+
+            if url.path == "/api/networks/test":
+                # Prove the connection works before the wizard lets anyone past
+                # it. Nothing is written; this only opens a socket and closes it.
+                s = self._need_owner()
+                if not s:
+                    return
+                host = str(body.get("host", "")).strip()
+                if not host:
+                    return self._json({"ok": False, "error": "host required"}, 400)
+                from .connections import probe
+                res = probe(host, int(body.get("port", 6697) or 6697),
+                            tls=body.get("tls") is not False,
+                            nick=str(body.get("nick") or "aurora"),
+                            timeout=int(body.get("timeout", 15) or 15))
+                return self._json(res)
 
             if url.path == "/api/networks":
                 s = self._need_owner()
@@ -945,7 +1007,9 @@ class Handler(SimpleHTTPRequestHandler):
                     uid = A.create_user(con, body.get("username"),
                                         str(body.get("password", "")),
                                         role=str(body.get("role", "member")),
-                                        irc_nick=body.get("nick"))
+                                        irc_nick=body.get("nick"),
+                                        join_method=A.JOIN_MANUAL,
+                                        invited_by=s["user_id"])
                 except ValueError as exc:
                     return self._json({"error": str(exc)}, 400)
                 A.log(con, "user_create", username=s["username"], ip=ip,
@@ -1097,6 +1161,19 @@ class Handler(SimpleHTTPRequestHandler):
                     "label = excluded.label, color = excluded.color",
                     (name, label, color, int(time.time())))
                 return self._json({"tags": Q.tags(con)})
+
+            if url.path == "/api/history":
+                # Remembering what you searched for is an account feature, so
+                # it lives behind the same gate as everything else that writes.
+                s = self._need_auth()
+                if not s:
+                    return
+                act = str(body.get("action", "record"))
+                if act == "clear":
+                    A.clear_search_history(con, s["user_id"], body.get("query"))
+                else:
+                    A.record_search(con, s["user_id"], body.get("query"))
+                return self._json({"history": A.search_history(con, s["user_id"])})
 
             if url.path == "/api/searches":
                 if not self._need_auth():

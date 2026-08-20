@@ -233,6 +233,9 @@ aside{
   font-weight:540;padding:0;cursor:pointer}
 .nicklist{overflow-y:auto;flex:1;min-height:0;padding:6px}
 .taglist{max-height:min(46vh,340px);overflow-y:auto}
+/* Inside a panel the list is a card, so its edge lines up with the heading
+   above it rather than the rows floating in from an inset of their own. */
+.sheet .taglist,.panel .taglist{background:var(--raised);border-radius:12px;padding:4px}
 .person{
   display:flex;align-items:center;gap:9px;padding:7px 9px;border-radius:10px;
   cursor:pointer;min-height:40px;
@@ -258,7 +261,8 @@ aside{
   transition:opacity .12s}
 .strip .bar:hover,.strip .bar.on{opacity:1}
 
-#log{flex:1;overflow-y:auto;padding:4px 0 22px;overscroll-behavior:contain}
+#log{flex:1;min-height:0;overflow-y:auto;padding:4px 0 22px;
+  overscroll-behavior:contain;overflow-anchor:none}
 
 /* date separator - centered pill */
 /* Not sticky: several would pin at the same offset and stack, which is what
@@ -468,7 +472,9 @@ mark{background:var(--mark);color:var(--mark-fg);border-radius:3px;padding:0 2px
 .sheet.side aside{width:100%;border:0}
 
 .field{display:flex;flex-direction:column;gap:7px}
-.field label{font-size:12.5px;font-weight:620;color:var(--fg-2);
+/* Only a heading is a heading. A <label class="btn"> wrapping a file input is
+   a button, and shouting its caption at the reader helps nobody. */
+.field .fhead{font-size:12.5px;font-weight:620;color:var(--fg-2);
   text-transform:uppercase;letter-spacing:.04em}
 .field input,.field select{
   height:42px;padding:0 12px;border-radius:10px;background:var(--sunken);
@@ -476,11 +482,11 @@ mark{background:var(--mark);color:var(--mark-fg);border-radius:3px;padding:0 2px
 }
 .field input:focus,.field select:focus{outline:none;border-color:var(--accent);background:var(--surface)}
 .field .hint{font-size:12.5px;color:var(--fg-3);line-height:1.45}
-.field label .opt{margin-left:6px;font-size:10.5px;font-weight:600;
+.field .fhead .opt{margin-left:6px;font-size:10.5px;font-weight:600;
   padding:1px 6px;border-radius:99px;background:var(--raised);color:var(--fg-3);
   text-transform:none;letter-spacing:0}
 /* A label carrying an explanation gets a quiet cue that it is hoverable */
-.field label[title]{cursor:help;text-decoration:underline dotted var(--line);
+.field .fhead[title]{cursor:help;text-decoration:underline dotted var(--line);
   text-underline-offset:3px}
 .dates{display:flex;gap:8px}
 .dates input{flex:1;min-width:0}
@@ -517,9 +523,6 @@ input[type=range]{width:100%;accent-color:var(--accent);margin-top:4px}
 input[type=color]{flex:1;height:42px;padding:3px;border-radius:10px;
   background:var(--sunken);border:1px solid var(--line);cursor:pointer}
 
-/* saved searches */
-.saved{display:flex;align-items:center;gap:9px;padding:8px 9px;border-radius:10px;
-  cursor:pointer;min-height:42px}
 /* Blocks that script fills in sit inside a .field but stack their own children,
    so they need that same rhythm rather than inheriting nothing. Placeholders
    are hidden while empty instead of contributing a gap to nothing. */
@@ -528,21 +531,6 @@ input[type=color]{flex:1;height:42px;padding:3px;border-radius:10px;
    void element like <input> never has any - so an unqualified rule here
    hides the very fields it is meant to be spacing out. */
 .stack > div:empty{display:none}
-.saved:hover{background:var(--raised)}
-.saved .nm{flex:1;font-size:14px;font-weight:560;overflow:hidden;
-  text-overflow:ellipsis;white-space:nowrap}
-.saved .qq{font:11.5px var(--mono);color:var(--fg-3);overflow:hidden;
-  text-overflow:ellipsis;white-space:nowrap;max-width:46%}
-/* Always present, not hover-revealed: on touch there is no hover, so a
-   hover-only control simply does not exist for half the users. */
-.saved .del{width:32px;height:32px;border-radius:8px;display:grid;place-items:center;
-  color:var(--fg-3);font-size:15px;line-height:1;flex:none;opacity:.55;
-  transition:opacity .12s,background .12s,color .12s}
-.saved:hover .del,.saved .del:focus-visible{opacity:1}
-@media (hover:none){.saved .del{opacity:.85}}
-.saved .del.danger:hover{background:color-mix(in srgb,var(--danger) 16%,transparent);
-  color:var(--danger)}
-.saved .del:hover{background:var(--sunken);color:var(--danger)}
 
 .note{font-size:13px;color:var(--fg-2);background:var(--raised);padding:10px 12px;
   border-radius:10px;line-height:1.5}
@@ -739,6 +727,374 @@ input[type=color]{flex:1;height:42px;padding:3px;border-radius:10px;
     .rowact{right:max(14px,calc((100% - var(--feed-max))/2 + 8px))}
   }
 }
+/* =====================================================================
+   Design system
+   ---------------------------------------------------------------------
+   Everything that used to be laid out ad hoc per panel - a float here, a
+   margin there - is built from these few pieces instead, so Filters,
+   Settings and the setup wizard genuinely look like one application. One
+   rhythm: 20px between blocks, 10px inside one, 44px controls.
+   ===================================================================== */
+
+:root{
+  --gap:20px;          /* between blocks */
+  --gap-in:10px;       /* inside one block */
+  --ctl:44px;          /* control height */
+  --ctl-sm:34px;
+}
+
+/* ---- sheets: one rhythm everywhere ---- */
+.sheet .content{padding:16px;gap:var(--gap)}
+.sheet header,#ctxsheet header{padding:14px 16px}
+.sheet header h3,#ctxsheet header h3{font-size:17px;font-weight:660}
+
+/* ---- field: header row, body, hint ---- */
+.field{display:flex;flex-direction:column;gap:var(--gap-in)}
+.fhead{
+  display:flex;align-items:center;gap:10px;min-height:20px;
+  font-size:12px;font-weight:660;color:var(--fg-3);
+  text-transform:uppercase;letter-spacing:.06em;margin:0;
+}
+.fhead .linkbtn{
+  margin-left:auto;text-transform:none;letter-spacing:0;font-size:13px;float:none
+}
+/* A heading that is a name - a network, a person - keeps the case it was
+   given. "TEST" sitting next to a Test button is nobody's idea of clear. */
+.fhead.plain{text-transform:none;letter-spacing:-.01em;font-size:15px;
+  font-weight:640;color:var(--fg)}
+.fhead.plain .linkbtn{font-size:13px}
+.field .hint{font-size:12.5px;color:var(--fg-3);line-height:1.5;margin:0}
+.field input,.field select,.field textarea{
+  height:var(--ctl);padding:0 13px;border-radius:11px;background:var(--sunken);
+  border:1px solid var(--line);font-size:16px;width:100%
+}
+.field input:focus,.field select:focus,.field textarea:focus{
+  outline:none;border-color:var(--accent);
+  box-shadow:0 0 0 3px color-mix(in srgb,var(--accent) 18%,transparent);
+  background:var(--surface)
+}
+.field input::placeholder{color:var(--fg-3)}
+.field input:disabled,.field select:disabled{opacity:.55;cursor:not-allowed}
+
+/* Stacked inputs inside one field keep the same 10px rhythm without
+   per-input margin overrides scattered through the markup. */
+.stack{display:flex;flex-direction:column;gap:var(--gap-in)}
+.stack > div:empty{display:none}
+
+/* ---- rows of controls ---- */
+.formrow{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
+.formrow input,.formrow select{
+  flex:1 1 170px;min-width:140px;height:var(--ctl);padding:0 13px;
+  border-radius:11px;background:var(--sunken);border:1px solid var(--line);font-size:16px
+}
+.formrow select{flex:1 1 130px;width:auto;min-width:120px;font-size:14px;
+  padding-right:8px}
+.formrow input:focus,.formrow select:focus{
+  outline:none;border-color:var(--accent);background:var(--surface);
+  box-shadow:0 0 0 3px color-mix(in srgb,var(--accent) 18%,transparent)
+}
+.formrow .btn{flex:0 0 auto;width:auto;padding:0 18px;height:var(--ctl)}
+.formrow .narrow{flex:0 0 96px;min-width:96px;width:96px}
+
+.dates{display:flex;gap:8px}
+.dates input{flex:1;min-width:0}
+
+/* ---- chips ---- */
+.chips{display:flex;gap:8px;flex-wrap:wrap}
+.presets{display:flex;gap:8px;flex-wrap:wrap}
+.chips .chip,.presets .chip{
+  height:34px;padding:0 14px;border-radius:99px;font-size:13.5px;font-weight:540;
+  background:var(--raised);border:1px solid var(--line-soft);color:var(--fg-2);
+  display:inline-flex;align-items:center;gap:7px;white-space:nowrap;
+  transition:background .12s,color .12s,border-color .12s;
+}
+.chips .chip:hover,.presets .chip:hover{color:var(--fg);border-color:var(--line)}
+.chips .chip[aria-pressed="true"],.presets .chip[aria-pressed="true"]{
+  background:var(--accent);border-color:transparent;color:var(--accent-fg)
+}
+.chips .chip .dotm{width:8px;height:8px;border-radius:50%;background:currentColor;opacity:.5}
+.chips .chip[aria-pressed="true"] .dotm{opacity:1}
+
+/* ---- segmented control ---- */
+.seg{display:flex;background:var(--sunken);border-radius:11px;padding:3px;gap:3px;
+  border:1px solid var(--line-soft)}
+.seg button{flex:1;height:34px;border-radius:8px;font-size:13.5px;font-weight:560;
+  color:var(--fg-2);white-space:nowrap;padding:0 10px}
+.seg button:hover{color:var(--fg)}
+.seg button[aria-pressed="true"]{
+  background:var(--surface);color:var(--fg);box-shadow:0 1px 3px rgba(0,0,0,.12)}
+
+/* ---- buttons ---- */
+.btn{
+  height:var(--ctl);border-radius:12px;background:var(--accent);color:var(--accent-fg);
+  font-weight:620;font-size:15px;width:100%;display:inline-grid;place-items:center;
+  padding:0 16px;transition:filter .12s,opacity .12s;
+}
+.btn:hover:not(:disabled){filter:brightness(1.06)}
+.btn.ghost{background:var(--raised);color:var(--fg);border:1px solid var(--line-soft)}
+.btn.ghost:hover:not(:disabled){background:var(--sunken)}
+.btn.danger{background:color-mix(in srgb,var(--danger) 15%,transparent);color:var(--danger);
+  border:1px solid color-mix(in srgb,var(--danger) 30%,transparent)}
+.btn.sm{height:var(--ctl-sm);font-size:13.5px;border-radius:9px;padding:0 14px;width:auto}
+.btn:disabled{opacity:.45;cursor:default}
+.btnrow{display:flex;gap:8px;flex-wrap:wrap}
+.btnrow .btn{width:auto;flex:1 1 auto}
+
+/* ---- list rows: one shape for saved searches, people, keys, devices ---- */
+.row{
+  display:flex;align-items:center;gap:10px;padding:9px 11px;border-radius:11px;
+  background:var(--raised);min-height:46px;
+}
+.row + .row{margin-top:8px}
+.row.tappable{cursor:pointer}
+.row.tappable:hover{background:var(--sunken)}
+.row .rmain{flex:1;min-width:0;display:flex;flex-direction:column;gap:2px}
+.row .nm{font-size:14px;font-weight:580;overflow:hidden;text-overflow:ellipsis;
+  white-space:nowrap}
+.row .sub2{font-size:12px;color:var(--fg-3);overflow:hidden;text-overflow:ellipsis;
+  white-space:nowrap}
+.row .sub2 code{font-family:var(--mono);font-size:11.5px}
+.row .act{display:flex;gap:4px;flex:none}
+.row .iconact{
+  width:32px;height:32px;border-radius:9px;display:grid;place-items:center;
+  color:var(--fg-3);flex:none;transition:background .12s,color .12s;
+}
+.row .iconact:hover{background:var(--surface);color:var(--fg)}
+.row .iconact.danger:hover{background:color-mix(in srgb,var(--danger) 16%,transparent);
+  color:var(--danger)}
+.row .iconact svg{width:15px;height:15px}
+.pill{
+  flex:none;font-size:11px;font-weight:660;padding:2px 8px;border-radius:99px;
+  background:var(--sunken);color:var(--fg-3);border:1px solid var(--line-soft);
+  text-transform:none;letter-spacing:0;
+}
+.pill.ok{background:color-mix(in srgb,var(--ok) 16%,transparent);color:var(--ok);
+  border-color:color-mix(in srgb,var(--ok) 30%,transparent)}
+.pill.warn{background:color-mix(in srgb,var(--danger) 14%,transparent);color:var(--danger);
+  border-color:color-mix(in srgb,var(--danger) 28%,transparent)}
+.pill.accent{background:var(--accent-soft);color:var(--accent);
+  border-color:color-mix(in srgb,var(--accent) 30%,transparent)}
+.empty-row{padding:14px 12px;text-align:center;color:var(--fg-3);font-size:13px;
+  background:var(--raised);border-radius:11px}
+
+/* ---- notes ---- */
+.note{font-size:13.5px;color:var(--fg-2);background:var(--raised);padding:12px 14px;
+  border-radius:12px;line-height:1.55;border:1px solid var(--line-soft)}
+.note.err{background:color-mix(in srgb,var(--danger) 12%,transparent);color:var(--danger);
+  border-color:color-mix(in srgb,var(--danger) 26%,transparent)}
+.note.ok{background:color-mix(in srgb,var(--ok) 12%,transparent);color:var(--ok);
+  border-color:color-mix(in srgb,var(--ok) 26%,transparent)}
+.note.warn{background:color-mix(in srgb,var(--mark) 26%,transparent);color:var(--fg);
+  border-color:color-mix(in srgb,var(--mark) 50%,transparent)}
+.note code{font-family:var(--mono);font-size:12px;word-break:break-all}
+.note b{color:inherit}
+
+/* ---- section heading inside a scrolling panel ---- */
+.sect{display:flex;flex-direction:column;gap:var(--gap)}
+.sect > h4{
+  margin:0;font-size:19px;font-weight:680;letter-spacing:-.02em;color:var(--fg)}
+.sect > .lede{margin:-12px 0 0;font-size:13.5px;color:var(--fg-2);line-height:1.55}
+.hr{height:1px;background:var(--line-soft);margin:2px 0}
+
+/* =====================================================================
+   Big panel: Settings and the setup wizard
+   A bottom sheet is right for a short list of filters and wrong for a
+   settings page - so these get their own surface, centred and roomy on a
+   desktop, full height on a phone.
+   ===================================================================== */
+.panel{
+  position:fixed;inset:0;z-index:60;background:var(--surface);
+  display:none;flex-direction:column;
+}
+.panel.on{display:flex}
+.panel > header{
+  display:flex;align-items:center;gap:12px;flex:none;
+  padding:max(12px,env(safe-area-inset-top)) 14px 12px;
+  border-bottom:1px solid var(--line-soft);
+}
+.panel > header h3{margin:0;font-size:17px;font-weight:660;letter-spacing:-.01em}
+/* Column by default: on a phone the sections are a bar across the top and
+   the content sits under them. The rail arrangement is a desktop idea, and
+   is turned on in the wide media query below. */
+.panel .pbody{flex:1;min-height:0;display:flex;flex-direction:column;
+  overflow:hidden}
+.panel .pnav{
+  flex:none;display:flex;gap:6px;overflow-x:auto;scrollbar-width:none;
+  padding:10px 14px;border-bottom:1px solid var(--line-soft);background:var(--surface);
+}
+.panel .pnav::-webkit-scrollbar{display:none}
+.panel .pnav button{
+  flex:none;height:34px;padding:0 14px;border-radius:99px;font-size:13.5px;
+  font-weight:560;color:var(--fg-2);background:var(--raised);white-space:nowrap;
+  display:inline-flex;align-items:center;gap:8px;border:1px solid transparent;
+}
+.panel .pnav button:hover{color:var(--fg)}
+.panel .pnav button[aria-pressed="true"]{background:var(--accent);color:var(--accent-fg)}
+.panel .pnav svg{width:16px;height:16px;stroke:currentColor;fill:none;stroke-width:1.9;
+  stroke-linecap:round;stroke-linejoin:round}
+.panel .pmain{
+  flex:1;min-width:0;overflow-y:auto;
+  padding:20px 16px max(28px,env(safe-area-inset-bottom));
+}
+.panel .pmain > .sect{max-width:640px;margin:0 auto}
+.panel > footer{
+  flex:none;display:flex;align-items:center;gap:10px;
+  padding:12px 16px max(12px,env(safe-area-inset-bottom));
+  border-top:1px solid var(--line-soft);background:var(--surface);
+}
+.panel > footer .btn{width:auto;min-width:110px}
+.panel > footer .grow{flex:1}
+
+@media (min-width:860px){
+  .panel{
+    inset:auto;top:50%;left:50%;transform:translate(-50%,-50%);
+    width:min(940px,94vw);height:min(760px,90vh);border-radius:18px;
+    box-shadow:var(--shadow);border:1px solid var(--line);overflow:hidden;
+  }
+  .panel > header{padding:16px 20px}
+  .panel .pbody{flex-direction:row}
+  /* On a desktop the sections become a proper rail, the way every settings
+     page you have ever used arranges them. */
+  .panel.railed .pnav{
+    flex-direction:column;width:212px;overflow-y:auto;overflow-x:hidden;
+    border-bottom:0;border-right:1px solid var(--line-soft);
+    background:var(--raised);padding:12px;gap:3px;
+  }
+  .panel.railed .pnav button{
+    width:100%;justify-content:flex-start;border-radius:10px;height:38px;
+    background:transparent;
+  }
+  .panel.railed .pnav button:hover{background:var(--sunken)}
+  .panel.railed .pnav button[aria-pressed="true"]{background:var(--accent);color:var(--accent-fg)}
+  .panel .pmain{padding:24px 28px 32px}
+  .panel > footer{padding:14px 20px}
+}
+
+/* ---- wizard ---- */
+.steps{display:flex;align-items:center;gap:7px;flex:none;padding:14px 16px 0}
+@media (min-width:860px){.steps{padding:16px 20px 0}}
+.steps i{
+  height:4px;flex:1 1 0;border-radius:99px;background:var(--line);
+  transition:background .2s;min-width:8px;
+}
+.steps i.done{background:color-mix(in srgb,var(--accent) 55%,var(--line))}
+.steps i.now{background:var(--accent)}
+.stepno{flex:none;font-size:12px;font-weight:620;color:var(--fg-3);
+  font-variant-numeric:tabular-nums}
+.wizhero{display:flex;flex-direction:column;gap:14px;align-items:flex-start}
+.wizmark{
+  width:52px;height:52px;border-radius:15px;display:grid;place-items:center;
+  background:var(--accent-soft);color:var(--accent);flex:none;
+}
+.wizmark svg{width:26px;height:26px;stroke:currentColor;fill:none;stroke-width:1.8;
+  stroke-linecap:round;stroke-linejoin:round}
+.orline{display:flex;align-items:center;gap:12px;color:var(--fg-3);font-size:12px;
+  font-weight:620;text-transform:uppercase;letter-spacing:.08em}
+.orline::before,.orline::after{content:'';flex:1;height:1px;background:var(--line-soft)}
+.summary{display:flex;flex-direction:column;gap:0;border:1px solid var(--line-soft);
+  border-radius:13px;overflow:hidden;background:var(--raised)}
+.summary .kv{display:flex;align-items:baseline;gap:12px;padding:11px 14px;font-size:14px}
+.summary .kv + .kv{border-top:1px solid var(--line-soft)}
+.summary .kv .k{flex:0 0 40%;max-width:190px;color:var(--fg-3);font-size:13px}
+.summary .kv .v{flex:1;min-width:0;font-weight:560;overflow-wrap:anywhere}
+.summary .kv .v.dim{font-weight:450;color:var(--fg-3)}
+
+/* ---- copy field ---- */
+.copyfield{display:flex;gap:8px;align-items:stretch}
+.copyfield code{
+  flex:1;min-width:0;background:var(--sunken);border:1px solid var(--line);
+  border-radius:11px;padding:11px 13px;font:12.5px/1.4 var(--mono);
+  word-break:break-all;color:var(--fg);
+}
+.copyfield .btn{flex:0 0 auto;width:auto;padding:0 16px;height:auto}
+
+/* =====================================================================
+   Tooltips
+   The native title attribute takes about a second to appear and cannot be
+   styled, which is why the hover actions on a message read as seven mystery
+   glyphs. These show immediately.
+   ===================================================================== */
+#tip{
+  position:fixed;z-index:90;pointer-events:none;opacity:0;
+  transform:translateY(3px);transition:opacity .1s,transform .1s;
+  background:var(--fg);color:var(--bg);font-size:12px;font-weight:560;
+  padding:5px 9px;border-radius:7px;white-space:nowrap;max-width:80vw;
+  overflow:hidden;text-overflow:ellipsis;box-shadow:var(--shadow);
+}
+#tip.on{opacity:1;transform:translateY(0)}
+@media (prefers-reduced-motion:reduce){#tip{transition:none}}
+
+/* =====================================================================
+   Search bar: history and saved searches live in the bar itself
+   ===================================================================== */
+.searchwrap .tools{
+  position:absolute;right:4px;display:flex;align-items:center;gap:2px;
+}
+#qsave,#qclear{
+  position:static;width:30px;height:30px;border-radius:8px;
+  display:none;place-items:center;color:var(--fg-3);flex:none;
+}
+#qsave.on,#qclear.on{display:grid}
+#qsave:hover,#qclear:hover{background:var(--raised);color:var(--fg)}
+#qsave.saved{color:var(--accent)}
+#q{padding-right:70px}
+#suggest .grouphd{
+  display:flex;align-items:center;gap:8px;padding:9px 12px 5px;
+  font-size:11px;font-weight:660;color:var(--fg-3);
+  text-transform:uppercase;letter-spacing:.06em;
+}
+#suggest .grouphd .linkbtn{margin-left:auto;text-transform:none;letter-spacing:0}
+#suggest button .sub2{font-size:11.5px;color:var(--fg-3)}
+#suggest .ic{width:16px;height:16px;flex:none;stroke:currentColor;fill:none;
+  stroke-width:1.9;stroke-linecap:round;stroke-linejoin:round;color:var(--fg-3)}
+#suggest .drop{
+  width:26px;height:26px;border-radius:7px;display:grid;place-items:center;
+  color:var(--fg-3);font-size:15px;line-height:1;flex:none;opacity:.6
+}
+#suggest button:hover .drop{opacity:1}
+#suggest .drop:hover{background:var(--sunken);color:var(--danger)}
+
+/* =====================================================================
+   Message hover actions: labelled, and no longer overlapping the row above
+   ===================================================================== */
+@media (hover:hover) and (pointer:fine){
+  .rowact{
+    top:-15px;padding:3px;border-radius:11px;gap:1px;
+  }
+  .rowact button{width:30px;height:30px;border-radius:8px}
+  .rowact button:hover{background:var(--accent-soft);color:var(--accent)}
+}
+
+/* Details dialog: a small centred card, used for "who is this account" */
+#dlg{
+  position:fixed;z-index:70;left:50%;top:50%;transform:translate(-50%,-46%) scale(.985);
+  width:min(460px,92vw);max-height:82vh;overflow:hidden;background:var(--surface);
+  border:1px solid var(--line);border-radius:18px;box-shadow:var(--shadow);
+  display:none;flex-direction:column;opacity:0;transition:opacity .16s,transform .16s;
+}
+#dlg.on{display:flex;opacity:1;transform:translate(-50%,-50%) scale(1)}
+#dlg header{display:flex;align-items:center;gap:12px;padding:14px 16px;
+  border-bottom:1px solid var(--line-soft);flex:none}
+#dlg header h3{margin:0;font-size:16px;font-weight:660}
+#dlg .content{overflow-y:auto;padding:16px;display:flex;flex-direction:column;gap:var(--gap)}
+/* Search dropdown rows that carry their own delete control */
+.sgrow{display:flex;align-items:center;gap:2px}
+.sgrow > button[role="option"]{flex:1;min-width:0}
+.sgrow .drop{margin-right:6px}
+#suggest .newrow{display:flex;gap:8px;padding:8px 10px 10px;align-items:center}
+#suggest .newrow input{
+  flex:1;min-width:0;height:36px;padding:0 11px;border-radius:9px;
+  background:var(--sunken);border:1px solid var(--line);font-size:16px}
+#suggest .newrow input:focus{outline:none;border-color:var(--accent);background:var(--surface)}
+#suggest .newrow .btn{flex:none}
+
+/* The appearance controls are one node that Settings borrows */
+#look-controls{display:flex;flex-direction:column;gap:var(--gap)}
+#look-controls[hidden]{display:none}
+#look-controls .sub{font-size:12px;font-weight:560;color:var(--fg-3);
+  text-transform:none;letter-spacing:0;display:block;margin-bottom:4px}
+.swatches{display:flex;flex-wrap:wrap;gap:9px}
+.swatch-btn{width:30px;height:30px}
 </style>
 </head>
 <body>
@@ -747,13 +1103,13 @@ input[type=color]{flex:1;height:42px;padding:3px;border-radius:10px;
   <div class="title">AuroraIRC <span id="subtitle">loading…</span></div>
 
   <div class="actions">
-    <button class="iconbtn" id="people-btn" title="People (P)" aria-pressed="false">
+    <button class="iconbtn" id="people-btn" data-tip="People (P)" aria-label="People" aria-pressed="false">
       <svg viewBox="0 0 24 24"><path d="M16 19v-1a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v1"/><circle cx="9" cy="7" r="3.2"/><path d="M22 19v-1a4 4 0 0 0-3-3.8"/><path d="M16 3.2A4 4 0 0 1 16 11"/></svg>
     </button>
-    <button class="iconbtn" id="filter-btn" title="Filters (F)">
+    <button class="iconbtn" id="filter-btn" data-tip="Filters (F)" aria-label="Filters">
       <svg viewBox="0 0 24 24"><path d="M3 5h18M6 12h12M10 19h4"/></svg>
     </button>
-    <button class="iconbtn" id="live-btn" title="Live connection (L)">
+    <button class="iconbtn" id="live-btn" data-tip="Account and live connection (L)" aria-label="Account">
       <svg viewBox="0 0 24 24"><path d="M12 2a10 10 0 0 1 10 10"/><path d="M12 8a6 6 0 0 1 6 6"/><circle cx="8" cy="16" r="2.4"/></svg>
       <i class="badge"></i>
     </button>
@@ -761,9 +1117,14 @@ input[type=color]{flex:1;height:42px;padding:3px;border-radius:10px;
 
   <div class="searchwrap">
     <svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.2-3.2"/></svg>
-    <input id="q" type="search" placeholder="Search 336,000 messages" autocomplete="off" enterkeyhint="search">
-    <button id="qclear" title="Clear"><svg viewBox="0 0 24 24" width="16" height="16" stroke="currentColor" fill="none" stroke-width="2" stroke-linecap="round"><path d="M18 6 6 18M6 6l12 12"/></svg></button>
-    <div id="suggest"></div>
+    <input id="q" type="search" placeholder="Search the archive" autocomplete="off"
+           enterkeyhint="search" role="combobox" aria-expanded="false"
+           aria-controls="suggest" aria-autocomplete="list">
+    <div class="tools">
+      <button id="qsave" data-tip="Save this search" aria-label="Save this search"><svg viewBox="0 0 24 24" width="16" height="16" stroke="currentColor" fill="none" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M6 4h12a1 1 0 0 1 1 1v15l-7-4-7 4V5a1 1 0 0 1 1-1Z"/></svg></button>
+      <button id="qclear" data-tip="Clear" aria-label="Clear search"><svg viewBox="0 0 24 24" width="16" height="16" stroke="currentColor" fill="none" stroke-width="2" stroke-linecap="round"><path d="M18 6 6 18M6 6l12 12"/></svg></button>
+    </div>
+    <div id="suggest" role="listbox"></div>
   </div>
 
   <div class="rail" id="rail"></div>
@@ -778,7 +1139,7 @@ input[type=color]{flex:1;height:42px;padding:3px;border-radius:10px;
       <span><b id="count">0</b> messages</span>
       <span class="grow"></span>
       <button class="linkbtn" id="copy">Copy</button>
-      <button class="linkbtn" id="theme">Theme</button>
+      <button class="linkbtn" id="theme">Appearance</button>
     </div>
     <div class="strip" id="strip"></div>
     <div id="log"><div class="loading">Loading…</div></div>
@@ -802,119 +1163,163 @@ input[type=color]{flex:1;height:42px;padding:3px;border-radius:10px;
 <div class="sheet side" id="people-sheet"><aside id="mobile-aside"></aside></div>
 
 <!-- filters -->
-<div class="sheet bottom" id="filter-sheet">
+<div class="sheet bottom" id="filter-sheet" role="dialog" aria-label="Filters">
   <div class="handle"></div>
   <header><h3>Filters</h3><span class="grow"></span>
     <button class="linkbtn" id="clear-filters">Clear all</button></header>
   <div class="content">
+
     <div class="field">
-      <label>Sort</label>
+      <label class="fhead">Sort</label>
       <div class="seg" id="order-seg">
         <button data-order="asc">Newest first</button>
         <button data-order="desc">Oldest first</button>
       </div>
     </div>
+
     <div class="field">
-      <label>Date range</label>
+      <label class="fhead">Date range</label>
       <div class="dates">
         <input id="from" type="date" aria-label="From">
         <input id="to" type="date" aria-label="To">
       </div>
-      <div class="presets" id="presets">
+      <div class="chips" id="presets">
         <button class="chip" data-days="1">Today</button>
         <button class="chip" data-days="7">7 days</button>
         <button class="chip" data-days="30">30 days</button>
         <button class="chip" data-days="365">1 year</button>
         <button class="chip" data-days="0">All</button>
       </div>
+      <div class="hint" id="tzhint"></div>
     </div>
+
+    <!-- Presence used to be a block of its own, which made two rows of on/off
+         chips stacked one above the other read as two different ideas. They
+         are the same idea: what shows up in the feed. -->
     <div class="field">
-      <label title="Stored on the server, so they follow you between devices.">Saved searches
-        <button class="linkbtn" id="save-search" style="float:right">Save current</button></label>
-      <div id="savedlist"></div>
+      <label class="fhead">Show</label>
+      <div class="chips" id="kinds">
+        <button class="chip" data-kind="0" aria-pressed="false"><i class="dotm"></i>Messages</button>
+        <button class="chip" data-kind="1" aria-pressed="false"><i class="dotm"></i>Actions</button>
+        <button class="chip" data-kind="2" aria-pressed="false"><i class="dotm"></i>Topics</button>
+        <button class="chip" id="show-events" aria-pressed="false"><i class="dotm"></i>Joins &amp; quits</button>
+      </div>
+      <div class="hint">With none of the first three on, every kind of message is
+        included. Joins and quits are drawn in alongside conversation — they are
+        never stored as messages, and agents never see them.</div>
     </div>
+
     <div class="field">
-      <label>Tags <button class="linkbtn" id="manage-tags" style="float:right">Manage</button></label>
+      <label class="fhead">Tags
+        <button class="linkbtn" id="manage-tags">Manage</button></label>
       <div class="taglist"></div>
-      <div class="hint">Type <code>&amp;tagname</code> in the search bar to quickly sort by tag.</div>
+      <div class="hint">Type <code>&amp;tagname</code> in the search bar to filter by a
+        tag, or <code>&amp;red</code> for a whole colour.</div>
     </div>
+
     <div class="field">
-      <label>Presence</label>
-      <div class="presets">
-        <button class="chip" id="show-events" aria-pressed="false">Show joins &amp; quits</button>
-      </div>
-      <div class="hint">Excluded from MCP tools entirely. Front-end only.</div>
+      <label class="fhead">Saved searches
+        <button class="linkbtn" id="save-search">Save current</button></label>
+      <div id="savedlist"></div>
+      <div class="hint">Kept on the server, so they follow you between devices.</div>
     </div>
-    <div class="field">
-      <label>Message types</label>
-      <div class="presets" id="kinds">
-        <button class="chip" data-kind="0" aria-pressed="false">Messages</button>
-        <button class="chip" data-kind="1" aria-pressed="false">Actions</button>
-        <button class="chip" data-kind="2" aria-pressed="false">Topics</button>
-      </div>
-      <div class="hint">Leave all off to include everything.</div>
-    </div>
+
   </div>
 </div>
 
 <div id="bgimg"></div>
 
-<!-- settings -->
-<div class="sheet bottom" id="set-sheet">
-  <div class="handle"></div>
-  <header><h3>Settings</h3><span class="grow"></span>
-    <button class="linkbtn" id="set-close">Done</button></header>
-  <div class="content" id="set-content"></div>
+<!-- settings: a full panel, not a bottom sheet. A settings page is a page. -->
+<div class="panel railed" id="setpanel" role="dialog" aria-label="Settings">
+  <header>
+    <h3 id="set-title">Settings</h3><span class="grow"></span>
+    <button class="linkbtn" id="set-close">Done</button>
+  </header>
+  <div class="pbody">
+    <div class="pnav" id="set-nav"></div>
+    <div class="pmain" id="set-content"></div>
+  </div>
 </div>
 
-<!-- appearance -->
-<div class="sheet bottom" id="look-sheet">
-  <div class="handle"></div>
-  <header><h3>Appearance</h3><span class="grow"></span>
-    <button class="linkbtn" id="look-close">Done</button></header>
-  <div class="content">
-    <div class="field">
-      <label>Theme</label>
-      <div class="seg" id="theme-seg">
-        <button data-th="">System</button>
-        <button data-th="light">Light</button>
-        <button data-th="dark">Dark</button>
-        <button data-th="noir">Noir</button>
-      </div>
+<!-- setup / join wizard -->
+<div class="panel" id="wizard" role="dialog" aria-label="Setup">
+  <header>
+    <h3 id="wiz-title">Welcome</h3><span class="grow"></span>
+    <span class="stepno" id="wiz-step"></span>
+  </header>
+  <div class="steps" id="wiz-steps"></div>
+  <div class="pbody"><div class="pmain" id="wiz-content"></div></div>
+  <footer>
+    <button class="btn ghost" id="wiz-back" style="width:auto">Back</button>
+    <span class="grow"></span>
+    <button class="btn ghost" id="wiz-alt" style="width:auto;display:none"></button>
+    <button class="btn" id="wiz-next" style="width:auto">Next</button>
+  </footer>
+</div>
+
+<!-- account details, opened from the People list -->
+<div id="dlg" role="dialog" aria-label="Details">
+  <header><h3 id="dlg-title">Details</h3><span class="grow"></span>
+    <button class="linkbtn" id="dlg-close">Close</button></header>
+  <div class="content" id="dlg-body"></div>
+</div>
+
+<div id="tip" role="status"></div>
+
+<!-- Appearance controls live here and are moved into Settings when that
+     section is shown. Moving the node keeps every listener bound, so these
+     controls have exactly one definition and one set of handlers. -->
+<div id="look-controls" hidden>
+  <div class="field">
+    <label class="fhead">Theme</label>
+    <div class="seg" id="theme-seg">
+      <button data-th="">System</button>
+      <button data-th="light">Light</button>
+      <button data-th="dark">Dark</button>
+      <button data-th="noir">Noir</button>
     </div>
-    <div class="field">
-      <label>Accent</label>
-      <div class="swatches" id="accents"></div>
-      <div class="dates" style="margin-top:8px">
-        <input id="accent-custom" type="color" aria-label="Custom accent">
-        <button class="btn ghost" id="accent-reset" style="width:auto;padding:0 16px">Reset</button>
-      </div>
+  </div>
+  <div class="field">
+    <label class="fhead">Accent</label>
+    <div class="swatches" id="accents"></div>
+    <div class="formrow">
+      <input id="accent-custom" type="color" aria-label="Custom accent">
+      <button class="btn ghost" id="accent-reset">Reset</button>
     </div>
-    <div class="field">
-      <label title="Loads pictures from wherever they are hosted, which tells those servers your IP address.">Inline images</label>
-      <div class="presets">
-        <button class="chip" id="img-toggle" aria-pressed="true">Show images</button>
-      </div>
-      <div class="hint">Fetching a picture tells whoever hosts it your IP
-        address. Turn this off to stop that.</div>
+  </div>
+  <div class="field">
+    <label class="fhead">Clock</label>
+    <div class="seg" id="clock-seg">
+      <button data-clock="">Match device</button>
+      <button data-clock="24">24-hour</button>
+      <button data-clock="12">12-hour</button>
     </div>
-    <div class="field">
-      <label>Background</label>
-      <div class="dates">
-        <label class="btn ghost" for="bgfile" style="cursor:pointer">Choose image…</label>
-        <input id="bgfile" type="file" accept="image/*" hidden>
-        <button class="btn ghost" id="bgclear" style="width:auto;padding:0 16px">Clear</button>
-      </div>
-      <div id="bgcontrols" style="display:none">
-        <label class="sub">Image strength</label>
-        <input id="bgstrength" type="range" min="5" max="100" value="35">
-        <label class="sub">Blur</label>
-        <input id="bgblur" type="range" min="0" max="24" value="0">
-        <label class="sub">Dim</label>
-        <input id="bgscrim" type="range" min="0" max="95" value="50">
-      </div>
-      <div class="hint">Stored on this device only, resized to keep it small.</div>
+    <div class="hint" id="clockhint"></div>
+  </div>
+  <div class="field">
+    <label class="fhead">Inline images</label>
+    <div class="chips">
+      <button class="chip" id="img-toggle" aria-pressed="true"><i class="dotm"></i>Show images</button>
     </div>
+    <div class="hint">Fetching a picture tells whoever hosts it your IP address.
+      Turn this off to stop that.</div>
+  </div>
+  <div class="field">
+    <label class="fhead">Background</label>
+    <div class="formrow">
+      <label class="btn ghost" for="bgfile" style="cursor:pointer;flex:1 1 auto">Choose image…</label>
+      <input id="bgfile" type="file" accept="image/*" hidden>
+      <button class="btn ghost" id="bgclear">Clear</button>
+    </div>
+    <div id="bgcontrols" class="stack" style="display:none">
+      <div><label class="sub">Image strength</label>
+        <input id="bgstrength" type="range" min="5" max="100" value="35"></div>
+      <div><label class="sub">Blur</label>
+        <input id="bgblur" type="range" min="0" max="24" value="0"></div>
+      <div><label class="sub">Dim</label>
+        <input id="bgscrim" type="range" min="0" max="95" value="50"></div>
+    </div>
+    <div class="hint">Stored on this device only, and resized to keep it small.</div>
   </div>
 </div>
 
@@ -1016,16 +1421,69 @@ function tagStyle(color){
       +`--tg-dot:hsl(${h} ${s}% 52%)`;
 }
 
-/* Timestamps are stored as UTC seconds but shown in the reader's own zone -
-   a live chat client showing UTC reads as hours out of step with reality.
-   Day grouping follows local time too, or a "day" would not match its
-   messages. */
-const utc = ts => new Date(ts*1000);
-function dayKey(ts){
-  const d=new Date(ts*1000);
-  return d.getFullYear()+'-'+pad(d.getMonth()+1)+'-'+pad(d.getDate());
+/* ---------------- time ----------------
+   Timestamps are stored as UTC seconds and shown in the reader's own zone.
+   Everything derived from one goes through here - the clock on a row, the day
+   a message is grouped under, the bounds a date filter turns into, the label
+   on a preset - so a reader in Berlin and a reader in Brisbane each see their
+   own day rather than whichever zone the machine happens to sit in. */
+const TZ = (()=>{ try{ return Intl.DateTimeFormat().resolvedOptions().timeZone||'' }
+                  catch(e){ return '' } })();
+function tzShort(){
+  try{
+    const part=new Intl.DateTimeFormat(undefined,{timeZoneName:'short'})
+      .formatToParts(new Date()).find(x=>x.type==='timeZoneName');
+    return part?part.value:'';
+  }catch(e){ return '' }
 }
-function hhmm(ts){const d=new Date(ts*1000);return pad(d.getHours())+':'+pad(d.getMinutes())}
+/* 13:00 or 1:00 pm - whichever this device writes, unless it has been told. */
+function wants12h(){
+  if(look.clock==='12')return true;
+  if(look.clock==='24')return false;
+  try{ return !!new Intl.DateTimeFormat(undefined,{hour:'numeric'})
+    .resolvedOptions().hour12 }catch(e){ return false }
+}
+const isoDay = d => d.getFullYear()+'-'+pad(d.getMonth()+1)+'-'+pad(d.getDate());
+/* Today, in the reader's zone. toISOString() would answer in UTC, which for
+   anyone east of Greenwich picks yesterday for most of the working day. */
+const todayKey = () => isoDay(new Date());
+function dayKey(ts){ return isoDay(new Date(ts*1000)) }
+function hhmm(ts){
+  const d=new Date(ts*1000);
+  if(!wants12h())return pad(d.getHours())+':'+pad(d.getMinutes());
+  const h=d.getHours();
+  return (h%12||12)+':'+pad(d.getMinutes())+(h<12?' am':' pm');
+}
+/* The full, unambiguous form, with the zone named so nobody has to guess. */
+function stamp(ts){
+  const d=new Date(ts*1000);
+  try{
+    return d.toLocaleString(undefined,{weekday:'short',day:'numeric',month:'short',
+      year:'numeric',hour:'2-digit',minute:'2-digit',
+      hour12:wants12h(),timeZoneName:'short'});
+  }catch(e){ return d.toString() }
+}
+/* A date on its own - "joined 3 Feb 2026" - in the reader's zone. */
+function dateOnly(ts){
+  if(!ts)return '';
+  try{ return new Date(ts*1000).toLocaleDateString(undefined,
+    {day:'numeric',month:'short',year:'numeric'}) }
+  catch(e){ return dayKey(ts) }
+}
+function relTime(ts){
+  if(!ts)return 'never';
+  const secs=Math.round(Date.now()/1000)-ts;
+  if(secs<60)return 'just now';
+  const units=[[60,'minute'],[3600,'hour'],[86400,'day'],[604800,'week'],
+               [2629800,'month'],[31557600,'year']];
+  let out='a while ago';
+  for(let i=units.length-1;i>=0;i--){
+    const [size,name]=units[i];
+    if(secs>=size){const n=Math.floor(secs/size);
+      out=`${n} ${name}${n===1?'':'s'} ago`;break}
+  }
+  return out;
+}
 /* Local midnight..23:59:59 for a YYYY-MM-DD, as unix seconds. The API accepts
    raw timestamps, so a day filter means the same day you can see on screen. */
 function dayRange(k){
@@ -1081,7 +1539,7 @@ function writeQueryBox(nicks,text,chans,tags){
     .concat([...nicks].map(n=>'@'+n))
     .concat([...(tags||state.tags)].map(t=>'&'+t))
     .concat(text?[text]:[]).join(' ');
-  $('#qclear').classList.toggle('on',!!box.value);
+  syncSearchTools();
 }
 function applyQueryBox(){
   const {nicks,chans,tags,text}=parseQuery($('#q').value);
@@ -1091,7 +1549,11 @@ function applyQueryBox(){
   drawNicks();drawTagList();refresh();syncComposerChannel();
 }
 
-/* suggestion list while typing an @token */
+/* ---------------- the search dropdown ----------------
+   Two jobs on one surface. Mid-token it completes a #channel, @person or
+   &tag. The rest of the time it offers what you searched for before and what
+   you saved - both account features, so an anonymous reader never sees a
+   history panel that could not have anything in it. */
 function caretToken(){
   const box=$('#q'),pos=box.selectionStart??box.value.length;
   const before=box.value.slice(0,pos),after=box.value.slice(pos);
@@ -1099,12 +1561,36 @@ function caretToken(){
   const end=after.search(/\s/)<0?box.value.length:pos+after.search(/\s/);
   return {token:box.value.slice(start,end),start,end};
 }
+
+const ICON_CLOCK=`<svg class="ic" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/>`+
+  `<path d="M12 7v5l3.5 2"/></svg>`;
+const ICON_STAR=`<svg class="ic" viewBox="0 0 24 24">`+
+  `<path d="M6 4h12a1 1 0 0 1 1 1v15l-7-4-7 4V5a1 1 0 0 1 1-1Z"/></svg>`;
+
+let SUGGEST_MODE='';        // '', 'save'
+
+function closeSuggest(){
+  const box=$('#suggest');
+  box.classList.remove('on');box.innerHTML='';
+  SUGGEST_MODE='';
+  $('#q').setAttribute('aria-expanded','false');
+}
+function openSuggest(html){
+  const box=$('#suggest');
+  box.innerHTML=html;
+  box.classList.add('on');
+  $('#q').setAttribute('aria-expanded','true');
+}
+
 function updateSuggest(){
-  const box=$('#suggest'),{token}=caretToken();
+  if(SUGGEST_MODE==='save')return;
+  const {token}=caretToken();
   const sigil=token[0];
-  if(!META||!'@#&'.includes(sigil)||token.length<1){
-    box.classList.remove('on');box.innerHTML='';return;
-  }
+  if(META&&'@#&'.includes(sigil)&&token.length>=1)return completeToken(sigil,token);
+  return drawRecent();
+}
+
+function completeToken(sigil,token){
   const frag=token.slice(1).toLowerCase();
   const chosen=parseQuery($('#q').value);
   let hits=[];
@@ -1132,21 +1618,123 @@ function updateSuggest(){
         av:`<span class="swatch" style="${tagStyle(c)};background:var(--tg-dot);
             width:13px;height:13px;border-radius:50%"></span>`})));
   }
-  if(!hits.length){box.classList.remove('on');box.innerHTML='';return}
-  box.innerHTML=hits.map(h=>
-    `<button type="button" data-accept="${esc(h.v)}" data-sigil="${sigil}">
+  if(!hits.length)return closeSuggest();
+  openSuggest(hits.map(h=>
+    `<button type="button" role="option" data-accept="${esc(h.v)}" data-sigil="${sigil}">
        ${h.av}<span class="nm">${esc(h.label)}</span>
-       <span class="ct">${h.count===''?'':fmtN(h.count)}</span></button>`).join('');
-  box.classList.add('on');
+       <span class="ct">${h.count===''?'':fmtN(h.count)}</span></button>`).join(''));
 }
+
+/* Recent searches and saved ones. Both are per-account, so this is empty and
+   hidden for an anonymous reader rather than being a promise it cannot keep. */
+function drawRecent(){
+  if(!SESSION.signedIn)return closeSuggest();
+  const q=$('#q').value.trim().toLowerCase();
+  const hist=HISTORY.filter(h=>h.query.toLowerCase()!==q&&
+    (!q||h.query.toLowerCase().includes(q))).slice(0,6);
+  const saved=SAVED.filter(sv=>!q||
+    ((sv.name||'')+' '+(sv.query||'')).toLowerCase().includes(q)).slice(0,5);
+  if(!hist.length&&!saved.length)return closeSuggest();
+  let html='';
+  if(hist.length){
+    html+=`<div class="grouphd">Recent`+
+      `<button class="linkbtn" type="button" data-forgetall="1">Clear</button></div>`+
+      hist.map(h=>
+      `<div class="sgrow">
+         <button type="button" role="option" data-run="${esc(h.query)}">
+           ${ICON_CLOCK}<span class="nm">${esc(h.query)}</span>
+           <span class="ct">${esc(relTime(h.at))}</span></button>
+         <button type="button" class="drop" data-forget="${esc(h.query)}"
+                 aria-label="Forget this search">×</button>
+       </div>`).join('');
+  }
+  if(saved.length){
+    html+=`<div class="grouphd">Saved</div>`+saved.map(sv=>
+      `<button type="button" role="option" data-saved="${esc(sv.name)}">
+         ${ICON_STAR}<span class="nm">${esc(sv.name)}</span>
+         <span class="ct">${esc(sv.query||'everything')}</span></button>`).join('');
+  }
+  openSuggest(html);
+}
+
+/* Saving lives in the bar because that is where the search you want to keep
+   already is. It used to be reachable only from inside the Filters sheet,
+   which meant leaving the thing you were naming to go and name it. */
+function openSaveSearch(){
+  if(!SESSION.signedIn)return toast('Sign in to save searches');
+  SUGGEST_MODE='save';
+  const q=$('#q').value.trim();
+  const existing=SAVED.find(sv=>(sv.query||'')===q);
+  openSuggest(
+    `<div class="grouphd">${existing?'Update this saved search':'Save this search'}</div>`+
+    `<div class="newrow">
+       <input id="sv-name" maxlength="48" placeholder="Name it, e.g. release chatter"
+              value="${esc(existing?existing.name:'')}" autocomplete="off">
+       <button class="btn sm" id="sv-go" type="button">Save</button>
+     </div>
+     <div class="grouphd" style="padding-top:2px">${esc(q||'everything')}</div>`);
+  const name=$('#sv-name');
+  name.focus();name.select();
+  const go=async()=>{
+    const label=name.value.trim();
+    if(!label)return name.focus();
+    const r=await post('/api/searches',
+      {name:label,query:q,extra:currentSearchState()});
+    if(r.error)return toast(r.error);
+    SAVED=r.searches||[];drawSaved();closeSuggest();
+    $('#qsave').classList.add('saved');
+    toast('Saved');
+  };
+  $('#sv-go').onclick=go;
+  name.onkeydown=e=>{
+    if(e.key==='Enter'){e.preventDefault();go()}
+    if(e.key==='Escape'){e.preventDefault();closeSuggest();$('#q').focus()}
+  };
+}
+
 function acceptSuggestion(value,sigil){
   const {start,end}=caretToken(),box=$('#q');
   box.value=(box.value.slice(0,start)+(sigil||'@')+value+' '+box.value.slice(end))
     .replace(/\s+/g,' ').trimStart();
-  $('#suggest').classList.remove('on');
+  closeSuggest();
   box.focus();
   applyQueryBox();
 }
+
+/* ---------------- search history ----------------
+   Server-side and per account, for the same reason saved searches are: the
+   phone and the desktop should agree about what you have been looking for. */
+let HISTORY=[],lastCommitted='';
+async function refreshHistory(){
+  if(!SESSION.signedIn){HISTORY=[];return}
+  try{ const d=await api('/api/history'); HISTORY=d.history||[] }catch(e){}
+}
+async function commitSearch(){
+  const q=$('#q').value.trim();
+  // Only what someone actually ran, not every keystroke on the way to it
+  if(!SESSION.signedIn||!q||q===lastCommitted)return;
+  lastCommitted=q;
+  try{ const r=await post('/api/history',{action:'record',query:q});
+       HISTORY=r.history||HISTORY }catch(e){}
+}
+async function forgetSearch(q){
+  try{ const r=await post('/api/history',{action:'clear',query:q||undefined});
+       HISTORY=r.history||[] }catch(e){}
+  if(q)lastCommitted='';
+  drawRecent();
+}
+/* The bookmark only means anything to an account, and it lights up when this
+   exact search is already one of the saved ones. */
+function syncSearchTools(){
+  const q=$('#q').value;
+  $('#qclear').classList.toggle('on',!!q);
+  const save=$('#qsave');
+  save.classList.toggle('on',!!SESSION.signedIn);
+  const hit=SAVED.some(sv=>(sv.query||'')===q.trim());
+  save.classList.toggle('saved',hit);
+  save.setAttribute('data-tip',hit?'Update this saved search':'Save this search');
+}
+
 /* Lowercased nick -> canonical, built once so mention detection is a set
    lookup rather than a scan over a thousand names per message. */
 let NICKSET=new Map();
@@ -1436,7 +2024,7 @@ function msgNode(m, opts={}){
       (grouped?'':
        `<div class="meta">`+
          `<span class="who" data-nick="${esc(m.nick)}" style="color:${nickColor(m.nick)}" title="${esc(whoTitle)}">${esc(m.nick)}</span>`+
-         `<span class="when" data-ctx="${m.id}" title="${dayKey(m.ts)} ${hhmm(m.ts)} UTC — see context">${hhmm(m.ts)}</span>`+
+         `<span class="when" data-ctx="${m.id}" data-tip="${esc(stamp(m.ts))} — see in context">${hhmm(m.ts)}</span>`+
          (multi?`<span class="chan" data-chan="${esc(m.channel)}" style="${ch}"
              title="Show only #${esc(m.channel)}">#${esc(m.channel)}</span>`:'')+
        `</div>`)+
@@ -1449,8 +2037,26 @@ function msgNode(m, opts={}){
           `<i></i>${esc(t.label||t.name)}</span>`).join('')+`</div>`:'')+
     `</div>`+
     (opts.plain?'':rowActionStrip(m));
+  el.__msg=m;
   lastMsg=m;
   return el;
+}
+
+/* Whether a row groups under the one above it is decided against `lastMsg`.
+   Holding that in a module variable breaks the moment a row leaves the feed -
+   which is exactly what happens when the optimistic echo of your own message
+   is replaced by the real one arriving over the stream. The echo carried the
+   header; the real row then grouped itself under whoever spoke *before* it,
+   so your reply appeared to be theirs until the page was reloaded. Read the
+   state back off the DOM instead of trying to keep a mirror of it. */
+function syncTail(box){
+  const log=box||$('#log');
+  if(!log)return;
+  const rows=log.querySelectorAll('.msg');
+  const last=rows.length?rows[rows.length-1]:null;
+  lastMsg=(last&&last.__msg)||null;
+  const seps=log.querySelectorAll('.daysep [data-day]');
+  lastDay=seps.length?seps[seps.length-1].dataset.day:null;
 }
 function buildFrag(list){
   const frag=document.createDocumentFragment();
@@ -1507,7 +2113,10 @@ async function spliceEvents(){
   const rows=$$('#log .msg');
   if(!rows.length)return;
   const from=+rows[0].dataset.ts, to=+rows[rows.length-1].dataset.ts;
-  const lo=Math.min(from,to), hi=Math.max(from,to);
+  const lo=Math.min(from,to);
+  // Reading the live end means "up to now", not "up to the last thing anyone
+  // said" - otherwise a join with no message after it never appears at all.
+  const hi=atLiveEnd()?Math.floor(Date.now()/1000)+2:Math.max(from,to);
 
   const p=new URLSearchParams();
   p.set('from',lo);p.set('to',hi);
@@ -1581,6 +2190,10 @@ async function spliceEvents(){
   }
   while(i<ordered.length)log.appendChild(evtNode(ordered[i++]));
   restore();
+  // Presence is fetched for a window rather than streamed, so at the live end
+  // it needs looking at again now and then or a quiet channel's comings and
+  // goings only appear when somebody finally speaks.
+  if(state.showEvents&&atLiveEnd())evtTimer=setTimeout(spliceEvents,12000);
 }
 
 /* ---------------- loading ---------------- */
@@ -1739,7 +2352,10 @@ async function jumpTo(id){
 async function loadStrip(){
   const data=await api('/api/activity',params());
   const box=$('#strip');box.innerHTML='';
-  if(!data.months.length)return;
+  // One bucket is a full-width block of colour that says nothing; the strip is
+  // a shape you scan, and it needs at least a couple of months to have one.
+  box.style.display=(data.months.length>1)?'':'none';
+  if(data.months.length<2)return;
   const max=Math.max(...data.months.map(m=>m.count));
   for(const m of data.months){
     const b=document.createElement('div');
@@ -1897,7 +2513,7 @@ function drawTagManager(){
         <button class="del" title="${t.builtin?'Built-in tags can be deleted too':'Delete'}">×</button>
       </div>`).join('')+
     `<div class="field" style="margin-top:6px">
-       <label>New tag</label>
+       <label class="fhead">New tag</label>
        <div class="tagedit new">
          <input class="lbl" id="mk-name" placeholder="e.g. gpu" maxlength="24" autocomplete="off">
          <select class="col" id="mk-color">${TAG_COLOR_LIST.map(c=>
@@ -1994,7 +2610,7 @@ const ROWACTS=[
 function rowActionStrip(m){
   return `<div class="rowact">`+ROWACTS.filter(a=>!a.nick||m.nick).map(a=>
     `<button data-rowact="${a.kind}" data-rowid="${m.id}"`+
-    ` title="${esc(a.hint(m.nick))}" aria-label="${esc(a.hint(m.nick))}">`+
+    ` data-tip="${esc(a.hint(m.nick))}" aria-label="${esc(a.hint(m.nick))}">`+
     `<svg viewBox="0 0 24 24">${a.icon}</svg></button>`).join('')+`</div>`;
 }
 
@@ -2009,7 +2625,7 @@ function runRowAction(kind,id,row,el){
   if(kind==='reply')return replyTo(nick,chan);
   if(kind==='tr')   return translateRow(id,el);
   if(kind==='tag')  return openPicker(id,el||row);
-  if(kind==='copy'){ copyPermalink(id,el); if(!el)toast('Link copied'); }
+  if(kind==='copy') return copyPermalink(id,el);
 }
 
 /* Clicking a message offers choices rather than acting immediately - jumping
@@ -2121,14 +2737,17 @@ function drawApplied(){
 function clearFilters(opts={}){
   state.q='';state.nicks.clear();state.channels.clear();state.kinds.clear();
   state.tags.clear();state.from='';state.to='';state.anchor=null;
-  $('#q').value='';$('#qclear').classList.remove('on');$('#suggest').classList.remove('on');
+  $('#q').value='';syncSearchTools();closeSuggest();
   $('#from').value='';$('#to').value='';
   $$('#rail .chip').forEach(c=>c.setAttribute('aria-pressed','false'));
   syncKindChips();drawNicks();drawTagList();
   if(!opts.silent){drawApplied();reload();loadStrip()}
 }
 function syncKindChips(){
-  $$('#kinds .chip').forEach(c=>c.setAttribute('aria-pressed',state.kinds.has(+c.dataset.kind)));
+  // [data-kind] only: the joins-and-quits chip shares this row but is a
+  // display preference, not one of the message kinds the server filters on.
+  $$('#kinds .chip[data-kind]').forEach(c=>
+    c.setAttribute('aria-pressed',state.kinds.has(+c.dataset.kind)));
 }
 
 /* ---------------- URL state ---------------- */
@@ -2175,22 +2794,97 @@ async function showContext(id){
   body.querySelector('.focus')?.scrollIntoView({block:'center'});
 }
 
-/* ---------------- sheets ---------------- */
+/* ---------------- overlays ----------------
+   Sheets, the big panels (Settings, the setup wizard) and the details dialog
+   are all the same thing as far as opening and closing goes: one at a time,
+   over a scrim, dismissed the same ways. */
+const OVERLAYS='.sheet, #ctxsheet, .panel, #dlg';
 function openSheet(sel){
-  $$('.sheet, #ctxsheet').forEach(s=>s.classList.remove('on'));
-  $(sel).classList.add('on');$('#scrim').classList.add('on');
+  closeAll({quiet:true});
+  const el=$(sel);
+  if(!el)return;
+  el.classList.add('on');
+  $('#scrim').classList.add('on');
 }
-function closeAll(){
-  $$('.sheet, #ctxsheet').forEach(s=>s.classList.remove('on'));
+const openPanel=openSheet;
+function closeAll(opts={}){
+  // The setup wizard owns the screen while it runs: dismissing it by accident
+  // on a first run leaves an archive nobody has claimed and no way back to it.
+  const keepWiz=WIZ.open&&!WIZ.dismissable&&!opts.force;
+  $$(OVERLAYS).forEach(el=>{
+    if(keepWiz&&el.id==='wizard')return;
+    el.classList.remove('on');
+    if(el.id==='wizard')WIZ.open=false;
+  });
   $('#picker').classList.remove('on');
-  $('#scrim').classList.remove('on');
+  hideTip();
+  $('#scrim').classList.toggle('on',keepWiz);
   $$('.iconbtn').forEach(b=>b.setAttribute('aria-pressed','false'));
   // On desktop the People button reflects a docked panel, not an open sheet
   if(sidebarPinned())
     $('#people-btn').setAttribute('aria-pressed',
       !document.body.classList.contains('no-people'));
 }
-$('#scrim').onclick=closeAll;
+$('#scrim').onclick=()=>closeAll();
+
+/* ---------------- tooltips ----------------
+   The native title attribute waits about a second before it appears, cannot be
+   styled, and on the message hover strip does not appear at all before the
+   pointer has moved on - which is why seven quick actions read as seven
+   mystery glyphs. One element, driven by data-tip, shown straight away. */
+let tipTimer=null,tipTarget=null;
+function placeTip(el){
+  const tip=$('#tip'),r=el.getBoundingClientRect();
+  tip.style.left='0px';tip.style.top='0px';        // measure unclamped
+  const w=tip.offsetWidth,h=tip.offsetHeight;
+  let left=Math.round(r.left+r.width/2-w/2);
+  left=Math.max(8,Math.min(innerWidth-w-8,left));
+  let top=Math.round(r.top-h-8);
+  if(top<6)top=Math.round(r.bottom+8);             // no room above: sit below
+  tip.style.left=left+'px';tip.style.top=top+'px';
+}
+function showTip(el){
+  const text=el.getAttribute('data-tip');
+  if(!text)return;
+  const tip=$('#tip');
+  tipTarget=el;
+  tip.textContent=text;
+  tip.classList.add('on');
+  placeTip(el);
+}
+function hideTip(){
+  clearTimeout(tipTimer);tipTimer=null;tipTarget=null;
+  const tip=$('#tip');
+  if(tip)tip.classList.remove('on');
+}
+function armTip(el,delay){
+  if(tipTarget===el)return;
+  clearTimeout(tipTimer);
+  // No delay on a strip that only exists while you are already hovering it.
+  tipTimer=setTimeout(()=>showTip(el),delay);
+}
+document.addEventListener('pointerover',e=>{
+  if(e.pointerType&&e.pointerType!=='mouse')return;   // touch has no hover
+  const el=e.target.closest('[data-tip]');
+  if(!el)return hideTip();
+  armTip(el,el.closest('.rowact')?0:220);
+});
+document.addEventListener('pointerout',e=>{
+  const el=e.target.closest('[data-tip]');
+  if(el&&el===tipTarget)hideTip();
+  else if(el)clearTimeout(tipTimer);
+});
+document.addEventListener('focusin',e=>{
+  const el=e.target.closest&&e.target.closest('[data-tip]');
+  if(el&&el.matches(':focus-visible'))showTip(el); else hideTip();
+});
+document.addEventListener('focusout',hideTip);
+addEventListener('scroll',hideTip,{passive:true,capture:true});
+addEventListener('resize',hideTip,{passive:true});
+document.addEventListener('click',e=>{
+  // A pressed button has done its job; the label hanging around is just noise
+  if(e.target.closest('[data-tip]'))hideTip();
+},true);
 // The tag popover is anchored to a row, so any scroll or outside click drops it
 document.addEventListener('click',e=>{
   if(!e.target.closest('#picker')&&!e.target.closest('[data-rowact]'))
@@ -2217,124 +2911,130 @@ $('#log').addEventListener('touchend',cancelPress,{passive:true});
 $('#log').addEventListener('touchcancel',cancelPress,{passive:true});
 
 /* ---------------- live / sign-in ---------------- */
-function liveHTML(){
-  const l=SESSION.live||{};
-  const dot=`<span class="dot ${l.connected?'live':''}"></span>`;
-  const status=l.connected
-    ? `<div class="note">${dot} Connected as <b>${esc(l.nick||'?')}</b> ·
-         ${l.channels.length} channels · recording.</div>`
-    : `<div class="note">${dot} <b>Not connected.</b> Start a capture with
-         <br><code>./archive.py live --nick YOUR_NICK</code></div>`;
+/* Signing in is two questions, not one form. Until a password has actually
+   been accepted there is no point asking for a code, and once it has been
+   there is no point still showing the fields that got you here - so the
+   second factor replaces them rather than appearing underneath. */
+const LOGIN={stage:'creds',username:'',password:'',error:''};
 
-  // First run: nobody has claimed this archive yet
-  if(SESSION.setupNeeded){
-    return status+
-      `<div class="note">No owner account yet. Create one to unlock sending,
-        tagging and settings. Reading stays open to everyone either way.</div>
-       <div class="field"><label>Username</label>
-         <input id="su-user" placeholder="you" autocomplete="username"></div>
-       <div class="field"><label>IRC nick</label>
-         <input id="su-nick" placeholder="the nick you'll post under" autocomplete="off"></div>
-       <div class="field"><label>Password</label>
-         <input id="su-pw1" type="password" placeholder="at least 8 characters"
-                autocomplete="new-password"></div>
-       <div class="field"><label>Repeat</label>
-         <input id="su-pw2" type="password" autocomplete="new-password"></div>
-       <div id="in-err"></div>
-       <button class="btn" id="do-setup">Create owner account</button>`;
+function liveStatusHTML(){
+  const l=SESSION.live||{};
+  const nets=l.networks||[];
+  const dot=on=>`<span class="dot ${on?'live':''}"></span>`;
+  if(!nets.length){
+    return `<div class="note">${dot(false)} <b>No network configured yet.</b>
+      An owner can add one in Settings → Server.</div>`;
   }
-  if(INVITE){
-    return status+
-      `<div class="note">You've been invited. Pick a username and password.</div>
-       <div class="field"><label>Username</label>
-         <input id="rd-user" placeholder="you" autocomplete="username"></div>
-       <div class="field"><label>Password</label>
-         <input id="rd-pw" type="password" placeholder="at least 8 characters"
-                autocomplete="new-password"></div>
-       <div id="in-err"></div>
-       <button class="btn" id="do-redeem">Join</button>`;
-  }
+  return `<div class="stack">`+nets.map(n=>
+    `<div class="row"><span class="dot ${n.connected?'live':''}"></span>
+       <span class="rmain"><span class="nm">${esc(n.label||n.network)}</span>
+         <span class="sub2">${n.connected
+           ? `recording as ${esc(n.nick||'?')} · `+
+             `${n.channels.length} channel${n.channels.length===1?'':'s'}`
+           : 'not connected'}</span></span>
+       <span class="pill ${n.connected?'ok':''}">${n.connected?'live':'down'}</span>
+     </div>`).join('')+`</div>`+
+    (l.connected?'':`<div class="note">Nothing is recording. Start a capture with
+      <code>./archive.py live</code>.</div>`);
+}
+
+function liveHTML(){
+  const status=liveStatusHTML();
+
   if(!SESSION.signedIn){
+    if(LOGIN.stage==='totp'){
+      return status+
+        `<div class="note">Two-factor is on for <b>${esc(LOGIN.username)}</b>.
+           Open your authenticator and enter the six digits it is showing.</div>
+         <div class="field"><label class="fhead">Authenticator code</label>
+           <input id="li-totp" inputmode="numeric" autocomplete="one-time-code"
+                  placeholder="000000" maxlength="8" enterkeyhint="go"></div>
+         <div id="in-err"></div>
+         <button class="btn" id="do-verify">Verify</button>
+         <button class="btn ghost" id="do-back">Use a different account</button>`;
+    }
     return status+
-      `<div class="field"><label>Username</label>
-         <input id="li-user" placeholder="username" autocomplete="username"></div>
-       <div class="field"><label>Password</label>
+      `<div class="field"><label class="fhead">Username</label>
+         <input id="li-user" placeholder="username" autocomplete="username"
+                value="${esc(LOGIN.username||'')}"></div>
+       <div class="field"><label class="fhead">Password</label>
          <input id="li-pw" type="password" autocomplete="current-password"
                 enterkeyhint="go"></div>
-       <div class="field" id="totp-field" style="display:none">
-         <label>Authenticator code</label>
-         <input id="li-totp" inputmode="numeric" placeholder="000000" autocomplete="one-time-code"></div>
-       <div class="hint">Reading needs no account. Signing in allows sending,
-         tagging and settings.</div>
        <div id="in-err"></div>
        <button class="btn" id="do-login">Sign in</button>
-       <button class="btn ghost" id="do-pk" style="margin-top:8px">Use a passkey</button>`;
+       <div class="orline">or</div>
+       <button class="btn ghost" id="do-pk">Use a passkey</button>
+       <div class="hint">Reading needs no account at all. Signing in is what
+         allows sending, tagging, saved searches and settings.</div>`;
   }
+
   const u=SESSION.user||{};
-  return status+
-    `<div class="note">Signed in as <b>${esc(u.name||'?')}</b>
-       (${esc(u.role||'member')}) · posting as <b>${esc(u.nick||'?')}</b></div>
-     <button class="btn" id="open-settings">Settings</button>
-     <button class="btn ghost" id="do-signout" style="margin-top:8px">Sign out</button>`;
+  return `<div class="row">
+      <span class="av" style="background:${avatarBg(u.name||'?')}">${esc((u.name||'?')[0])}</span>
+      <span class="rmain"><span class="nm">${esc(u.name||'?')}</span>
+        <span class="sub2">${esc(u.role||'member')} · posting as
+          ${esc(u.nick||'?')}</span></span>
+      ${u.totp?'<span class="pill ok">2FA</span>':''}
+    </div>`+status+
+    `<div class="btnrow">
+       <button class="btn" id="open-settings">Settings</button>
+       <button class="btn ghost" id="open-look">Appearance</button>
+     </div>
+     <button class="btn ghost" id="do-signout">Sign out</button>`;
 }
+
 function adoptSession(r){
   SESSION={...SESSION,signedIn:true,user:r.user,nick:r.nick,
            live:r.live||SESSION.live,setupNeeded:false};
   CSRF=r.csrf||'';
   INVITE='';
+  LOGIN.stage='creds';LOGIN.username='';LOGIN.password='';
   history.replaceState(null,'',location.pathname+location.hash.replace(/[#&]invite=[^&]*/,''));
-  applyLook();drawLive();syncComposer();drawTagList();refreshSaved();
+  applyLook();drawLive();syncComposer();drawTagList();
+  refreshSaved();refreshHistory().then(syncSearchTools);
 }
 
 function drawLive(){
-  $('#live-title').textContent=SESSION.setupNeeded?'Set up'
-    :INVITE?'Invitation':SESSION.signedIn?'Account':'Sign in';
+  $('#live-title').textContent=SESSION.signedIn?'Account'
+    :LOGIN.stage==='totp'?'Two-factor':'Sign in';
   $('#live-content').innerHTML=liveHTML();
-  const err=m=>$('#in-err').innerHTML=`<div class="note err">${esc(m)}</div>`;
+  const err=m=>{const e=$('#in-err');if(e)e.innerHTML=`<div class="note err">${esc(m)}</div>`};
 
-  const setup=$('#do-setup');
-  if(setup)setup.onclick=async()=>{
-    if($('#su-pw1').value!==$('#su-pw2').value)return err("Those don't match.");
-    setup.disabled=true;
-    const r=await post('/api/setup',{username:$('#su-user').value.trim(),
-      password:$('#su-pw1').value,nick:$('#su-nick').value.trim()||undefined});
-    setup.disabled=false;
+  const attempt=async(totp)=>{
+    const r=await post('/api/login',{username:LOGIN.username,
+      password:LOGIN.password,totp:totp||undefined});
+    if(r.totpRequired){
+      // Password was right; the form that proved it has done its job
+      LOGIN.stage='totp';drawLive();
+      setTimeout(()=>{const f=$('#li-totp');f&&f.focus()},30);
+      return;
+    }
     if(r.error)return err(r.error);
-    adoptSession(r);toast('Owner account created');
-  };
-
-  const redeem=$('#do-redeem');
-  if(redeem)redeem.onclick=async()=>{
-    redeem.disabled=true;
-    const r=await post('/api/redeem',{token:INVITE,
-      username:$('#rd-user').value.trim(),password:$('#rd-pw').value});
-    redeem.disabled=false;
-    if(r.error)return err(r.error);
-    adoptSession(r);toast('Welcome');
+    adoptSession(r);toast('Signed in');
   };
 
   const login=$('#do-login');
   if(login){
     const go=async()=>{
+      LOGIN.username=$('#li-user').value.trim();
+      LOGIN.password=$('#li-pw').value;
+      if(!LOGIN.username||!LOGIN.password)
+        return err('Both a username and a password, please.');
       login.disabled=true;
-      const r=await post('/api/login',{username:$('#li-user').value.trim(),
-        password:$('#li-pw').value,totp:($('#li-totp')||{}).value});
-      login.disabled=false;
-      if(r.totpRequired){
-        $('#totp-field').style.display='';$('#li-totp').focus();
-        return err('Enter your authenticator code.');
-      }
-      if(r.error)return err(r.error);
-      adoptSession(r);toast('Signed in');
+      try{ await attempt('') }finally{ login.disabled=false }
     };
     login.onclick=go;
+    for(const id of ['#li-user','#li-pw']){
+      const f=$(id);
+      if(f)f.onkeydown=e=>{if(e.key==='Enter'){e.preventDefault();go()}};
+    }
     const pk=$('#do-pk');
     if(pk){
       if(!pkUsable()){
         pk.disabled=true;
-        pk.title=pkSupported()
+        pk.setAttribute('data-tip',pkSupported()
           ? 'Passkeys need HTTPS (or localhost) — this page is on '+location.origin
-          : 'This browser does not support passkeys';
+          : 'This browser does not support passkeys');
       }
       pk.onclick=async()=>{
         pk.disabled=true;
@@ -2343,28 +3043,53 @@ function drawLive(){
         finally{ pk.disabled=false }
       };
     }
-    for(const id of ['#li-user','#li-pw','#li-totp']){
-      const f=$(id);
-      if(f)f.onkeydown=e=>{if(e.key==='Enter'){e.preventDefault();go()}};
-    }
+  }
+
+  const verify=$('#do-verify');
+  if(verify){
+    const go=async()=>{
+      const code=$('#li-totp').value.trim();
+      if(!code)return err('Enter the code from your authenticator.');
+      verify.disabled=true;
+      try{ await attempt(code) }finally{ verify.disabled=false }
+    };
+    verify.onclick=go;
+    $('#li-totp').onkeydown=e=>{if(e.key==='Enter'){e.preventDefault();go()}};
+    $('#do-back').onclick=()=>{
+      LOGIN.stage='creds';LOGIN.password='';drawLive();
+    };
   }
 
   const st=$('#open-settings');
-  if(st)st.onclick=()=>{closeAll();openSettings()};
+  if(st)st.onclick=()=>openSettings();
+  const lk=$('#open-look');
+  if(lk)lk.onclick=()=>openSettings('appearance');
 
   const so=$('#do-signout');
   if(so)so.onclick=async()=>{
     await post('/api/signout');
     SESSION.signedIn=false;SESSION.user=null;SESSION.nick=null;CSRF='';
-    applyLook();drawLive();syncComposer();toast('Signed out');
+    HISTORY=[];SAVED=[];lastCommitted='';
+    applyLook();drawLive();syncComposer();drawSaved();syncSearchTools();
+    toast('Signed out');
   };
 }
+
 /* Publish the composer's real height so the pill can sit above it. Measured
    rather than hard-coded, because the textarea grows with a long message. */
 function measureComposer(){
-  const c=$('#composer');
+  const c=$('#composer'),log=$('#log');
   const h=c.classList.contains('on')?Math.round(c.getBoundingClientRect().height):0;
+  const was=parseInt(document.documentElement.style.getPropertyValue('--composer-h'))||0;
   document.documentElement.style.setProperty('--composer-h',h+'px');
+  if(!log||h===was)return;
+  // The reading pane is what shrinks when the box grows. Left alone the
+  // browser keeps scrollTop where it was, so the newest lines slide in behind
+  // the composer instead of the conversation moving up with it.
+  if(was===0||log.scrollHeight-log.scrollTop-log.clientHeight<160+Math.abs(h-was)){
+    log.scrollTop=log.scrollHeight;
+    requestAnimationFrame(()=>{log.scrollTop=log.scrollHeight});
+  }
 }
 if(window.ResizeObserver)new ResizeObserver(measureComposer).observe($('#composer'));
 
@@ -2399,8 +3124,11 @@ async function refreshSession(){
     CSRF=s.csrf||'';
     syncComposer();
     if(wasIn!==SESSION.signedIn)applyLook();   // anonymous is pinned to Noir
-    // Only repaint the panels when nobody is mid-way through a field
-    if($('#live-sheet').classList.contains('on')&&!busyTyping($('#live-content')))
+    // Only repaint the panels when nobody is mid-way through a field, and
+    // never in the middle of a two-factor prompt - the pending credentials
+    // live in that draw, so a background refresh would drop them.
+    if($('#live-sheet').classList.contains('on')&&!busyTyping($('#live-content'))
+       &&LOGIN.stage!=='totp')
       drawLive();
   }catch(e){}
 }
@@ -2502,13 +3230,14 @@ function onLiveRows(rows){
   const desc=state.order==='desc';
   const live=atLiveEnd();
   let shown=0,queued=0;
+  if(live)syncTail(log);      // group against what is actually on screen
 
   // Descending renders newest-first, so insert in the reverse of arrival
   for(const m of (desc?rows.slice().reverse():rows)){
     lastSeen=Math.max(lastSeen,m.id);
     // A pending echo of our own message gets replaced by the real row
     const pend=log.querySelector(`.msg.sending[data-text="${CSS.escape(m.text)}"]`);
-    if(pend)pend.remove();
+    if(pend){pend.remove();syncTail(log)}
     if(!passesFilters(m)||!live){queued++;continue}
     const atTop=log.scrollTop<80;
     desc?prependLive(m):appendLive(m);
@@ -2558,16 +3287,23 @@ async function tail(){
 
 /* ---------------- wiring ---------------- */
 let deb;
-$('#q').oninput=e=>{
-  $('#qclear').classList.toggle('on',!!e.target.value);
+$('#q').oninput=()=>{
+  syncSearchTools();
   updateSuggest();
   clearTimeout(deb);
   deb=setTimeout(applyQueryBox,240);
 };
+$('#q').addEventListener('focus',()=>{ if(SUGGEST_MODE!=='save')updateSuggest() });
 $('#q').addEventListener('keydown',e=>{
   const box=$('#suggest');
-  if(!box.classList.contains('on'))return;
-  const items=[...box.querySelectorAll('button')];
+  if(!box.classList.contains('on')||SUGGEST_MODE==='save'){
+    // No list open: Enter is simply "run this search", and running one is what
+    // makes it worth remembering.
+    if(e.key==='Enter'){e.preventDefault();clearTimeout(deb);applyQueryBox();
+      commitSearch();closeSuggest();$('#q').blur()}
+    return;
+  }
+  const items=[...box.querySelectorAll('button[role="option"]')];
   let i=items.findIndex(b=>b.classList.contains('sel'));
   if(e.key==='ArrowDown'||e.key==='ArrowUp'){
     e.preventDefault();
@@ -2576,17 +3312,43 @@ $('#q').addEventListener('keydown',e=>{
     if(items[i]){items[i].classList.add('sel');items[i].scrollIntoView({block:'nearest'})}
   }else if(e.key==='Enter'){
     e.preventDefault();
-    const b=items[i>=0?i:0]||items[0];
-    if(b)acceptSuggestion(b.dataset.accept,b.dataset.sigil);
-  }else if(e.key==='Escape'){box.classList.remove('on')}
+    const b=i>=0?items[i]:null;
+    if(b)return runSuggestion(b);
+    clearTimeout(deb);applyQueryBox();commitSearch();closeSuggest();$('#q').blur();
+  }else if(e.key==='Escape'){closeSuggest()}
 });
-$('#q').addEventListener('blur',()=>setTimeout(()=>$('#suggest').classList.remove('on'),180));
-$('#suggest').onclick=e=>{
-  const b=e.target.closest('[data-accept]');
-  if(b)acceptSuggestion(b.dataset.accept,b.dataset.sigil);
+$('#q').addEventListener('blur',()=>setTimeout(()=>{
+  // Clicking inside the panel must not close it out from under the click
+  if($('#suggest').contains(document.activeElement))return;
+  commitSearch();closeSuggest();
+},180));
+function runSuggestion(b){
+  if(b.dataset.accept!==undefined)
+    return acceptSuggestion(b.dataset.accept,b.dataset.sigil);
+  if(b.dataset.run!==undefined){
+    $('#q').value=b.dataset.run;
+    applyQueryBox();commitSearch();closeSuggest();return;
+  }
+  if(b.dataset.saved!==undefined){
+    const sv=SAVED.find(x=>x.name===b.dataset.saved);
+    if(sv)applySaved(sv);
+    closeSuggest();
+  }
+}
+$('#suggest').onmousedown=e=>{
+  // Keep focus in the field so the blur handler above never fires mid-click
+  if(!e.target.closest('input'))e.preventDefault();
 };
-$('#qclear').onclick=()=>{$('#q').value='';$('#qclear').classList.remove('on');
-  $('#suggest').classList.remove('on');applyQueryBox();$('#q').focus()};
+$('#suggest').onclick=e=>{
+  const forget=e.target.closest('[data-forget]');
+  if(forget){e.stopPropagation();return forgetSearch(forget.dataset.forget)}
+  if(e.target.closest('[data-forgetall]'))return forgetSearch('');
+  const b=e.target.closest('button[role="option"]');
+  if(b)runSuggestion(b);
+};
+$('#qclear').onclick=()=>{$('#q').value='';closeSuggest();
+  syncSearchTools();applyQueryBox();$('#q').focus()};
+$('#qsave').onclick=e=>{e.preventDefault();openSaveSearch()};
 
 $('#people-btn').onclick=()=>{
   if(sidebarPinned()){
@@ -2608,8 +3370,13 @@ $('#filter-btn').onclick=()=>{
 $('#live-btn').onclick=async()=>{
   const open=$('#live-sheet').classList.contains('on');
   closeAll();
-  if(!open){await refreshSession();drawLive();openSheet('#live-sheet');
-    $('#live-btn').setAttribute('aria-pressed','true')}
+  if(open)return;
+  await refreshSession();
+  // Nothing has claimed this archive yet: the wizard is the only sensible
+  // answer, not a sign-in form for an account that cannot exist.
+  if(SESSION.setupNeeded)return startWizard('setup');
+  drawLive();openSheet('#live-sheet');
+  $('#live-btn').setAttribute('aria-pressed','true');
 };
 $('#manage-tags').onclick=e=>{
   e.preventDefault();
@@ -2626,13 +3393,13 @@ $$('#order-seg button').forEach(b=>b.onclick=()=>{
   $$('#order-seg button').forEach(x=>x.setAttribute('aria-pressed',x===b));
   refresh();
 });
-$('#show-events').onclick=e=>{
+$('#show-events').onclick=()=>{
   state.showEvents=!state.showEvents;
-  e.target.setAttribute('aria-pressed',state.showEvents);
+  $('#show-events').setAttribute('aria-pressed',state.showEvents);
   try{localStorage.setItem('events',state.showEvents?'1':'0')}catch(err){}
   spliceEvents();
 };
-$$('#kinds .chip').forEach(b=>b.onclick=()=>{
+$$('#kinds .chip[data-kind]').forEach(b=>b.onclick=()=>{
   const k=+b.dataset.kind;
   state.kinds.has(k)?state.kinds.delete(k):state.kinds.add(k);
   syncKindChips();refresh();
@@ -2642,8 +3409,7 @@ $$('#presets .chip').forEach(b=>b.onclick=()=>{
   if(!days){state.from=state.to=''}
   else{
     const end=new Date(),start=new Date(Date.now()-(days-1)*86400000);
-    const iso=d=>d.toISOString().slice(0,10);
-    state.from=iso(start);state.to=iso(end);
+    state.from=isoDay(start);state.to=isoDay(end);
   }
   $('#from').value=state.from;$('#to').value=state.to;
   refresh();
@@ -2699,15 +3465,17 @@ $('#log').addEventListener('scroll',()=>{
 },{passive:true});
 
 $('#copy').onclick=()=>{
+  // Grouped rows carry no visible name of their own, so walk down remembering
+  // the last one - a transcript with blank authors is not a transcript.
+  let who='';
   const lines=$$('#log .msg').map(el=>{
-    const w=el.querySelector('.who'),t=el.querySelector('.when');
-    return (t?t.title.split(' — ')[0]:'')+'  '+(w?'<'+w.textContent+'>':'')+' '
+    const w=el.querySelector('.who');
+    if(w)who=w.textContent;
+    const ts=+el.dataset.ts||0;
+    return `${dayKey(ts)} ${hhmm(ts)}  <${who||el.dataset.rownick||'?'}> `
       +el.querySelector('.txt').textContent;
   });
-  navigator.clipboard.writeText(lines.join('\n')).then(()=>{
-    $('#copy').textContent=`Copied ${lines.length}`;
-    setTimeout(()=>$('#copy').textContent='Copy',1600);
-  });
+  copyText(lines.join('\n'),`Copied ${lines.length} lines`);
 };
 /* ---------------- passkeys ---------------- */
 const pkSupported = () => !!(window.PublicKeyCredential && navigator.credentials);
@@ -2755,17 +3523,492 @@ async function pkLogin(){
   return r;
 }
 
+/* ---------------- settings ----------------
+   Settings is a page, not a drawer: a rail of sections on a desktop, a row of
+   chips on a phone, and one consistent block rhythm inside either. Every list
+   in here - devices, passkeys, tokens, people, invites, channels - is the same
+   row component, so nothing has to be re-learned between sections. */
+
+const BIN=`<svg viewBox="0 0 24 24" width="15" height="15" fill="none"
+  stroke="currentColor" stroke-width="1.9" stroke-linecap="round"
+  stroke-linejoin="round"><path d="M4 7h16M10 11v6M14 11v6"/>
+  <path d="M6 7l1 12.5a1.5 1.5 0 0 0 1.5 1.4h7a1.5 1.5 0 0 0 1.5-1.4L18 7"/>
+  <path d="M9.5 7V5.2A1.2 1.2 0 0 1 10.7 4h2.6a1.2 1.2 0 0 1 1.2 1.2V7"/></svg>`;
+const IC=(d,w=16)=>`<svg viewBox="0 0 24 24" width="${w}" height="${w}" fill="none"
+  stroke="currentColor" stroke-width="1.9" stroke-linecap="round"
+  stroke-linejoin="round">${d}</svg>`;
+const ICONS={
+  account:`<circle cx="12" cy="8" r="3.4"/><path d="M5 20a7 7 0 0 1 14 0"/>`,
+  security:`<path d="M12 3l7 3v6c0 4.4-3 8-7 9-4-1-7-4.6-7-9V6l7-3Z"/><path d="m9 12 2 2 4-4"/>`,
+  look:`<circle cx="12" cy="12" r="9"/><path d="M12 3v18"/><path d="M12 8h9M12 16h6"/>`,
+  server:`<rect x="3" y="4" width="18" height="7" rx="2"/><rect x="3" y="13" width="18" height="7" rx="2"/><path d="M7 7.5h.01M7 16.5h.01"/>`,
+  people:`<circle cx="9" cy="8" r="3.2"/><path d="M2.5 19a6.5 6.5 0 0 1 13 0"/><path d="M17 5.2a3.2 3.2 0 0 1 0 6"/><path d="M18 13.6A5.5 5.5 0 0 1 21.5 19"/>`,
+  copy:`<rect x="9" y="9" width="11" height="11" rx="2"/><path d="M5 15V5a2 2 0 0 1 2-2h8"/>`,
+  info:`<circle cx="12" cy="12" r="9"/><path d="M12 11v5M12 8h.01"/>`,
+  ban:`<circle cx="12" cy="12" r="9"/><path d="m5.6 5.6 12.8 12.8"/>`,
+  check:`<path d="m5 13 4 4 10-10"/>`,
+  up:`<path d="M12 19V5M6 11l6-6 6 6"/>`,
+  down:`<path d="M12 5v14M18 13l-6 6-6-6"/>`,
+  pause:`<path d="M9 5v14M15 5v14"/>`,
+  play:`<path d="M7 4.5 19 12 7 19.5Z"/>`,
+  plug:`<path d="M9 3v6M15 3v6"/><path d="M6 9h12v3a6 6 0 0 1-12 0Z"/><path d="M12 18v3"/>`,
+};
+let INVITE='';
+
+const SET_SECTIONS=[
+  {key:'account',    label:'Account',    icon:ICONS.account},
+  {key:'security',   label:'Security',   icon:ICONS.security},
+  {key:'appearance', label:'Appearance', icon:ICONS.look},
+  {key:'server',     label:'Server',     icon:ICONS.server, owner:true},
+  {key:'people',     label:'People',     icon:ICONS.people, owner:true},
+];
+let setTab='account';
+let SETDATA={sessions:[],users:[],invites:[],networks:[],expiresHours:48,maxUses:100};
+
+async function openSettings(section){
+  if(!SESSION.signedIn)return toast('Sign in to reach settings');
+  if(section)setTab=section;
+  openPanel('#setpanel');
+  await drawSettings(true);
+}
+
+/* A user-agent string truncated at 52 characters is not a device name. Pull
+   out the browser and the platform, which is all anyone is scanning for. */
+function prettyAgent(ua){
+  const raw=String(ua||'');
+  if(!raw)return 'Unknown device';
+  const browser=[[/Edg\//,'Edge'],[/OPR\/|Opera/,'Opera'],[/Firefox\//,'Firefox'],
+                 [/Chrome\//,'Chrome'],[/Safari\//,'Safari']]
+    .find(([re])=>re.test(raw));
+  const platform=[[/iPhone/,'iPhone'],[/iPad/,'iPad'],[/Android/,'Android'],
+                  [/Mac OS X|Macintosh/,'Mac'],[/Windows/,'Windows'],
+                  [/CrOS/,'ChromeOS'],[/Linux/,'Linux']]
+    .find(([re])=>re.test(raw));
+  if(!browser&&!platform)return raw.slice(0,44);
+  return [browser&&browser[1],platform&&('on '+platform[1])].filter(Boolean).join(' ');
+}
+
+function parkLookControls(){
+  const look=$('#look-controls');
+  if(look&&look.parentElement!==document.body){
+    look.setAttribute('hidden','');
+    document.body.appendChild(look);
+  }
+}
+
+async function drawSettings(force){
+  const box=$('#set-content');
+  if(!box)return;
+  // A settings page is a wall of fields; rebuilding it under someone's fingers
+  // would lose whatever they had half-entered.
+  if(!force&&busyTyping(box))return;
+  // Take the appearance controls back out first: they are a borrowed node, and
+  // anything that writes innerHTML here would otherwise destroy them along with
+  // every listener bound to them.
+  parkLookControls();
+  if(!SESSION.signedIn){
+    box.innerHTML=`<div class="sect"><div class="note">Sign in to reach settings.</div></div>`;
+    $('#set-nav').innerHTML='';
+    return;
+  }
+  const u=SESSION.user||{};
+  const owner=u.role==='owner';
+  const sections=SET_SECTIONS.filter(x=>!x.owner||owner);
+  if(!sections.some(x=>x.key===setTab))setTab='account';
+
+  $('#set-nav').innerHTML=sections.map(x=>
+    `<button data-tab="${x.key}" aria-pressed="${x.key===setTab}">
+       ${IC(x.icon)}<span>${x.label}</span></button>`).join('');
+  $$('#set-nav button').forEach(b=>b.onclick=()=>{setTab=b.dataset.tab;drawSettings(true)});
+
+  if(force)box.innerHTML=`<div class="loading">Loading…</div>`;
+
+  const [sess,users,invites,nets]=await Promise.all([
+    api('/api/sessions').catch(()=>({sessions:[]})),
+    owner?api('/api/users').catch(()=>({users:[]})):Promise.resolve({users:[]}),
+    owner?api('/api/invites').catch(()=>({invites:[]})):Promise.resolve({invites:[]}),
+    owner?api('/api/networks').catch(()=>({networks:[]})):Promise.resolve({networks:[]}),
+  ]);
+  SETDATA={sessions:sess.sessions||[],users:users.users||[],
+           invites:invites.invites||[],networks:nets.networks||[],
+           expiresHours:invites.expiresHours||48,maxUses:invites.maxUses||100};
+
+  box.innerHTML=({
+    account:setAccount, security:setSecurity, appearance:setAppearance,
+    server:setServer, people:setPeople,
+  }[setTab])(u)+`<div id="st-err"></div>`;
+  box.scrollTop=0;
+
+  if(setTab==='appearance'){
+    const slot=$('#look-slot'),look=$('#look-controls');
+    if(slot&&look){look.removeAttribute('hidden');slot.appendChild(look);drawLook()}
+  }
+  if(setTab==='security'){drawTotp();drawPasskeys();drawTokens()}
+  wireSettings(box);
+}
+
+/* ------------------------------------------------------------- account */
+function setAccount(u){
+  return `<div class="sect">
+    <h4>Account</h4>
+    <p class="lede">Who you are here, and who you are on IRC. They can differ —
+      one signs you in, the other is the name your messages go out under.</p>
+
+    <div class="field">
+      <label class="fhead">Username</label>
+      <div class="formrow">
+        <input id="st-user" value="${esc(u.name||'')}" autocomplete="username">
+        <button class="btn" id="st-user-save">Save</button></div>
+      <div class="hint">How you sign in. Changing it does not sign you out.</div>
+    </div>
+
+    <div class="field">
+      <label class="fhead">IRC nick</label>
+      <div class="formrow">
+        <input id="st-nick" value="${esc(u.nick||'')}" autocomplete="off">
+        <button class="btn" id="st-nick-save">Save</button></div>
+      <div class="hint">Messages you send go out under this name, over a
+        connection of your own — never the archivist's.</div>
+    </div>
+
+    <div class="hr"></div>
+
+    <div class="field">
+      <label class="fhead">Change password</label>
+      <div class="stack">
+        <input id="st-cur" type="password" placeholder="Current password"
+               autocomplete="current-password">
+        <input id="st-new" type="password" placeholder="New password, at least 8 characters"
+               autocomplete="new-password">
+        <button class="btn ghost" id="st-pw">Change password</button>
+      </div>
+      <div class="hint">Every other signed-in device is signed out when it changes.</div>
+    </div>
+  </div>`;
+}
+
+/* ------------------------------------------------------------ security */
+function setSecurity(u){
+  return `<div class="sect">
+    <h4>Security</h4>
+    <p class="lede">A second factor, the devices that are signed in, and the
+      read-only tokens agents use.</p>
+
+    <div class="field">
+      <label class="fhead">Two-factor</label>
+      <div id="st-totp" class="stack"></div>
+    </div>
+
+    <div class="hr"></div>
+
+    <div class="field">
+      <label class="fhead">Passkeys</label>
+      <div id="st-keys" class="stack"></div>
+      <div class="formrow">
+        <input id="pk-label" placeholder="Name this device" maxlength="40">
+        <button class="btn" id="pk-add">Add a passkey</button></div>
+      <div class="hint" id="pk-hint">Sign in with Face ID, Touch ID, Windows Hello
+        or a security key instead of a password.</div>
+    </div>
+
+    <div class="hr"></div>
+
+    <div class="field">
+      <label class="fhead">Signed-in devices</label>
+      <div class="stack">
+        ${SETDATA.sessions.map(s=>`
+          <div class="row"><span class="rmain">
+            <span class="nm">${esc(prettyAgent(s.agent))}</span>
+            <span class="sub2">${esc(s.ip||'')}${s.last_seen?' · seen '+esc(relTime(s.last_seen)):''}</span>
+            </span>
+            ${s.current?'<span class="pill ok">this device</span>':
+              `<span class="act"><button class="iconact danger" data-revoke="${esc(s.id)}"
+                data-tip="Sign this device out" aria-label="Sign out">${BIN}</button></span>`}
+          </div>`).join('')||'<div class="empty-row">None</div>'}
+      </div>
+      <button class="btn ghost" id="st-revoke-all">Sign out every other device</button>
+    </div>
+
+    <div class="hr"></div>
+
+    <div class="field">
+      <label class="fhead">Agent tokens</label>
+      <div id="st-tokens" class="stack"></div>
+      <div class="formrow">
+        <input id="tk-name" placeholder="What is it for, e.g. laptop" maxlength="40">
+        <button class="btn" id="tk-add">Create token</button></div>
+      <div id="tk-out"></div>
+      <div class="hint">Lets an agent query this archive over MCP, read-only.
+        Shown once when created — only a hash is kept, so save it then.</div>
+    </div>
+  </div>`;
+}
+
+/* ---------------------------------------------------------- appearance */
+function setAppearance(){
+  return `<div class="sect">
+    <h4>Appearance</h4>
+    <p class="lede">Kept on this device. Times always follow this device's own
+      clock and time zone, wherever the archive is hosted.</p>
+    <div id="look-slot"></div>
+  </div>`;
+}
+
+/* -------------------------------------------------------------- server */
+function setServer(){
+  const nets=SETDATA.networks;
+  return `<div class="sect">
+    <h4>Server</h4>
+    <p class="lede">What this instance is called, and which IRC networks and
+      channels it records.</p>
+
+    <div class="field">
+      <label class="fhead">Server name</label>
+      <div class="formrow">
+        <input id="st-appname" value="${esc(APPNAME)}" maxlength="48" placeholder="AuroraIRC">
+        <button class="btn" id="st-appname-save">Save</button></div>
+      <div class="hint">Shown in the header and the browser tab.</div>
+    </div>
+
+    <div class="hr"></div>
+
+    ${nets.map(n=>`
+      <div class="field">
+        <label class="fhead plain">${esc(n.label||n.name)}
+          <button class="linkbtn" data-nettest="${n.id}">Test connection</button>
+          <button class="linkbtn" data-netdel="${n.id}">Remove</button></label>
+        <div class="formrow">
+          <input data-nethost="${n.id}" value="${esc(n.host)}" placeholder="Host">
+          <input data-netport="${n.id}" class="narrow" value="${n.port}" aria-label="Port">
+        </div>
+        <div class="formrow">
+          <input data-netnick="${n.id}" value="${esc(n.archivist_nick)}"
+                 placeholder="Archivist nick">
+          <button class="btn" data-netsave="${n.id}">Save</button>
+        </div>
+        <div class="chips">
+          <button class="chip" data-nettls="${n.id}"
+            aria-pressed="${n.tls?'true':'false'}"><i class="dotm"></i>Use TLS</button>
+        </div>
+        <div data-nettestout="${n.id}"></div>
+        <div class="stack">
+          ${(n.channels||[]).map(c=>`
+            <div class="row"><span class="rmain"><span class="nm">#${esc(c)}</span>
+              <span class="sub2">archiving</span></span>
+              <span class="act">
+                <button class="iconact" data-chpause="${esc(c)}" data-net="${n.id}"
+                  data-tip="Stop archiving" aria-label="Pause">${IC(ICONS.pause,15)}</button>
+                <button class="iconact danger" data-chdel="${esc(c)}" data-net="${n.id}"
+                  data-tip="Remove entirely" aria-label="Remove">${BIN}</button></span></div>`).join('')}
+          ${(n.paused||[]).map(c=>`
+            <div class="row" style="opacity:.65"><span class="rmain">
+              <span class="nm">#${esc(c)}</span><span class="sub2">paused</span></span>
+              <span class="act">
+                <button class="iconact" data-chresume="${esc(c)}" data-net="${n.id}"
+                  data-tip="Resume archiving" aria-label="Resume">${IC(ICONS.play,15)}</button>
+                <button class="iconact danger" data-chdel="${esc(c)}" data-net="${n.id}"
+                  data-tip="Remove entirely" aria-label="Remove">${BIN}</button></span></div>`).join('')}
+          ${(!(n.channels||[]).length&&!(n.paused||[]).length)
+            ? '<div class="empty-row">No channels yet</div>':''}
+        </div>
+        <div class="formrow">
+          <input data-chadd="${n.id}" placeholder="Add a channel">
+          <button class="btn" data-chgo="${n.id}">Add</button></div>
+      </div>
+      <div class="hr"></div>`).join('')}
+
+    <div class="field">
+      <label class="fhead">Add a network</label>
+      <div class="formrow">
+        <input id="nn-name" placeholder="Short name, e.g. libera">
+        <input id="nn-host" placeholder="irc.libera.chat"></div>
+      <div class="formrow">
+        <input id="nn-port" class="narrow" value="6697" aria-label="Port">
+        <input id="nn-nick" placeholder="Archivist nick" value="aurora">
+        <button class="btn ghost" id="nn-test">Test</button>
+        <button class="btn" id="nn-go">Create</button></div>
+      <div class="chips">
+        <button class="chip" id="nn-tls" aria-pressed="true"><i class="dotm"></i>Use TLS</button>
+      </div>
+      <div id="nn-out"></div>
+      <div class="hint">The archivist only ever listens. Port 6697 is TLS;
+        6667 is plain — test before you save either way.</div>
+    </div>
+  </div>`;
+}
+
+/* -------------------------------------------------------------- people */
+const JOIN_WORD={setup:'founded this archive',invite:'joined by invitation',
+                 manual:'created by an owner'};
+
+function inviteRow(inv){
+  const left=Math.max(0,inv.maxUses-inv.uses);
+  const state=inv.revoked?['warn','revoked']:inv.expired?['','expired']
+    :inv.spent?['','used up']:['ok',`${left} left`];
+  const isPass=inv.maxUses>1;
+  return `<div class="row">
+    <span class="rmain">
+      <span class="nm">${esc(inv.label||(isPass?`Pass for ${inv.maxUses}`:'Single invite'))}
+        ${inv.role==='owner'?'<span class="pill warn">owner</span>':'<span class="pill">member</span>'}</span>
+      <span class="sub2">${inv.creator?'made by '+esc(inv.creator)+' · ':''}${
+        esc(relTime(inv.created))}${inv.uses?` · ${inv.uses} joined`:''}</span>
+    </span>
+    <span class="pill ${state[0]}">${state[1]}</span>
+    <span class="act">
+      ${inv.live?`<button class="iconact" data-invcopy="${esc(inv.token)}"
+        data-tip="Copy the link" aria-label="Copy link">${IC(ICONS.copy,15)}</button>`:''}
+      ${inv.joiners.length?`<button class="iconact" data-invwho="${esc(inv.token)}"
+        data-tip="Who joined on this" aria-label="Who joined">${IC(ICONS.info,15)}</button>`:''}
+      ${inv.live?`<button class="iconact danger" data-invrevoke="${esc(inv.token)}"
+        data-tip="Revoke this link" aria-label="Revoke">${IC(ICONS.ban,15)}</button>`:''}
+    </span></div>`;
+}
+
+function setPeople(u){
+  const users=SETDATA.users,invites=SETDATA.invites;
+  const live=invites.filter(i=>i.live),dead=invites.filter(i=>!i.live);
+  return `<div class="sect">
+    <h4>People</h4>
+    <p class="lede">Accounts exist by invitation or by your hand — there is no
+      public signup to attack.</p>
+
+    <div class="field">
+      <label class="fhead">Members</label>
+      <div class="stack">
+        ${users.map(x=>`
+          <div class="row">
+            <span class="av" style="background:${avatarBg(x.name)}">${esc(x.name[0]||'?')}</span>
+            <span class="rmain">
+              <span class="nm">${esc(x.name)}${x.name===u.name?' · you':''}</span>
+              <span class="sub2">${x.root?'owner · root':esc(x.role)}${
+                x.totp?' · 2FA':''}${x.disabled?' · disabled':''}</span></span>
+            <span class="act">
+              <button class="iconact" data-detail="${esc(x.name)}"
+                data-tip="Where this account came from" aria-label="Details">${IC(ICONS.info,15)}</button>
+              ${(x.root||x.name===u.name)?'':`
+                <button class="iconact" data-role="${esc(x.name)}"
+                  data-to="${x.role==='owner'?'member':'owner'}"
+                  data-tip="Make ${x.role==='owner'?'a member':'an owner'}"
+                  aria-label="Change role">${IC(x.role==='owner'?ICONS.down:ICONS.up,15)}</button>
+                <button class="iconact" data-toggle="${esc(x.name)}" data-on="${x.disabled?1:0}"
+                  data-tip="${x.disabled?'Enable':'Disable'}"
+                  aria-label="${x.disabled?'Enable':'Disable'}">${IC(x.disabled?ICONS.check:ICONS.ban,15)}</button>
+                <button class="iconact danger" data-user="${esc(x.name)}"
+                  data-tip="Remove ${esc(x.name)}" aria-label="Remove">${BIN}</button>`}
+            </span></div>`).join('')||'<div class="empty-row">None</div>'}
+      </div>
+    </div>
+
+    <div class="hr"></div>
+
+    <div class="field">
+      <label class="fhead">Invite links and passes</label>
+      <div class="formrow">
+        <select id="st-inv-role" aria-label="Role">
+          <option value="member">Member</option>
+          <option value="owner">Owner</option></select>
+        <select id="st-inv-uses" aria-label="How many people">
+          <option value="1">1 person</option>
+          <option value="3">A pass for 3</option>
+          <option value="5">A pass for 5</option>
+          <option value="10">A pass for 10</option>
+          <option value="25">A pass for 25</option></select>
+      </div>
+      <div class="formrow">
+        <input id="st-inv-label" maxlength="48" placeholder="What is it for? (optional)">
+        <button class="btn" id="st-invite">Create link</button></div>
+      <div id="st-inv-warn"></div>
+      <div id="st-inv-out"></div>
+      <div class="stack">
+        ${live.map(inviteRow).join('')||'<div class="empty-row">No live invites</div>'}
+      </div>
+      <div class="hint">A pass is one link several people may join on. Every
+        redemption is recorded, so you can always see who came in on which link.
+        Links expire after ${SETDATA.expiresHours} hours.</div>
+      ${dead.length?`<div class="fhead" style="margin-top:4px">Spent and revoked</div>
+        <div class="stack">${dead.slice(0,8).map(inviteRow).join('')}</div>`:''}
+    </div>
+
+    <div class="hr"></div>
+
+    <div class="field">
+      <label class="fhead">Create an account directly</label>
+      <div class="formrow">
+        <input id="na-user" placeholder="Username" autocomplete="off">
+        <input id="na-pass" type="password" placeholder="Password" autocomplete="new-password"></div>
+      <div class="formrow">
+        <select id="na-role"><option value="member">Member</option>
+          <option value="owner">Owner</option></select>
+        <button class="btn" id="na-go">Create</button></div>
+      <div class="hint">For when handing someone a link is not practical. They
+        can change the password from their own Account settings afterwards.</div>
+    </div>
+  </div>`;
+}
+
+/* ---------------------------------------------------- account details */
+function openDialog(title,html){
+  $('#dlg-title').textContent=title;
+  $('#dlg-body').innerHTML=html;
+  $('#dlg').classList.add('on');
+  $('#scrim').classList.add('on');
+}
+$('#dlg-close').onclick=()=>{
+  $('#dlg').classList.remove('on');
+  // Settings is still open behind it, so the scrim stays
+  $('#scrim').classList.toggle('on',$$('.panel.on, .sheet.on').length>0);
+};
+
+async function showUserDetail(name){
+  const d=await api('/api/users/detail','username='+encodeURIComponent(name));
+  if(d.error)return toast(d.error);
+  const inv=d.invite;
+  const rows=[
+    ['Role',d.root?'owner · root, cannot be changed':d.role],
+    ['IRC nick',d.nick||'—'],
+    ['How they got here',JOIN_WORD[d.joinMethod]||d.joinMethod],
+    ['Invited by',d.invitedBy||(d.joinMethod==='setup'?'nobody — this is the founding account':'—')],
+    ['Joined',`${dateOnly(d.joinedAt)} · ${relTime(d.joinedAt)}`],
+    ['Last seen',d.lastSeen?`${dateOnly(d.lastSeen)} · ${relTime(d.lastSeen)}`:'never'],
+    ['Two-factor',d.totp?'on':'off'],
+    ['Passkeys',String(d.passkeys)],
+    ['Active sessions',String(d.sessions)],
+  ];
+  if(inv)rows.splice(4,0,['Link used',
+    `${inv.label?esc(inv.label)+' · ':''}${inv.isPass?`pass for ${inv.maxUses}`:'single invite'}`+
+    `${inv.creator?' from '+esc(inv.creator):''}${inv.revoked?' · since revoked':''}`]);
+  openDialog(name,
+    `<div class="summary">`+rows.map(([k,v])=>
+      `<div class="kv"><span class="k">${esc(k)}</span>
+        <span class="v${v==='—'||v==='never'?' dim':''}">${v}</span></div>`).join('')+
+    `</div>`+
+    (d.disabled?`<div class="note warn">This account is disabled and cannot sign in.</div>`:''));
+}
+
+function showInviteJoiners(token){
+  const inv=SETDATA.invites.find(i=>i.token===token);
+  if(!inv)return;
+  openDialog(inv.label||'Invite',
+    `<div class="summary">`+inv.joiners.map(j=>
+      `<div class="kv"><span class="k">${esc(j.name)}</span>
+        <span class="v">${esc(dateOnly(j.at))} · ${esc(relTime(j.at))}</span></div>`).join('')+
+    `</div><div class="hint">${inv.uses} of ${inv.maxUses} used${
+      inv.revoked?' · revoked':''}.</div>`);
+}
+
+/* --------------------------------------------------------- lists ----- */
 async function drawTokens(){
   const box=$('#st-tokens');
   if(!box)return;
   const r=await post('/api/tokens',{action:'list'});
   const t=r.tokens||[];
-  box.innerHTML = t.length ? t.map(k=>`
-    <div class="saved"><span class="nm">${esc(k.name)}</span>
-      <span class="qq">${k.last_used?'used '+dayKey(k.last_used):'never used'}${
-        k.uses?' · '+fmtN(k.uses)+' calls':''}</span>
-      <button class="del danger" data-tkdel="${k.id}" aria-label="Revoke">${BIN}</button>
-    </div>`).join('') : '<div class="loading">None yet</div>';
+  box.innerHTML=t.length?t.map(k=>`
+    <div class="row"><span class="rmain"><span class="nm">${esc(k.name)}</span>
+      <span class="sub2">${k.last_used?'used '+esc(relTime(k.last_used)):'never used'}${
+        k.uses?' · '+fmtN(k.uses)+' calls':''}</span></span>
+      <span class="act"><button class="iconact danger" data-tkdel="${k.id}"
+        data-tip="Revoke" aria-label="Revoke">${BIN}</button></span>
+    </div>`).join(''):'<div class="empty-row">None yet</div>';
 }
 
 async function drawPasskeys(){
@@ -2773,14 +4016,16 @@ async function drawPasskeys(){
   if(!box)return;
   const r=await post('/api/me/passkey',{action:'list'});
   const keys=r.passkeys||[];
-  box.innerHTML = keys.length ? keys.map(k=>`
-    <div class="saved"><span class="nm">${esc(k.label||'Passkey')}</span>
-      <span class="qq">${k.last_used?'used '+dayKey(k.last_used):'never used'}</span>
-      <button class="del danger" data-pkdel="${k.id}" aria-label="Remove">${BIN}</button>
-    </div>`).join('') : '<div class="loading">None yet</div>';
-  const hint=$('#pk-hint'), add=$('#pk-add');
+  box.innerHTML=keys.length?keys.map(k=>`
+    <div class="row"><span class="rmain"><span class="nm">${esc(k.label||'Passkey')}</span>
+      <span class="sub2">added ${esc(relTime(k.created))}${
+        k.last_used?' · used '+esc(relTime(k.last_used)):''}</span></span>
+      <span class="act"><button class="iconact danger" data-pkdel="${k.id}"
+        data-tip="Remove" aria-label="Remove">${BIN}</button></span>
+    </div>`).join(''):'<div class="empty-row">None yet</div>';
+  const hint=$('#pk-hint'),add=$('#pk-add');
   if(!pkUsable()&&hint){
-    hint.innerHTML = pkSupported()
+    hint.innerHTML=pkSupported()
       ? `Your browser hides passkeys on insecure origins. This page is on
          <code>${esc(location.origin)}</code> — passkeys need HTTPS, or
          <code>localhost</code>.`
@@ -2789,197 +4034,63 @@ async function drawPasskeys(){
   }
 }
 
-/* ---------------- settings ---------------- */
-const BIN=`<svg viewBox="0 0 24 24" width="15" height="15" fill="none"
-  stroke="currentColor" stroke-width="1.9" stroke-linecap="round"
-  stroke-linejoin="round"><path d="M4 7h16M10 11v6M14 11v6"/>
-  <path d="M6 7l1 12.5a1.5 1.5 0 0 0 1.5 1.4h7a1.5 1.5 0 0 0 1.5-1.4L18 7"/>
-  <path d="M9.5 7V5.2A1.2 1.2 0 0 1 10.7 4h2.6a1.2 1.2 0 0 1 1.2 1.2V7"/></svg>`;
-let INVITE='';
-
-async function openSettings(){
-  openSheet('#set-sheet');
-  await drawSettings(true);      // opening always draws
+async function drawTotp(){
+  const box=$('#st-totp');
+  if(!box)return;
+  const on=SESSION.user&&SESSION.user.totp;
+  box.innerHTML=on
+    ? `<div class="row"><span class="rmain">
+         <span class="nm">Two-factor is on</span>
+         <span class="sub2">A code from your authenticator is asked for after
+           your password.</span></span><span class="pill ok">on</span></div>
+       <button class="btn ghost" id="totp-off">Turn off</button>`
+    : `<div class="row"><span class="rmain">
+         <span class="nm">Two-factor is off</span>
+         <span class="sub2">Add a six-digit code from an authenticator app.</span>
+         </span><span class="pill">off</span></div>
+       <button class="btn ghost" id="totp-on">Set up two-factor</button>
+       <div id="totp-setup" class="stack"></div>`;
+  const off=$('#totp-off');
+  if(off)off.onclick=async()=>{
+    await post('/api/me/totp',{action:'disable'});
+    if(SESSION.user)SESSION.user.totp=false;
+    drawTotp();toast('Two-factor off');
+  };
+  const start=$('#totp-on');
+  if(start)start.onclick=()=>beginTotp('#totp-setup',()=>{drawTotp()});
 }
-let setTab='account';
-async function drawSettings(force){
-  const box=$('#set-content');
-  // The settings page is a wall of fields; rebuilding it under someone's
-  // fingers would lose whatever they had half-entered.
-  if(!force&&busyTyping(box))return;
-  if(!SESSION.signedIn){
-    box.innerHTML=`<div class="note">Sign in to reach settings.</div>`;
-    return;
-  }
-  const u=SESSION.user||{};
-  const owner=u.role==='owner';
-  if(!owner&&setTab!=='account')setTab='account';
-  box.innerHTML=`<div class="loading">Loading…</div>`;
 
-  const [sess,users,invites,nets]=await Promise.all([
-    api('/api/sessions').catch(()=>({sessions:[]})),
-    owner?api('/api/users').catch(()=>({users:[]})):Promise.resolve({users:[]}),
-    owner?api('/api/invites').catch(()=>({invites:[]})):Promise.resolve({invites:[]}),
-    owner?api('/api/networks').catch(()=>({networks:[]})):Promise.resolve({networks:[]}),
-  ]);
-
-  const tabs=[['account','Account']].concat(owner
-    ? [['server','Server'],['people','People']] : []);
-
-  const account=()=>`
-    <div class="field"><label title="How you sign in. Changing it does not sign you out.">Username</label>
-      <div class="formrow">
-        <input id="st-user" value="${esc(u.name||'')}" autocomplete="username">
-        <button class="btn" id="st-user-save">Save</button></div>
-    </div>
-
-    <div class="field"><label title="Messages you send go out under this name.">IRC nick</label>
-      <div class="formrow">
-        <input id="st-nick" value="${esc(u.nick||'')}" autocomplete="off">
-        <button class="btn" id="st-nick-save">Save</button></div>
-    </div>
-
-    <div class="field"><label>Password</label>
-      <input id="st-cur" type="password" placeholder="current password"
-             autocomplete="current-password">
-      <input id="st-new" type="password" placeholder="new password"
-             autocomplete="new-password" style="margin-top:6px">
-      <button class="btn ghost" id="st-pw" style="margin-top:8px">Change password</button>
-      <div class="hint">Other signed-in devices are signed out when it changes.</div>
-    </div>
-
-    <div class="field"><label>Two-factor <span class="opt">Optional</span></label>
-      <div id="st-totp" class="stack"></div></div>
-
-    <div class="field"><label title="Sign in with Face ID, Touch ID, Windows Hello or a security key instead of a password.">Passkeys <span class="opt">Optional</span></label>
-      <div id="st-keys" class="stack"></div>
-      <div class="formrow" style="margin-top:6px">
-        <input id="pk-label" placeholder="name this device" maxlength="40">
-        <button class="btn" id="pk-add">Add a passkey</button></div>
-      <div class="hint" id="pk-hint"></div>
-    </div>
-
-    <div class="field"><label title="Lets an agent query this archive over MCP, read-only. Shown once when created — only a hash is kept, so save it then.">Agent tokens</label>
-      <div id="st-tokens" class="stack"></div>
-      <div class="formrow" style="margin-top:6px">
-        <input id="tk-name" placeholder="what is it for, e.g. laptop" maxlength="40">
-        <button class="btn" id="tk-add">Create token</button></div>
-      <div id="tk-out"></div>
-
-    </div>
-
-    <div class="field"><label>Signed-in devices</label>
-      ${sess.sessions.map(s=>`
-        <div class="saved"><span class="nm">${esc((s.agent||'unknown device').slice(0,44))}${
-          s.current?' · this one':''}</span>
-          <span class="qq">${esc(s.ip||'')}</span>
-          ${s.current?'':`<button class="del danger" data-revoke="${esc(s.id)}"
-            title="Sign this device out" aria-label="Sign out">${BIN}</button>`}
-        </div>`).join('')||'<div class="loading">None</div>'}
-      <button class="btn ghost" id="st-revoke-all" style="margin-top:8px">
-        Sign out every other device</button>
-    </div>`;
-
-  const server=()=>`
-    <div class="field"><label>Server name</label>
-      <div class="formrow">
-        <input id="st-appname" value="${esc(APPNAME)}" maxlength="48"
-               placeholder="AuroraIRC">
-        <button class="btn" id="st-appname-save">Save</button></div>
-      <div class="hint">Shown in the header and the browser tab.</div>
-    </div>
-
-    ${nets.networks.map(n=>`
-      <div class="field"><label>${esc(n.label||n.name)}
-        <button class="linkbtn" data-netdel="${n.id}" style="float:right">Remove</button></label>
-        <div class="formrow">
-          <input data-nethost="${n.id}" value="${esc(n.host)}" placeholder="host">
-          <input data-netport="${n.id}" value="${n.port}" style="flex:0 0 90px;min-width:80px">
-          <input data-netnick="${n.id}" value="${esc(n.archivist_nick)}" placeholder="archivist nick">
-          <button class="btn" data-netsave="${n.id}">Save</button>
-        </div>
-        <label class="sub">Channels</label>
-        ${(n.channels||[]).map(c=>`
-          <div class="saved"><span class="nm">#${esc(c)}</span>
-            <span class="qq">archiving</span>
-            <button class="del" data-chpause="${esc(c)}" data-net="${n.id}"
-              title="Stop archiving">⏸</button>
-            <button class="del danger" data-chdel="${esc(c)}" data-net="${n.id}"
-              title="Remove entirely" aria-label="Remove">${BIN}</button></div>`).join('')}
-        ${(n.paused||[]).map(c=>`
-          <div class="saved" style="opacity:.6"><span class="nm">#${esc(c)}</span>
-            <span class="qq">paused</span>
-            <button class="del" data-chresume="${esc(c)}" data-net="${n.id}"
-              title="Resume archiving">▶</button>
-            <button class="del danger" data-chdel="${esc(c)}" data-net="${n.id}"
-              title="Remove entirely" aria-label="Remove">${BIN}</button></div>`).join('')}
-        <div class="formrow" style="margin-top:8px">
-          <input data-chadd="${n.id}" placeholder="add a channel">
-          <button class="btn" data-chgo="${n.id}">Add</button></div>
-      </div>`).join('')}
-
-    <div class="field"><label>Add a network</label>
-      <div class="formrow">
-        <input id="nn-name" placeholder="short name, e.g. libera">
-        <input id="nn-host" placeholder="irc.libera.chat"></div>
-      <div class="formrow" style="margin-top:6px">
-        <input id="nn-port" value="6697" style="flex:0 0 90px;min-width:80px">
-        <input id="nn-nick" placeholder="archivist nick" value="aurora">
-        <button class="btn" id="nn-go">Create</button></div>
-
-    </div>`;
-
-  const people=()=>`
-    <div class="field"><label>People</label>
-      ${users.users.map(x=>`
-        <div class="saved"><span class="nm">${esc(x.name)}${
-            x.disabled?' · disabled':''}</span>
-          <span class="qq">${x.root?'owner · root':esc(x.role)}${x.totp?' · 2FA':''}${
-            x.name===u.name?' · you':''}</span>
-          ${(x.root||x.name===u.name)?'':`
-            <button class="del" data-role="${esc(x.name)}"
-              data-to="${x.role==='owner'?'member':'owner'}"
-              title="Make ${x.role==='owner'?'member':'owner'}">${
-              x.role==='owner'?'↓':'↑'}</button>
-            <button class="del" data-toggle="${esc(x.name)}" data-on="${x.disabled?1:0}"
-              title="${x.disabled?'Enable':'Disable'}">${x.disabled?'✓':'⦸'}</button>
-            <button class="del danger" data-user="${esc(x.name)}" title="Remove ${esc(x.name)}"
-              aria-label="Remove">${BIN}</button>`}
-        </div>`).join('')||'<div class="loading">None</div>'}
-    </div>
-
-    <div class="field"><label>Invite someone</label>
-      <div class="formrow">
-        <input id="st-inv-user" placeholder="username (optional)">
-        <select id="st-inv-role"><option value="member">member</option>
-          <option value="owner">owner</option></select>
-        <button class="btn" id="st-invite">Create link</button></div>
-      <div id="st-inv-out"></div>
-      ${invites.invites.length?`<div class="hint">${invites.invites.length}
-        invite(s) outstanding</div>`:''}
-    </div>
-
-    <div class="field"><label>Or create an account directly</label>
-      <div class="formrow">
-        <input id="na-user" placeholder="username">
-        <input id="na-pass" type="password" placeholder="password"></div>
-      <div class="formrow" style="margin-top:6px">
-        <select id="na-role"><option value="member">member</option>
-          <option value="owner">owner</option></select>
-        <button class="btn" id="na-go">Create</button></div>
-    </div>`;
-
+/* Shared by Settings and the setup wizard, so enrolling works the same in both */
+async function beginTotp(slot,done){
+  const box=$(slot);
+  if(!box)return;
+  box.innerHTML='<div class="loading">Preparing…</div>';
+  const r=await post('/api/me/totp',{action:'begin'});
+  if(r.error){box.innerHTML='';return toast(r.error)}
   box.innerHTML=
-    `<div class="seg" id="set-tabs">${tabs.map(([k,l])=>
-      `<button data-tab="${k}" aria-pressed="${k===setTab}">${l}</button>`).join('')}</div>`+
-    (setTab==='account'?account():setTab==='server'?server():people())+
-    `<div id="st-err"></div>`;
-
-  $$('#set-tabs button').forEach(b=>b.onclick=()=>{setTab=b.dataset.tab;drawSettings(true)});
-  if(setTab==='account')drawTotp();
-  wireSettings(box);
+    `<div class="note">Add this secret to your authenticator, then confirm the
+       code it shows.</div>
+     <div class="copyfield"><code id="totp-secret">${esc(r.secret)}</code>
+       <button class="btn ghost" id="totp-copy" type="button">Copy</button></div>
+     <input id="totp-code" inputmode="numeric" maxlength="8" placeholder="000000"
+            autocomplete="one-time-code">
+     <button class="btn" id="totp-confirm" type="button">Confirm</button>
+     <div id="totp-err"></div>`;
+  $('#totp-copy').onclick=()=>{
+    copyText(r.secret,'Secret copied');
+  };
+  const go=async()=>{
+    const c=await post('/api/me/totp',{action:'confirm',code:$('#totp-code').value});
+    if(c.error)return $('#totp-err').innerHTML=`<div class="note err">${esc(c.error)}</div>`;
+    if(SESSION.user)SESSION.user.totp=true;
+    toast('Two-factor on');
+    done&&done();
+  };
+  $('#totp-confirm').onclick=go;
+  $('#totp-code').onkeydown=e=>{if(e.key==='Enter'){e.preventDefault();go()}};
 }
 
+/* ------------------------------------------------------------- wiring */
 function wireSettings(box){
   const err=m=>{const e=$('#st-err');if(e)e.innerHTML=`<div class="note err">${esc(m)}</div>`};
   const ok=m=>{toast(m);drawSettings(true)};
@@ -3015,12 +4126,11 @@ function wireSettings(box){
     S('tk-name').value='';
     // The only time this value exists in the clear, so make it easy to keep
     S('tk-out').innerHTML=`<div class="note">Copy it now — it will not be shown
-      again:<br><code style="word-break:break-all">${esc(r.token)}</code></div>`;
-    navigator.clipboard&&navigator.clipboard.writeText(r.token);
-    await drawTokens(); toast('Token copied to clipboard');
+      again.</div><div class="copyfield"><code>${esc(r.token)}</code>
+      <button class="btn ghost" data-copy="${esc(r.token)}" type="button">Copy</button></div>`;
+    copyText(r.token,'Token copied to clipboard');
+    await drawTokens();
   };
-  if(S('st-tokens'))drawTokens();
-  if(S('st-keys'))drawPasskeys();
   if(S('st-revoke-all'))S('st-revoke-all').onclick=async()=>{
     await post('/api/sessions/revoke',{all:true});ok('Other devices signed out');
   };
@@ -3029,22 +4139,63 @@ function wireSettings(box){
     if(r.error)return err(r.error);
     APPNAME=r.appName;applyAppName();ok('Renamed');
   };
+  const newNet=()=>({name:S('nn-name').value.trim(),
+    host:S('nn-host').value.trim(),port:+S('nn-port').value||6697,
+    tls:S('nn-tls').getAttribute('aria-pressed')==='true',
+    nick:S('nn-nick').value.trim()||'aurora'});
+  if(S('nn-tls'))S('nn-tls').onclick=()=>{
+    const on=S('nn-tls').getAttribute('aria-pressed')==='true';
+    S('nn-tls').setAttribute('aria-pressed',String(!on));
+    // 6697 and 6667 are what this toggle means in practice
+    if(S('nn-port').value==='6697'||S('nn-port').value==='6667')
+      S('nn-port').value=on?'6667':'6697';
+  };
+  if(S('nn-test'))S('nn-test').onclick=()=>{
+    const c=newNet();
+    testConnection({host:c.host,port:c.port,tls:c.tls,nick:c.nick},'#nn-out',S('nn-test'));
+  };
   if(S('nn-go'))S('nn-go').onclick=async()=>{
-    const r=await post('/api/networks',{name:S('nn-name').value.trim(),
-      host:S('nn-host').value.trim(),port:+S('nn-port').value||6697,
-      nick:S('nn-nick').value.trim()||'aurora'});
+    const r=await post('/api/networks',newNet());
     if(r.error)return err(r.error);
     ok('Network added — connecting shortly');
   };
+
+  // An owner invite hands over the keys, so say so before it is minted
+  const roleSel=S('st-inv-role'),usesSel=S('st-inv-uses');
+  const warn=()=>{
+    const w=S('st-inv-warn');
+    if(!w)return;
+    const owner=roleSel&&roleSel.value==='owner';
+    const many=usesSel&&+usesSel.value>1;
+    w.innerHTML=owner?`<div class="note warn"><b>This link creates owners.</b>
+      Anyone who uses it can add and remove people, change networks and mint
+      more invites${many?`, and it will do that for up to ${+usesSel.value} of them`:''}.
+      Only send it to someone you would trust with the server itself.</div>`:'';
+  };
+  if(roleSel){roleSel.onchange=warn;warn()}
+  if(usesSel)usesSel.onchange=warn;
+
   if(S('st-invite'))S('st-invite').onclick=async()=>{
-    const r=await post('/api/invites',{username:S('st-inv-user').value.trim()||undefined,
-      role:S('st-inv-role').value});
+    const role=roleSel?roleSel.value:'member';
+    const uses=usesSel?+usesSel.value:1;
+    if(role==='owner'&&!confirm(
+        uses>1
+          ? `Create a pass that makes up to ${uses} owners?\n\n`+
+            `Every person who uses this link gets full control of this server.`
+          : `Create an owner invite?\n\nWhoever uses this link gets full `+
+            `control of this server.`))return;
+    const r=await post('/api/invites',
+      {role,uses,label:S('st-inv-label').value.trim()||undefined});
     if(r.error)return err(r.error);
-    const link=location.origin+location.pathname+'#invite='+r.token;
-    S('st-inv-out').innerHTML=`<div class="note">Valid ${r.expiresHours}h:<br>
-      <code style="word-break:break-all">${esc(link)}</code></div>`;
-    navigator.clipboard&&navigator.clipboard.writeText(link);
-    toast('Invite link copied');
+    const link=inviteLink(r.token);
+    S('st-inv-out').innerHTML=
+      `<div class="note ok">Valid ${r.expiresHours}h${
+        r.uses>1?`, good for ${r.uses} people`:''}.</div>
+       <div class="copyfield"><code>${esc(link)}</code>
+         <button class="btn ghost" data-copy="${esc(link)}" type="button">Copy</button></div>`;
+    copyText(link,'Invite link copied');
+    SETDATA.invites=r.invites||SETDATA.invites;
+    drawSettings(true);
   };
   if(S('na-go'))S('na-go').onclick=async()=>{
     const r=await post('/api/users/create',{username:S('na-user').value.trim(),
@@ -3057,6 +4208,20 @@ function wireSettings(box){
     const t=e.target.closest('button');
     if(!t)return;
     const d=t.dataset;
+    if(d.copy!==undefined){
+      return copyText(d.copy);
+    }
+    if(d.detail)return showUserDetail(d.detail);
+    if(d.invwho)return showInviteJoiners(d.invwho);
+    if(d.invcopy!==undefined){
+      return copyText(inviteLink(d.invcopy),'Invite link copied');
+    }
+    if(d.invrevoke!==undefined){
+      if(!confirm('Revoke this link? Anyone still holding it can no longer join. '+
+                  'Accounts already created on it are untouched.'))return;
+      const r=await post('/api/invites/revoke',{token:d.invrevoke});
+      return r.error?err(r.error):ok('Invite revoked');
+    }
     if(d.revoke){await post('/api/sessions/revoke',{id:d.revoke});return ok('Signed out')}
     if(d.pkdel){await post('/api/me/passkey',{action:'delete',id:+d.pkdel});
       await drawPasskeys();return toast('Passkey removed')}
@@ -3064,12 +4229,28 @@ function wireSettings(box){
       if(!confirm('Revoke this token? Any agent using it stops working at once.'))return;
       await post('/api/tokens',{action:'revoke',id:+d.tkdel});
       await drawTokens();return toast('Token revoked')}
+    // The form is the source of truth for a test, so what is tested is exactly
+    // what Save would write - including whether it is TLS.
+    const netForm=id=>({
+      host:box.querySelector(`[data-nethost="${id}"]`).value.trim(),
+      port:+box.querySelector(`[data-netport="${id}"]`).value||6697,
+      tls:box.querySelector(`[data-nettls="${id}"]`)
+            .getAttribute('aria-pressed')==='true',
+      nick:box.querySelector(`[data-netnick="${id}"]`).value.trim()||'aurora',
+    });
+    if(d.nettls!==undefined){
+      const on=t.getAttribute('aria-pressed')==='true';
+      t.setAttribute('aria-pressed',String(!on));
+      const port=box.querySelector(`[data-netport="${+d.nettls}"]`);
+      if(port&&(port.value==='6697'||port.value==='6667'))
+        port.value=on?'6667':'6697';
+      return;
+    }
+    if(d.nettest!==undefined)
+      return testConnection(netForm(+d.nettest),`[data-nettestout="${+d.nettest}"]`,t);
     if(d.netsave!==undefined){
       const id=+d.netsave;
-      const r=await post('/api/networks/update',{id,
-        host:box.querySelector(`[data-nethost="${id}"]`).value.trim(),
-        port:+box.querySelector(`[data-netport="${id}"]`).value||6697,
-        nick:box.querySelector(`[data-netnick="${id}"]`).value.trim()});
+      const r=await post('/api/networks/update',{id,...netForm(id)});
       return r.error?err(r.error):ok('Network saved');
     }
     if(d.netdel){
@@ -3124,44 +4305,661 @@ function wireSettings(box){
   };
 }
 
-async function drawTotp(){
-  const box=$('#st-totp');
-  if(!box)return;
-  const on=SESSION.user&&SESSION.user.totp;
-  box.innerHTML=on
-    ? `<div class="note">Two-factor is on.</div>
-       <button class="btn ghost" id="totp-off">Turn off</button>`
-    : `<button class="btn ghost" id="totp-on">Set up two-factor</button>
-       <div id="totp-setup" class="stack"></div>`;
-  const off=$('#totp-off');
-  if(off)off.onclick=async()=>{
-    await post('/api/me/totp',{action:'disable'});
-    if(SESSION.user)SESSION.user.totp=false;
-    drawTotp();toast('Two-factor off');
-  };
-  const start=$('#totp-on');
-  if(start)start.onclick=async()=>{
-    const r=await post('/api/me/totp',{action:'begin'});
-    if(r.error)return toast(r.error);
-    $('#totp-setup').innerHTML=
-      `<div class="note">Add this secret to your authenticator, then confirm:
-        <br><code style="word-break:break-all">${esc(r.secret)}</code></div>
-       <input id="totp-code" inputmode="numeric" placeholder="000000" autocomplete="one-time-code">
-       <button class="btn" id="totp-confirm">Confirm</button>`;
-    $('#totp-confirm').onclick=async()=>{
-      const c=await post('/api/me/totp',{action:'confirm',code:$('#totp-code').value});
-      if(c.error)return toast(c.error);
-      if(SESSION.user)SESSION.user.totp=true;
-      drawTotp();toast('Two-factor on');
+const inviteLink = token => location.origin+location.pathname+'#invite='+token;
+
+/* Proving the connection works before it is saved, rather than leaving someone
+   with a typo in a hostname and a silent archivist they have to go and find. */
+async function testConnection(cfg,slot,btn){
+  const out=typeof slot==='string'?$(slot):slot;
+  if(!cfg.host){
+    if(out)out.innerHTML=`<div class="note err">A host, first.</div>`;
+    return {ok:false};
+  }
+  if(out)out.innerHTML=`<div class="note"><span class="spin"></span> Connecting to
+    ${esc(cfg.host)}:${cfg.port}…</div>`;
+  if(btn)btn.disabled=true;
+  let r;
+  try{ r=await post('/api/networks/test',cfg) }
+  catch(e){ r={ok:false,error:'the server did not answer'} }
+  if(btn)btn.disabled=false;
+  if(out)out.innerHTML=r.ok
+    ? `<div class="note ok">Connected to ${esc(r.server||cfg.host)} in ${r.ms}ms
+        as <b>${esc(r.nick)}</b>. Registration completed, then we said goodbye.</div>`
+    : `<div class="note err">Could not connect — ${esc(r.error||'unknown error')}</div>`;
+  return r;
+}
+
+$('#set-close').onclick=()=>closeAll();
+
+
+
+/* =====================================================================
+   Setup wizard
+   ---------------------------------------------------------------------
+   A fresh install used to present a bare form with no explanation, and an
+   invited person got the same. Both are now a walked path: what this step is
+   for, what it will do, and a way back. The account is created part-way
+   through because everything after it - invites, networks - needs an owner
+   session to exist; from that point the account step shows what was made
+   rather than pretending it can be made twice.
+   ===================================================================== */
+const WIZ={
+  open:false,dismissable:false,flow:'setup',step:0,sub:'',busy:false,
+  data:{appName:'',username:'',nick:'',created:false,invite:null,
+        manual:[],network:null,networkSkipped:false,secured:[]},
+};
+
+const WIZ_FLOWS={
+  setup:['welcome','server','account','members','network','done'],
+  invite:['welcome','account','done'],
+};
+const WIZ_TITLES={
+  welcome:'Welcome', server:'Server setup', account:'Account creation',
+  members:'Member creation', network:'IRC network setup', done:'Finalisation',
+};
+
+const wizSteps = () => WIZ_FLOWS[WIZ.flow];
+const wizKey = () => wizSteps()[WIZ.step];
+
+function startWizard(flow,opts={}){
+  WIZ.flow=flow;WIZ.step=0;WIZ.sub='';WIZ.busy=false;
+  WIZ.dismissable=!!opts.dismissable;
+  WIZ.data={appName:APPNAME,username:'',nick:'',created:false,invite:null,
+            manual:[],network:null,networkSkipped:false,secured:[]};
+  WIZ.open=true;
+  openPanel('#wizard');
+  drawWizard();
+}
+
+function drawWizard(){
+  const keys=wizSteps(),key=wizKey();
+  $('#wiz-title').textContent=WIZ_TITLES[key]||'Setup';
+  $('#wiz-step').textContent=`Step ${WIZ.step+1} of ${keys.length}`;
+  $('#wiz-steps').innerHTML=keys.map((k,i)=>
+    `<i class="${i<WIZ.step?'done':i===WIZ.step?'now':''}"></i>`).join('');
+  $('#wiz-content').innerHTML=WIZ_RENDER[key]();
+  $('#wiz-content').scrollTop=0;
+
+  const back=$('#wiz-back'),next=$('#wiz-next'),alt=$('#wiz-alt');
+  back.style.visibility=WIZ.step===0?'hidden':'visible';
+  // Once the account exists there is nothing to go back and change here
+  // Once the account exists there is nothing behind it left to change
+  back.disabled=key==='account'&&WIZ.data.created;
+  next.textContent=key==='done'?'Finish'
+    :(key==='account'&&!WIZ.data.created)?'Create account':'Next';
+  next.disabled=false;
+  alt.style.display='none';
+  if(key==='network'&&!WIZ.data.network){
+    alt.style.display='';alt.textContent='Set up later';
+  }
+  if(key==='account'&&WIZ.data.created&&WIZ.sub==='secure'){
+    alt.style.display='';alt.textContent='Skip for now';
+  }
+  WIZ_WIRE[key]&&WIZ_WIRE[key]();
+}
+
+const wizErr=m=>{const e=$('#wiz-err');if(e)e.innerHTML=`<div class="note err">${esc(m)}</div>`};
+const wizMark=d=>`<div class="wizmark">${IC(d,26)}</div>`;
+
+/* ------------------------------------------------------------ renders */
+const WIZ_RENDER={
+
+welcome(){
+  if(WIZ.flow==='invite')return `<div class="sect">
+    ${wizMark(`<path d="M4 6h16v12H4z"/><path d="m4 7 8 6 8-6"/>`)}
+    <h4>You have been invited to ${esc(APPNAME)}</h4>
+    <p class="lede">This is an IRC client and a searchable archive of the
+      channels it records. Reading is open to anyone; an account is what lets
+      you send messages, tag them and keep saved searches.</p>
+    <p class="lede">Two short steps: pick a username and password, then decide
+      whether to add a passkey or a second factor.</p>
+  </div>`;
+  return `<div class="sect">
+    ${wizMark(`<path d="M12 3 4 7v6c0 5 3.4 8.6 8 9 4.6-.4 8-4 8-9V7Z"/><path d="m9 12 2 2 4-4"/>`)}
+    <h4>Welcome to ${esc(APPNAME)}</h4>
+    <p class="lede">Please follow the prompts to set up your account and the IRC
+      instances this server will record and cache.</p>
+    <div class="summary">
+      <div class="kv"><span class="k">1 · Server</span>
+        <span class="v">Name this instance</span></div>
+      <div class="kv"><span class="k">2 · Account</span>
+        <span class="v">Create the owner account</span></div>
+      <div class="kv"><span class="k">3 · Members</span>
+        <span class="v">Invite people, or add them by hand</span></div>
+      <div class="kv"><span class="k">4 · Network</span>
+        <span class="v">Connect to IRC and pick channels</span></div>
+    </div>
+    <p class="lede">Nothing is configured out of the box — no networks, no
+      channels, no accounts. Reading stays open to everyone; everything that
+      writes sits behind a sign-in.</p>
+  </div>`;
+},
+
+server(){
+  return `<div class="sect">
+    <h4>Server setup</h4>
+    <p class="lede">This is the name of the instance itself, not of any IRC
+      network. It shows in the header, in the browser tab and on invitations,
+      so pick whatever the people using it will call this place.</p>
+    <div class="field">
+      <label class="fhead">Server name</label>
+      <input id="wz-appname" maxlength="48" placeholder="AuroraIRC"
+             value="${esc(WIZ.data.appName||'')}" autocomplete="off">
+      <div class="hint">You can change it later in Settings → Server. IRC
+        connections come further along, in their own step.</div>
+    </div>
+    <div id="wiz-err"></div>
+  </div>`;
+},
+
+account(){
+  if(!WIZ.data.created){
+    if(WIZ.flow==='invite')return `<div class="sect">
+      <h4>Create your account</h4>
+      <p class="lede">Pick a username and a password. The IRC nick is the name
+        your messages go out under — it can be the same or different.</p>
+      <div class="field"><label class="fhead">Username</label>
+        <input id="wz-user" autocomplete="username" placeholder="you"></div>
+      <div class="field"><label class="fhead">Password</label>
+        <input id="wz-pw1" type="password" autocomplete="new-password"
+               placeholder="At least 8 characters"></div>
+      <div class="field"><label class="fhead">Repeat password</label>
+        <input id="wz-pw2" type="password" autocomplete="new-password"></div>
+      <div id="wiz-err"></div>
+    </div>`;
+    return `<div class="sect">
+      <h4>Account creation</h4>
+      <p class="lede">Please create the sudo account for this application.
+        <b>This account cannot be deleted, disabled or demoted</b> by anyone,
+        including other owners — it is the way back in if anything goes wrong.</p>
+      <div class="field"><label class="fhead">Username</label>
+        <input id="wz-user" autocomplete="username" placeholder="you"></div>
+      <div class="field"><label class="fhead">IRC nick <span class="opt">Optional</span></label>
+        <input id="wz-nick" autocomplete="off" placeholder="The nick you will post under">
+        <div class="hint">Defaults to your username. Your messages go out over a
+          connection of your own, never the archivist's.</div></div>
+      <div class="field"><label class="fhead">Password</label>
+        <input id="wz-pw1" type="password" autocomplete="new-password"
+               placeholder="At least 8 characters"></div>
+      <div class="field"><label class="fhead">Repeat password</label>
+        <input id="wz-pw2" type="password" autocomplete="new-password"></div>
+      <div id="wiz-err"></div>
+    </div>`;
+  }
+  // Created: the same step now offers the ways in that are not a password
+  const u=SESSION.user||{};
+  return `<div class="sect">
+    <h4>Secure your account</h4>
+    <p class="lede">Signed in as <b>${esc(u.name||WIZ.data.username)}</b>. A
+      passkey or a second factor is optional, and much easier to add now than to
+      remember to add later.</p>
+
+    <div class="field">
+      <label class="fhead">Passkey</label>
+      <div id="wz-pk" class="stack"></div>
+      <div class="formrow">
+        <input id="wz-pk-label" maxlength="40" placeholder="Name this device">
+        <button class="btn" id="wz-pk-add" type="button">Add a passkey</button></div>
+      <div class="hint" id="wz-pk-hint">Face ID, Touch ID, Windows Hello or a
+        security key, instead of typing a password.</div>
+    </div>
+
+    <div class="hr"></div>
+
+    <div class="field">
+      <label class="fhead">Two-factor</label>
+      <div id="wz-totp" class="stack"></div>
+    </div>
+    <div id="wiz-err"></div>
+  </div>`;
+},
+
+members(){
+  const inv=WIZ.data.invite;
+  return `<div class="sect">
+    <h4>Member creation</h4>
+    <p class="lede">Other people reach this archive one of two ways. Hand out a
+      link — a single invitation, or a <b>pass</b> that several people can join
+      on — or create an account for someone directly. Either can wait: you can
+      do all of this later from Settings → People.</p>
+
+    <div class="field">
+      <label class="fhead">Generate a join link</label>
+      <div class="formrow">
+        <select id="wz-inv-role" aria-label="Role">
+          <option value="member">Member</option>
+          <option value="owner">Owner</option></select>
+        <select id="wz-inv-uses" aria-label="How many people">
+          <option value="1">1 person</option>
+          <option value="3">A pass for 3</option>
+          <option value="5">A pass for 5</option>
+          <option value="10">A pass for 10</option>
+          <option value="25">A pass for 25</option></select>
+        <button class="btn" id="wz-inv-go" type="button">Create link</button>
+      </div>
+      <div id="wz-inv-warn"></div>
+      ${inv?`<div class="note ok">Valid ${inv.expiresHours}h${
+          inv.uses>1?`, good for ${inv.uses} people`:''}. Anyone who joins on it
+          is recorded against it, so you will always know where an account came
+          from.</div>
+        <div class="copyfield"><code>${esc(inviteLink(inv.token))}</code>
+          <button class="btn ghost" id="wz-inv-copy" type="button">Copy</button></div>`:''}
+      <div class="hint">A member can read, send and tag. An owner can do all of
+        that and manage this server.</div>
+    </div>
+
+    <div class="orline">or</div>
+
+    <div class="field">
+      <label class="fhead">Add someone manually</label>
+      <div class="formrow">
+        <input id="wz-na-user" placeholder="Username" autocomplete="off">
+        <input id="wz-na-pass" type="password" placeholder="Password"
+               autocomplete="new-password"></div>
+      <div class="formrow">
+        <select id="wz-na-role"><option value="member">Member</option>
+          <option value="owner">Owner</option></select>
+        <button class="btn" id="wz-na-go" type="button">Create account</button></div>
+      ${WIZ.data.manual.length?`<div class="stack">${WIZ.data.manual.map(m=>
+        `<div class="row"><span class="rmain"><span class="nm">${esc(m.name)}</span>
+          <span class="sub2">${esc(m.role)} · created</span></span>
+          <span class="pill ok">added</span></div>`).join('')}</div>`:''}
+      <div class="hint">They can change the password themselves once they sign in.</div>
+    </div>
+    <div id="wiz-err"></div>
+  </div>`;
+},
+
+network(){
+  const n=WIZ.data.network;
+  if(n)return `<div class="sect">
+    <h4>IRC network setup</h4>
+    <p class="lede">Connected and saved. The archivist joins these channels and
+      records what it sees — it never transmits.</p>
+    <div class="summary">
+      <div class="kv"><span class="k">Network</span><span class="v">${esc(n.name)}</span></div>
+      <div class="kv"><span class="k">Server</span>
+        <span class="v">${esc(n.host)}:${n.port} · ${n.tls?'TLS':'plain'}</span></div>
+      <div class="kv"><span class="k">Archivist nick</span><span class="v">${esc(n.nick)}</span></div>
+      <div class="kv"><span class="k">Channels</span>
+        <span class="v${n.channels.length?'':' dim'}">${
+          n.channels.length?n.channels.map(c=>'#'+esc(c)).join(', '):'none yet'}</span></div>
+    </div>
+    <div class="note">Recording starts when the live process is running:
+      <code>./archive.py live</code>. On the Home Assistant add-on it is already
+      running and will pick this up within ten seconds.</div>
+  </div>`;
+  return `<div class="sect">
+    <h4>IRC network setup</h4>
+    <p class="lede">Which IRC server to record, and under what name. The
+      archivist connection only ever listens — it joins, records, and never
+      sends a word, so the log keeps running whoever is signed in.</p>
+
+    <div class="field">
+      <label class="fhead">Network</label>
+      <div class="formrow">
+        <input id="wz-nn-name" placeholder="Short name, e.g. libera">
+        <input id="wz-nn-host" placeholder="irc.libera.chat"></div>
+      <div class="formrow">
+        <input id="wz-nn-port" class="narrow" value="6697" aria-label="Port">
+        <input id="wz-nn-nick" placeholder="Archivist nick" value="aurora"></div>
+      <div class="chips">
+        <button class="chip" id="wz-nn-tls" aria-pressed="true" type="button">
+          <i class="dotm"></i>Use TLS</button>
+      </div>
+      <div class="hint">Port 6697 is the usual TLS port; 6667 is plain.</div>
+    </div>
+
+    <div class="field">
+      <label class="fhead">Channels</label>
+      <input id="wz-nn-chans" placeholder="mychannel, another" autocomplete="off">
+      <div class="hint">Comma separated, with or without the leading #. You can
+        add and pause channels at any time.</div>
+    </div>
+
+    <div class="field">
+      <button class="btn ghost" id="wz-nn-test" type="button">Test the connection</button>
+      <div id="wz-nn-out"></div>
+      <div class="hint">The connection has to answer before this can be saved.
+        If the network is not reachable from here, choose <b>Set up later</b> —
+        nothing else in the setup depends on it.</div>
+    </div>
+    <div id="wiz-err"></div>
+  </div>`;
+},
+
+done(){
+  const d=WIZ.data,u=SESSION.user||{};
+  if(WIZ.flow==='invite'){
+    return `<div class="sect">
+      ${wizMark(`<path d="M12 3 4 7v6c0 5 3.4 8.6 8 9 4.6-.4 8-4 8-9V7Z"/><path d="m9 12 2 2 4-4"/>`)}
+      <h4>You are in</h4>
+      <p class="lede">Here is what this account looks like. Nothing secret is
+        shown, here or anywhere else.</p>
+      <div class="summary">
+        <div class="kv"><span class="k">Username</span><span class="v">${esc(u.name||'')}</span></div>
+        <div class="kv"><span class="k">IRC nick</span><span class="v">${esc(u.nick||'')}</span></div>
+        <div class="kv"><span class="k">Role</span><span class="v">${esc(u.role||'member')}</span></div>
+        <div class="kv"><span class="k">Passkey</span>
+          <span class="v${d.secured.includes('passkey')?'':' dim'}">${
+            d.secured.includes('passkey')?'added':'not added'}</span></div>
+        <div class="kv"><span class="k">Two-factor</span>
+          <span class="v${u.totp?'':' dim'}">${u.totp?'on':'off'}</span></div>
+      </div>
+      <p class="lede">You can change any of this from Settings at any time.</p>
+    </div>`;
+  }
+  const n=d.network;
+  return `<div class="sect">
+    ${wizMark(`<path d="m5 13 4 4 10-10"/>`)}
+    <h4>You are set up</h4>
+    <p class="lede">Here is everything this instance now knows. No password is
+      shown here, and none is stored anywhere in a form that could be.</p>
+
+    <div class="summary">
+      <div class="kv"><span class="k">Server name</span>
+        <span class="v">${esc(APPNAME)}</span></div>
+      <div class="kv"><span class="k">Owner account</span>
+        <span class="v">${esc(u.name||d.username)} · root, cannot be removed</span></div>
+      <div class="kv"><span class="k">IRC nick</span>
+        <span class="v">${esc(u.nick||d.nick||d.username)}</span></div>
+      <div class="kv"><span class="k">Password</span>
+        <span class="v dim">set · stored only as a PBKDF2 hash</span></div>
+      <div class="kv"><span class="k">Passkey</span>
+        <span class="v${d.secured.includes('passkey')?'':' dim'}">${
+          d.secured.includes('passkey')?'added':'not added'}</span></div>
+      <div class="kv"><span class="k">Two-factor</span>
+        <span class="v${u.totp?'':' dim'}">${u.totp?'on':'off'}</span></div>
+      <div class="kv"><span class="k">Invitations</span>
+        <span class="v${d.invite?'':' dim'}">${d.invite
+          ? (d.invite.uses>1?`a pass for ${d.invite.uses}`:'one link')+
+            ` · ${d.invite.role} · expires in ${d.invite.expiresHours}h`
+          : 'none created'}</span></div>
+      <div class="kv"><span class="k">Accounts added by hand</span>
+        <span class="v${d.manual.length?'':' dim'}">${
+          d.manual.length?d.manual.map(m=>esc(m.name)).join(', '):'none'}</span></div>
+      <div class="kv"><span class="k">IRC network</span>
+        <span class="v${n?'':' dim'}">${n
+          ? `${esc(n.name)} · ${esc(n.host)}:${n.port} ${n.tls?'TLS':'plain'}`
+          : 'to be set up later'}</span></div>
+      <div class="kv"><span class="k">Archivist</span>
+        <span class="v${n?'':' dim'}">${n?esc(n.nick):'—'}</span></div>
+      <div class="kv"><span class="k">Channels</span>
+        <span class="v${n&&n.channels.length?'':' dim'}">${
+          n&&n.channels.length?n.channels.map(c=>'#'+esc(c)).join(', '):'none yet'}</span></div>
+    </div>
+
+    <div class="note">Recording runs in its own process: <code>./archive.py live</code>.
+      The web client you are looking at is <code>./archive.py serve</code>. They
+      share one SQLite file and neither needs the other to be restarted.</div>
+  </div>`;
+},
+};
+
+/* -------------------------------------------------------------- wiring */
+const WIZ_WIRE={
+  welcome(){},
+
+  server(){
+    const f=$('#wz-appname');
+    if(f)f.onkeydown=e=>{if(e.key==='Enter'){e.preventDefault();wizNext()}};
+  },
+
+  account(){
+    if(!WIZ.data.created){
+      for(const id of ['#wz-user','#wz-nick','#wz-pw1','#wz-pw2']){
+        const f=$(id);
+        if(f)f.onkeydown=e=>{if(e.key==='Enter'){e.preventDefault();wizNext()}};
+      }
+      return;
+    }
+    drawWizPasskeys();
+    const add=$('#wz-pk-add');
+    if(add){
+      if(!pkUsable()){
+        add.disabled=true;
+        $('#wz-pk-hint').innerHTML=pkSupported()
+          ? `Passkeys need HTTPS, or <code>localhost</code>. This page is on
+             <code>${esc(location.origin)}</code>, so the browser hides them.`
+          : 'This browser does not support passkeys.';
+      }
+      add.onclick=async()=>{
+        try{
+          await pkRegister($('#wz-pk-label').value.trim()||'Passkey');
+          if(!WIZ.data.secured.includes('passkey'))WIZ.data.secured.push('passkey');
+          $('#wz-pk-label').value='';
+          await drawWizPasskeys();toast('Passkey added');
+        }catch(e){ wizErr(e.name==='NotAllowedError'?'Cancelled':e.message) }
+      };
+    }
+    const t=$('#wz-totp');
+    if(t){
+      if(SESSION.user&&SESSION.user.totp){
+        t.innerHTML=`<div class="row"><span class="rmain">
+          <span class="nm">Two-factor is on</span>
+          <span class="sub2">A code will be asked for after your password.</span>
+          </span><span class="pill ok">on</span></div>`;
+      }else{
+        t.innerHTML=`<button class="btn ghost" id="wz-totp-on" type="button">
+          Set up two-factor</button><div id="wz-totp-slot" class="stack"></div>`;
+        $('#wz-totp-on').onclick=()=>beginTotp('#wz-totp-slot',()=>{
+          if(!WIZ.data.secured.includes('totp'))WIZ.data.secured.push('totp');
+          WIZ_WIRE.account();
+        });
+      }
+    }
+  },
+
+  members(){
+    const role=$('#wz-inv-role'),uses=$('#wz-inv-uses');
+    const warn=()=>{
+      const w=$('#wz-inv-warn');
+      if(!w)return;
+      w.innerHTML=(role.value==='owner')?`<div class="note warn">
+        <b>An owner link hands over the keys.</b> Anyone who uses it can add and
+        remove people, change networks and mint further invitations${
+        +uses.value>1?`, and it will do that for up to ${+uses.value} of them`:''}.
+        Only send it to someone you would trust with this server.</div>`:'';
     };
+    role.onchange=warn;uses.onchange=warn;warn();
+
+    $('#wz-inv-go').onclick=async()=>{
+      if(role.value==='owner'&&!confirm(
+          +uses.value>1
+            ? `Create a pass that makes up to ${+uses.value} owners?\n\n`+
+              `Every person who uses this link gets full control of this server.`
+            : `Create an owner invite?\n\nWhoever uses this link gets full `+
+              `control of this server.`))return;
+      const r=await post('/api/invites',{role:role.value,uses:+uses.value});
+      if(r.error)return wizErr(r.error);
+      WIZ.data.invite=r;
+      drawWizard();
+      copyText(inviteLink(r.token),'Invite link copied');
+    };
+    const copy=$('#wz-inv-copy');
+    if(copy)copy.onclick=()=>copyText(inviteLink(WIZ.data.invite.token));
+    $('#wz-na-go').onclick=async()=>{
+      const name=$('#wz-na-user').value.trim();
+      const pass=$('#wz-na-pass').value;
+      if(!name||!pass)return wizErr('A username and a password, please.');
+      const r=await post('/api/users/create',
+        {username:name,password:pass,role:$('#wz-na-role').value});
+      if(r.error)return wizErr(r.error);
+      WIZ.data.manual.push({name,role:$('#wz-na-role').value});
+      drawWizard();toast('Account created');
+    };
+  },
+
+  network(){
+    const tls=$('#wz-nn-tls');
+    if(tls)tls.onclick=()=>{
+      const on=tls.getAttribute('aria-pressed')==='true';
+      tls.setAttribute('aria-pressed',!on);
+      const port=$('#wz-nn-port');
+      // Moving between 6697 and 6667 is what everybody means by this toggle
+      if(port&&(port.value==='6697'||port.value==='6667'))
+        port.value=on?'6667':'6697';
+    };
+    const test=$('#wz-nn-test');
+    if(test)test.onclick=()=>wizTest();
+  },
+
+  done(){},
+};
+
+async function drawWizPasskeys(){
+  const box=$('#wz-pk');
+  if(!box)return;
+  const r=await post('/api/me/passkey',{action:'list'});
+  const keys=r.passkeys||[];
+  box.innerHTML=keys.length?keys.map(k=>
+    `<div class="row"><span class="rmain"><span class="nm">${esc(k.label||'Passkey')}</span>
+      <span class="sub2">added just now</span></span>
+      <span class="pill ok">added</span></div>`).join(''):'';
+}
+
+function wizNetCfg(){
+  return {
+    name:($('#wz-nn-name').value||'').trim().toLowerCase(),
+    host:($('#wz-nn-host').value||'').trim(),
+    port:+$('#wz-nn-port').value||6697,
+    tls:$('#wz-nn-tls').getAttribute('aria-pressed')==='true',
+    nick:($('#wz-nn-nick').value||'').trim()||'aurora',
+    channels:($('#wz-nn-chans').value||'').split(',')
+      .map(c=>c.trim().replace(/^#/,'').toLowerCase()).filter(Boolean),
   };
 }
-$('#set-close').onclick=closeAll;
+let wizTested=null;
+async function wizTest(){
+  const cfg=wizNetCfg();
+  if(!cfg.host){wizErr('A host to connect to, first.');return null}
+  const r=await testConnection({host:cfg.host,port:cfg.port,tls:cfg.tls,nick:cfg.nick},
+                               '#wz-nn-out',$('#wz-nn-test'));
+  wizTested=r.ok?`${cfg.host}:${cfg.port}:${cfg.tls}`:null;
+  return r;
+}
+
+/* ----------------------------------------------------------- movement */
+async function wizNext(){
+  if(WIZ.busy)return;
+  const key=wizKey();
+  const next=$('#wiz-next');
+  WIZ.busy=true;next.disabled=true;
+  try{
+    if(!await WIZ_ADVANCE[key]())return;
+    if(WIZ.step<wizSteps().length-1){WIZ.step++;WIZ.sub='';drawWizard()}
+  }finally{
+    WIZ.busy=false;
+    if($('#wiz-next'))$('#wiz-next').disabled=false;
+  }
+}
+
+const WIZ_ADVANCE={
+  async welcome(){ return true },
+
+  async server(){
+    WIZ.data.appName=($('#wz-appname').value||'').trim()||'AuroraIRC';
+    // Before the owner exists this rides along with /api/setup; after it, the
+    // ordinary owner-only route is the one that works.
+    if(WIZ.data.created){
+      const r=await post('/api/appname',{name:WIZ.data.appName});
+      if(r.error)return wizErr(r.error),false;
+      APPNAME=r.appName;applyAppName();
+    }
+    return true;
+  },
+
+  async account(){
+    if(WIZ.data.created)return true;      // the secure sub-step: nothing to do
+    const user=($('#wz-user').value||'').trim();
+    const nickEl=$('#wz-nick');
+    const nick=nickEl?(nickEl.value||'').trim():'';
+    const p1=$('#wz-pw1').value,p2=$('#wz-pw2').value;
+    if(!user)return wizErr('Pick a username.'),false;
+    if(p1.length<8)return wizErr('Passwords are at least 8 characters.'),false;
+    if(p1!==p2)return wizErr("Those two passwords don't match."),false;
+
+    const r=WIZ.flow==='invite'
+      ? await post('/api/redeem',{token:INVITE,username:user,password:p1})
+      : await post('/api/setup',{username:user,password:p1,
+                                 nick:nick||undefined,appName:WIZ.data.appName});
+    if(r.error)return wizErr(r.error),false;
+    WIZ.data.username=user;WIZ.data.nick=nick||user;WIZ.data.created=true;
+    if(WIZ.data.appName)APPNAME=WIZ.data.appName;
+    adoptSession(r);
+    applyAppName();
+    // Both flows offer the ways in that are not a password, right here, rather
+    // than hoping somebody goes looking for them in Settings later.
+    WIZ.sub='secure';
+    drawWizard();
+    toast(WIZ.flow==='invite'?'Welcome':'Owner account created');
+    return false;                          // stay on this step, second phase
+  },
+
+  async members(){ return true },
+
+  async network(){
+    if(WIZ.data.network)return true;
+    const cfg=wizNetCfg();
+    if(!cfg.name)return wizErr('Give the network a short name.'),false;
+    if(!cfg.host)return wizErr('Give it a host to connect to.'),false;
+    const sig=`${cfg.host}:${cfg.port}:${cfg.tls}`;
+    if(wizTested!==sig){
+      const r=await wizTest();
+      if(!r||!r.ok){
+        wizErr('That connection did not answer, so it has not been saved. '+
+               'Fix it and test again, or choose "Set up later".');
+        return false;
+      }
+    }
+    const made=await post('/api/networks',{name:cfg.name,host:cfg.host,
+      port:cfg.port,tls:cfg.tls,nick:cfg.nick});
+    if(made.error)return wizErr(made.error),false;
+    for(const c of cfg.channels)
+      await post('/api/networks/channels',{network_id:made.id,channel:c});
+    WIZ.data.network=cfg;
+    drawWizard();
+    return false;                          // show what was saved before moving on
+  },
+
+  async done(){
+    WIZ.open=false;
+    closeAll({force:true});
+    // Everything the page cached was fetched from an empty archive
+    await refreshSession();
+    await refreshMeta().catch(()=>{});
+    await refreshSaved();
+    await refreshHistory();
+    syncSearchTools();applyLook();syncComposer();
+    toast(WIZ.flow==='invite'?'All set':'Setup complete');
+    return false;
+  },
+};
+
+$('#wiz-next').onclick=wizNext;
+$('#wiz-back').onclick=()=>{
+  if(WIZ.step===0)return;
+  // Coming back into the account step after it succeeded lands on the second
+  // phase, not on a form that can no longer do anything.
+  WIZ.step--;
+  WIZ.sub=(wizKey()==='account'&&WIZ.data.created)?'secure':'';
+  drawWizard();
+};
+$('#wiz-alt').onclick=async()=>{
+  const key=wizKey();
+  if(key==='network'){
+    if(!confirm('Skip the IRC connection for now?\n\n'+
+                'Nothing will be recorded until a network is added from '+
+                'Settings → Server. Everything else stays set up.'))return;
+    WIZ.data.networkSkipped=true;
+  }
+  WIZ.step++;WIZ.sub='';drawWizard();
+};
 
 /* ---------------- appearance ---------------- */
 const ACCENTS=['#2563d8','#5b9dff','#7c5cff','#c2410c','#e11d48',
                '#0f9d58','#0d9488','#b45309','#6b7280'];
-const look={theme:'',accent:'',bg:'',strength:35,blur:0,scrim:50,images:true};
+const look={theme:'',accent:'',bg:'',strength:35,blur:0,scrim:50,images:true,clock:''};
 
 function loadLook(){
   try{
@@ -3211,8 +5009,16 @@ function applyLook(){
   el.style.setProperty('--bg-strength',(look.strength/100).toFixed(2));
   el.style.setProperty('--bg-blur',look.blur+'px');
   el.style.setProperty('--bg-scrim',(look.scrim/100).toFixed(2));
-  $('#bgcontrols').style.display=look.bg?'block':'none';
+  const bgc=$('#bgcontrols');
+  if(bgc)bgc.style.display=look.bg?'flex':'none';
   drawLook();
+}
+/* getComputedStyle hands back rgb(); an <input type=color> only takes #rrggbb */
+function rgbToHex(v){
+  const m=/rgba?\(([^)]+)\)/.exec(v||'');
+  if(!m)return '';
+  const [r,g,b]=m[1].split(',').map(x=>Math.max(0,Math.min(255,parseInt(x,10)||0)));
+  return '#'+[r,g,b].map(x=>x.toString(16).padStart(2,'0')).join('');
 }
 function drawLook(){
   $$('#theme-seg button').forEach(b=>
@@ -3232,12 +5038,30 @@ function drawLook(){
   $$('#accents .swatch-btn').forEach(b=>
     b.setAttribute('aria-pressed',b.dataset.accent===look.accent));
   const c=$('#accent-custom');
-  if(c&&look.accent&&/^#[0-9a-f]{6}$/i.test(look.accent))c.value=look.accent;
+  if(c){
+    // With nothing chosen it would sit on black, which is not the accent in
+    // use and reads as a broken control.
+    const cur=look.accent||getComputedStyle(document.documentElement)
+      .getPropertyValue('--accent').trim();
+    const hex=/^#[0-9a-f]{6}$/i.test(cur)?cur:rgbToHex(cur);
+    if(hex)c.value=hex;
+  }
   const it=$('#img-toggle');
   if(it)it.setAttribute('aria-pressed',look.images!==false);
-  $('#bgstrength').value=look.strength;
-  $('#bgblur').value=look.blur;
-  $('#bgscrim').value=look.scrim;
+  $$('#clock-seg button').forEach(b=>
+    b.setAttribute('aria-pressed',(b.dataset.clock||'')===(look.clock||'')));
+  const ch=$('#clockhint');
+  if(ch){
+    const short=tzShort(),zone=(TZ&&TZ!==short)?`${short||'local time'} (${TZ})`
+      :(short||TZ||'local time');
+    ch.textContent=`Times are shown on this device's clock — ${zone}, `+
+      `currently ${hhmm(Math.floor(Date.now()/1000))}.`;
+  }
+  for(const [sel,v] of [['#bgstrength',look.strength],['#bgblur',look.blur],
+                        ['#bgscrim',look.scrim]]){
+    const el=$(sel);
+    if(el)el.value=v;
+  }
 }
 
 /* Downscale before storing: a phone photo would blow the localStorage quota */
@@ -3261,16 +5085,56 @@ function shrinkImage(file,maxW=1920,quality=0.82){
   });
 }
 
-$('#theme').onclick=()=>{closeAll();drawLook();openSheet('#look-sheet')};
-$('#look-close').onclick=closeAll;
+/* Appearance is a settings section now, not a sheet of its own - one place
+   for everything you can change about your account. */
+$('#theme').onclick=()=>openSettings('appearance');
 $$('#theme-seg button').forEach(b=>b.onclick=()=>{
-  look.theme=b.dataset.th||'';saveLook();applyLook();
+  look.theme=b.dataset.th||'';saveLook();applyLook();repaintColours();
 });
-$('#img-toggle').onclick=e=>{
+/* Nick, channel and tag colours are chosen per theme and written inline as
+   each row is built, so a theme change leaves the ones already on screen
+   reading against the wrong background until something forces a redraw. */
+function repaintColours(){
+  $$('.msg .who').forEach(el=>{
+    const n=el.dataset.nick;
+    if(n)el.style.color=nickColor(n);
+  });
+  $$('.av').forEach(el=>{
+    const row=el.closest('.msg');
+    const n=(row&&row.dataset.rownick)||el.textContent;
+    if(n)el.style.background=avatarBg(n);
+  });
+  $$('[data-chan]').forEach(el=>{
+    if(el.classList.contains('chan'))el.style.cssText=chanStyle(el.dataset.chan);
+  });
+  const byName=new Map((META&&META.tags||[]).map(t=>[t.name,t.color]));
+  $$('.mtag').forEach(el=>{
+    const c=byName.get(el.dataset.tag);
+    if(c)el.style.cssText=tagStyle(c);
+  });
+  drawTagList();drawApplied();
+}
+$('#img-toggle').onclick=()=>{
   look.images=!look.images;
-  e.target.setAttribute('aria-pressed',look.images);
-  saveLook();reload();
+  saveLook();drawLook();reload();
 };
+$$('#clock-seg button').forEach(b=>b.onclick=()=>{
+  look.clock=b.dataset.clock||'';
+  saveLook();drawLook();
+  // Every visible clock is wrong until the feed is drawn again
+  $$('#log .msg .when').forEach(el=>{
+    const ts=+el.closest('.msg').dataset.ts;
+    el.textContent=hhmm(ts);el.setAttribute('data-tip',stamp(ts)+' — see in context');
+  });
+  $$('#log .evt .et').forEach(el=>{
+    el.textContent=hhmm(+el.closest('.evt').dataset.ts)});
+  setTZHint();
+});
+function setTZHint(){
+  const h=$('#tzhint');
+  if(h)h.textContent=`Dates follow this device's time zone`+
+    (tzShort()?` (${tzShort()})`:'')+`, not the server's.`;
+}
 $('#accent-custom').oninput=e=>{look.accent=e.target.value;saveLook();applyLook()};
 $('#accent-reset').onclick=()=>{look.accent='';saveLook();applyLook()};
 $('#bgfile').onchange=async e=>{
@@ -3298,17 +5162,23 @@ function currentSearchState(){
 function drawSaved(){
   const box=$('#savedlist');
   if(!box)return;
-  if(!SAVED.length){box.innerHTML='<div class="loading">Nothing saved yet</div>';return}
+  if(!SAVED.length){
+    box.innerHTML=`<div class="empty-row">${SESSION.signedIn
+      ? 'Nothing saved yet — search for something, then press the bookmark in the search bar.'
+      : 'Sign in to save a search.'}</div>`;
+    return;
+  }
   box.innerHTML='';
-  for(const s of SAVED){
+  for(const sv of SAVED){
     const row=document.createElement('div');
-    row.className='saved';
-    row.innerHTML=`<span class="nm">${esc(s.name)}</span>`+
-      `<span class="qq">${esc(s.query||'everything')}</span>`+
-      `<button class="del" title="Delete" data-del="${esc(s.name)}">×</button>`;
+    row.className='row tappable';
+    row.innerHTML=`<span class="rmain"><span class="nm">${esc(sv.name)}</span>`+
+      `<span class="sub2">${esc(sv.query||'everything')}</span></span>`+
+      `<span class="act"><button class="iconact danger" data-del="${esc(sv.name)}"
+         data-tip="Delete" aria-label="Delete">${BIN}</button></span>`;
     row.onclick=e=>{
-      if(e.target.closest('[data-del]'))return deleteSaved(s.name);
-      applySaved(s);
+      if(e.target.closest('[data-del]'))return deleteSaved(sv.name);
+      applySaved(sv);
     };
     box.appendChild(row);
   }
@@ -3331,7 +5201,7 @@ function applySaved(s){
   $('#q').value=s.query||'';
   applyQueryBox();
   closeAll();
-  post('/api/searches/used',{name:s.name});
+  if(SESSION.signedIn)post('/api/searches/used',{name:s.name});
 }
 async function deleteSaved(name){
   if(!SESSION.signedIn)return toast('Sign in to manage saved searches');
@@ -3339,16 +5209,11 @@ async function deleteSaved(name){
   if(r.error)return toast(r.error);
   SAVED=r.searches||[];drawSaved();
 }
-$('#save-search').onclick=async e=>{
+$('#save-search').onclick=e=>{
   e.preventDefault();
   if(!SESSION.signedIn)return toast('Sign in to save searches');
-  const q=$('#q').value.trim();
-  const suggested=q||'Everything';
-  const name=prompt('Name this search',suggested);
-  if(!name)return;
-  const r=await post('/api/searches',{name:name.trim(),query:q,extra:currentSearchState()});
-  if(r.error)return toast(r.error);
-  SAVED=r.searches||[];drawSaved();toast('Saved');
+  // Same flow as the bookmark in the search bar, so there is one way to do it
+  closeAll();$('#q').focus();openSaveSearch();
 };
 
 /* composer */
@@ -3385,11 +5250,25 @@ function copyPermalink(id,btn){
   if(chan)p.set('chan',chan);
   p.set('msg',id);
   const url=location.origin+location.pathname+'#'+p.toString();
-  navigator.clipboard.writeText(url).then(()=>{
+  copyText(url,'Link copied').then(()=>{
     if(!btn)return;
     btn.style.color='var(--ok)';
     setTimeout(()=>btn.style.color='',1200);
   });
+}
+
+/* The clipboard is refused outright on an insecure origin and in some
+   embedded browsers, and an unhandled rejection there is a real error in the
+   console for something that should just say "no". */
+function copyText(text,said){
+  const done=()=>toast(said||'Copied');
+  try{
+    if(navigator.clipboard&&navigator.clipboard.writeText)
+      return navigator.clipboard.writeText(text).then(done,
+        ()=>toast('Could not reach the clipboard — copy it by hand'));
+  }catch(e){}
+  toast('Could not reach the clipboard — copy it by hand');
+  return Promise.resolve();
 }
 
 function toast(msg){
@@ -3448,16 +5327,20 @@ $('#composer').onsubmit=async e=>{
   // Optimistic echo - on screen immediately, dimmed until the wire confirms it.
   // Your own nick, not the archivist's: they are different identities now.
   const nick=(SESSION.user&&SESSION.user.nick)||SESSION.nick||'you';
-  const echo=msgNode({id:'pending',ts:Math.floor(Date.now()/1000),kind:0,text,
-                      channel:channel.replace(/^#/,''),nick,source:'live'});
+  const log=$('#log');
+  syncTail(log);
+  const pending={id:'pending',ts:Math.floor(Date.now()/1000),kind:0,text,
+                 channel:channel.replace(/^#/,''),nick,source:'live'};
+  const k=dayKey(pending.ts);
+  if(k!==lastDay){lastDay=k;lastMsg=null;log.appendChild(sepNode(k))}
+  const echo=msgNode(pending);
   echo.classList.add('sending');
   echo.dataset.text=text;
-  const log=$('#log');
   log.appendChild(echo);log.scrollTop=log.scrollHeight;
 
   const r=await post('/api/send',{channel,text});
   if(r.error){
-    echo.remove();
+    echo.remove();syncTail();
     sendStatus('Not sent — '+r.error,{error:true});
     ta.value=text;syncComposer();return;   // give the text back, don't lose it
   }
@@ -3479,7 +5362,7 @@ async function watchSend(id,echo){
     try{ st=await api('/api/send/status','id='+encodeURIComponent(id)); }
     catch(e){ continue; }                          // transient, keep watching
     if(st.state==='failed'){
-      echo.remove();
+      echo.remove();syncTail();
       ta.value=echo.dataset.text;syncComposer();   // don't lose what they wrote
       return sendStatus('Not sent — '+st.error,{error:true});
     }
@@ -3517,6 +5400,8 @@ document.onkeydown=e=>{
     return closeAll();
   }
   if(isTyping()||e.metaKey||e.ctrlKey||e.altKey)return;
+  // A single-letter shortcut must not reach past a panel that owns the screen
+  if($$('.panel.on').length||$('#dlg').classList.contains('on'))return;
   const k=e.key.toLowerCase();
   if(k==='/'||k==='s'){e.preventDefault();$('#q').focus();$('#q').select()}
   else if(k==='p'){e.preventDefault();$('#people-btn').click()}
@@ -3599,9 +5484,13 @@ document.onkeydown=e=>{
 
   await refreshSession();
   applyLook();
-  // An invite or an unclaimed archive should announce itself, not hide behind
-  // an icon nobody knows to press.
-  if(INVITE||SESSION.setupNeeded){drawLive();openSheet('#live-sheet')}
+  setTZHint();
+  await refreshHistory();
+  syncSearchTools();
+  // An invite, or an archive nobody has claimed, should announce itself rather
+  // than hide behind an icon nobody knows to press.
+  if(SESSION.setupNeeded)startWizard('setup');
+  else if(INVITE)startWizard('invite',{dismissable:true});
   setInterval(refreshSession,15000);
 
   // Live updates are pushed over SSE; the slow poll is only a safety net for

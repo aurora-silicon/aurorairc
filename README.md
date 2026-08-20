@@ -17,16 +17,23 @@ By **RyanTheTide**.
 git clone https://github.com/aurora-silicon/aurorairc
 cd aurorairc
 
-./archive.py network add libera --host irc.libera.chat --channels mychannel
-./archive.py serve            # open http://localhost:8420 and create the owner
+./archive.py serve            # open http://localhost:8420
 ./archive.py live             # connect and start recording
 ```
 
-The first visit prompts you to create the owner account. There is no default
-password and no public signup — after that, further accounts exist only by
-invitation.
+The first visit walks you through setup: name the server, create the owner
+account, add a passkey or two-factor if you want one, hand out invitations, and
+connect to a network — the connection is tested before it is saved, and can be
+left until later. There is no default password and no public signup; after the
+owner, further accounts exist only by invitation or by an owner's hand.
 
 Nothing is configured out of the box: no networks, no channels, no accounts.
+
+Networks can also be added from the command line if you prefer:
+
+```bash
+./archive.py network add libera --host irc.libera.chat --channels mychannel
+```
 
 ---
 
@@ -53,11 +60,16 @@ consequence is that logging never stops, whatever anyone else is doing.
 - **Search** — SQLite FTS5. `"quoted phrases"` and `prefix*` work.
 - **One search grammar** — `#channel`, `@person`, `&tag`, and free text combine:
   `#mychannel @someone &important term`. Typing any sigil offers completions.
+- **The bar remembers** — recent searches come back in the bar itself, and the
+  bookmark beside it saves the current one. Both are per account and follow you
+  between devices; an anonymous reader gets neither.
 - **Tags** — Finder-style coloured flags for marking messages worth finding again.
 - **Jump to context** — land on any message in its surrounding conversation, with
   a linkable URL.
 - **Live** — new messages arrive over server-sent events, typically within a
   second.
+- **Your clock** — every time, day heading and date filter is rendered in the
+  device's own zone, never the server's. 12- or 24-hour is yours to pick.
 - **Presence** — joins and quits are recorded separately from conversation and
   are off by default, folded into quiet single lines when shown.
 - Themes (system / light / dark / noir), accent colours, optional background,
@@ -78,8 +90,17 @@ session. The **first account created is root** and cannot be demoted, disabled
 or removed by anyone, including other owners.
 
 Sign in with a password, optionally with TOTP two-factor, or with a **passkey**.
-Sessions live in the database, carry a CSRF token, and can be revoked per
-device from Settings.
+The second factor is asked for as its own step, once the password has actually
+been accepted — the fields that got you there are put away rather than left on
+screen. Sessions live in the database, carry a CSRF token, and can be revoked
+per device from Settings.
+
+**Invitations and passes.** An owner mints a link. A plain link seats one
+person; a **pass** seats several — five people joining a room from one link —
+and either can be revoked at any moment without disturbing the accounts already
+created on it. An owner-level link warns before it is minted, because whoever
+uses it gets the server. Every redemption is recorded, so **View details** on
+any account answers where it came from: by whose link, which link, and when.
 
 > Passkeys need a secure context. They work on `localhost`, and over HTTPS once
 > you put a reverse proxy or tunnel in front — but not over plain `http://` to a
@@ -153,6 +174,22 @@ Without a proxy, bind to your LAN with `--host 0.0.0.0` and accept that reading
 is open to that network.
 
 ---
+
+## Testing
+
+Two suites, both self-contained. Neither touches a real IRC network or the
+outside world: `tests/fakeircd.py` is a small server that speaks just enough
+IRC to exercise the real pipeline, and messages sent by one connection come
+back through another exactly as they would on a real network.
+
+```bash
+python3 tests/e2e.py          # the API and the live pipeline, end to end
+python3 tests/uiserver.py     # the client itself, driven in a real browser
+python3 tests/uiserver.py --hold    # or leave the stack up to poke at by hand
+```
+
+The browser suite needs Playwright and Chromium; it says so and exits cleanly
+if they are not installed.
 
 ## Notes
 
