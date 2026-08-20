@@ -208,8 +208,16 @@ back through another exactly as they would on a real network.
 ```bash
 python3 tests/e2e.py          # the API and the live pipeline, end to end
 python3 tests/uiserver.py     # the client itself, driven in a real browser
+python3 tests/upgrade.py      # an upgrade keeps every account and message
 python3 tests/uiserver.py --hold    # or leave the stack up to poke at by hand
 ```
+
+`upgrade.py` builds an archive with a *previous release's own code*, upgrades
+it by opening it with the current code, and then checks both halves of the
+question: a census in plain SQL — row counts and content digests, table by
+table — and that the credentials issued beforehand still work, down to the
+session cookie already sitting in someone's browser. `--from v1.0.0` picks a
+different release to start from.
 
 The browser suite needs Playwright and Chromium; it says so and exits cleanly
 if they are not installed.
