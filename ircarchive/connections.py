@@ -83,6 +83,8 @@ class Sender:
 
     def drain(self):
         """Consume and discard inbound. This client never acts on it."""
+        if self.sock is None:
+            return              # closed underneath us, mid-shutdown
         try:
             self.sock.settimeout(0.05)
             while True:
@@ -97,7 +99,8 @@ class Sender:
             pass
         finally:
             try:
-                self.sock.settimeout(CONNECT_TIMEOUT)
+                if self.sock is not None:
+                    self.sock.settimeout(CONNECT_TIMEOUT)
             except OSError:
                 pass
 
@@ -141,6 +144,74 @@ class Sender:
         self.sock = None
         self.ready = False
         self.joined.clear()
+
+
+def probe(host, port, tls=True, nick="aurora", timeout=15):
+    """Open a throwaway connection and confirm the server actually answers.
+
+    Used by setup so nobody finishes the wizard with a typo in the hostname and
+    a silent archivist. It registers far enough to get the welcome numeric,
+    says QUIT, and closes - it never joins anything and never speaks.
+
+    Returns ``{"ok": True, "server": ..., "ms": ..., "nick": ...}`` or
+    ``{"ok": False, "error": "..."}``. Never raises.
+    """
+    started = time.time()
+    sock = None
+    try:
+        raw = socket.create_connection((host, int(port)), timeout=timeout)
+        if tls:
+            raw = ssl.create_default_context().wrap_socket(
+                raw, server_hostname=host)
+        sock = raw
+        sock.settimeout(timeout)
+        use = str(nick or "aurora").strip() or "aurora"
+        sock.sendall(f"NICK {use}\r\n".encode())
+        sock.sendall(f"USER {use} 0 * :{use}\r\n".encode())
+        buf, deadline, server = "", time.time() + timeout, host
+        while time.time() < deadline:
+            chunk = sock.recv(4096).decode("utf-8", "replace")
+            if not chunk:
+                break
+            buf += chunk
+            while "\r\n" in buf:
+                line, _, buf = buf.partition("\r\n")
+                prefix, cmd, params = parse_line(line)
+                if cmd == "PING":
+                    sock.sendall(("PONG :" + (params[-1] if params else "")
+                                  + "\r\n").encode())
+                elif cmd == "001":
+                    if prefix:
+                        server = prefix
+                    return {"ok": True, "server": server, "nick": use,
+                            "ms": int((time.time() - started) * 1000)}
+                elif cmd in ("433", "436"):
+                    use += "_"
+                    sock.sendall(f"NICK {use}\r\n".encode())
+                elif cmd in ("464", "465"):
+                    return {"ok": False,
+                            "error": params[-1] if params else
+                                     "the server refused the connection"}
+                elif cmd == "ERROR":
+                    return {"ok": False,
+                            "error": params[-1] if params else "connection closed"}
+        return {"ok": False, "error": "the server never finished registering us"}
+    except ssl.SSLError as exc:
+        return {"ok": False, "error": f"TLS failed: {exc}. Try turning TLS off, "
+                                      f"or port 6667."}
+    except socket.timeout:
+        return {"ok": False, "error": f"timed out after {timeout}s"}
+    except OSError as exc:
+        return {"ok": False, "error": str(exc)}
+    except Exception as exc:                       # never let a probe 500
+        return {"ok": False, "error": str(exc)}
+    finally:
+        try:
+            if sock:
+                sock.sendall(b"QUIT :bye\r\n")
+                sock.close()
+        except OSError:
+            pass
 
 
 class Manager:
@@ -290,7 +361,13 @@ class Manager:
                 self.senders.pop(key, None)
                 self.log(f"   closed idle sender {key[1]}")
             elif s.ready:
-                s.drain()          # keep answering PING while it lingers
+                # A shutdown can close this from another thread mid-sweep, so
+                # a dead socket here is ordinary rather than an error to shout
+                # about on the way out.
+                try:
+                    s.drain()      # keep answering PING while it lingers
+                except (OSError, AttributeError):
+                    pass
 
     # -- main loop --------------------------------------------------------
 

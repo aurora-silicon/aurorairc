@@ -34,8 +34,16 @@ Endpoints:
   POST /api/send             {channel, text}                       (auth)
   POST /api/tags|tags/update|tags/delete|message/tag               (auth)
   POST /api/searches|searches/delete|searches/used                 (auth)
-  POST /api/invites          {username?, role}                     (owner)
+  POST /api/history          {action: record|clear, query}        (auth)
+  POST /api/invites          {role, uses?, label?}                (owner)
+  POST /api/invites/revoke   {token}                              (owner)
+  POST /api/networks/test    {host, port, tls, nick}              (owner)
+  POST /api/import           {source, url|documents, format, ...} (owner)
+  POST /api/import/preview   the same, parsed and rolled back      (owner)
+  GET  /api/fetch/image?url= a picture, through this server        (auth)
   POST /api/users/update     {username, role?, disabled?, delete?} (owner)
+  GET  /api/users/detail?username=   join provenance for one account (owner)
+  GET  /api/history          recent searches for this account       (auth)
 """
 
 import json
@@ -48,13 +56,22 @@ from http.server import ThreadingHTTPServer, SimpleHTTPRequestHandler
 from pathlib import Path
 from urllib.parse import urlparse, parse_qs
 
-from . import auth as A, db, events as EV, query as Q, webauthn as W
+from . import (auth as A, backfill as BF, db, events as EV,
+               fetching as F, query as Q, webauthn as W)
 from .mcptools import Archive, TOOLS, PROTOCOL_VERSION, SERVER_INFO
 
 WEB_ROOT = Path(__file__).resolve().parent / "web"
 MAX_SEND = 450
 LIVE_STALE = 45
 MAX_BODY = 64 * 1024        # no API call needs more; refuse the rest unread
+MAX_IMPORT_BODY = 16 * 1024 * 1024   # except an uploaded log, which is the payload
+MAX_IMAGE_BYTES = 25 * 1024 * 1024
+# Served back from our own origin, so the list is what a browser will render
+# as a picture and nothing else. SVG is a document with script in it and is
+# refused outright rather than trusted to a Content-Disposition.
+IMAGE_TYPES = {"image/png", "image/jpeg", "image/jpg", "image/gif", "image/webp",
+               "image/avif", "image/bmp", "image/tiff", "image/x-icon",
+               "image/vnd.microsoft.icon", "image/heic", "image/heif"}
 MAX_STREAMS = 40            # SSE holds a thread each, so cap them
 MAX_OFFSET = 2_000_000      # deep paging makes SQLite walk the table
 STREAM_SECONDS = 900
@@ -182,11 +199,20 @@ class Handler(SimpleHTTPRequestHandler):
         self.send_header("Referrer-Policy", "no-referrer")
         self.send_header("Permissions-Policy",
                          "geolocation=(), microphone=(), camera=(), interest-cohort=()")
+        # Pictures posted to IRC live wherever they live. Over TLS the policy
+        # stays https-only, which is what stops a page served securely pulling
+        # in something that is not. Served over plain http there is no such
+        # thing to protect - and refusing http pictures there means a LAN
+        # install shows none at all, which is not a security win, just a
+        # broken feature.
+        secure = self.behind_proxy and (
+            self.headers.get("X-Forwarded-Proto") == "https")
+        img = "img-src 'self' data: https:" + ("" if secure else " http:")
         self.send_header("Content-Security-Policy",
                          "default-src 'self'; "
                          "script-src 'self' 'unsafe-inline'; "
                          "style-src 'self' 'unsafe-inline'; "
-                         "img-src 'self' data: https:; "   # inline images from anywhere
+                         f"{img}; "
                          "media-src 'self' https:; "
                          "connect-src 'self'; "
                          "frame-ancestors 'none'; "
@@ -214,11 +240,12 @@ class Handler(SimpleHTTPRequestHandler):
         self.end_headers()
         self.wfile.write(body)
 
-    def _body(self):
+    def _body(self, limit=MAX_BODY):
         n = int(self.headers.get("Content-Length") or 0)
-        if n > MAX_BODY:
+        if n > limit:
             # Do not read it: that is the whole point of the limit
-            self._json({"error": "request too large"}, 413)
+            self._json({"error": f"that is larger than the "
+                                 f"{limit // (1024 * 1024) or 1}MB limit"}, 413)
             raise ValueError("oversized body")
         if not n:
             return {}
@@ -403,15 +430,34 @@ class Handler(SimpleHTTPRequestHandler):
                     {"name": r["username"], "role": r["role"], "nick": r["irc_nick"],
                      "totp": bool(r["totp_enabled"]), "disabled": bool(r["disabled"]),
                      "root": r["id"] == root,
+                     "joinMethod": r["join_method"] or A.JOIN_MANUAL,
                      "created": r["created"], "lastSeen": r["last_seen"]}
                     for r in con.execute("SELECT * FROM users ORDER BY role, username")]})
+            if url.path == "/api/users/detail":
+                # Provenance for one account, behind a button rather than in
+                # the list: useful when you need it, clutter when you do not.
+                if not self._need_owner(csrf=False):
+                    return
+                detail = A.user_detail(con, p.get("username", [""])[0])
+                if not detail:
+                    return self._json({"error": "no such user"}, 404)
+                return self._json(detail)
+            if url.path == "/api/history":
+                s = self._session()
+                if not s:
+                    # History is an account feature; anonymous readers get none
+                    return self._json({"history": []})
+                return self._json({"history": A.search_history(
+                    con, s["user_id"],
+                    limit=int(p.get("limit", ["12"])[0]))})
             if url.path == "/api/invites":
                 if not self._need_owner(csrf=False):
                     return
-                return self._json({"invites": [dict(r) for r in con.execute(
-                    "SELECT token, username, role, created, expires, used_by "
-                    "FROM invites WHERE used_by IS NULL AND expires > ? "
-                    "ORDER BY created DESC", (int(time.time()),))]})
+                # Dead links are listed too: "who came in on that pass" is the
+                # question an owner asks *after* the pass has been used up.
+                return self._json({"invites": A.invites(con, include_dead=True),
+                                   "expiresHours": A.INVITE_HOURS,
+                                   "maxUses": A.MAX_PASS_USES})
             if url.path == "/api/sessions":
                 s = self._need_auth(csrf=False)
                 if not s:
@@ -439,6 +485,13 @@ class Handler(SimpleHTTPRequestHandler):
                         con, n["id"], archived_only=False) if c not in n["channels"]]
                     n.pop("sasl_pass", None)      # never hand secrets back out
                 return self._json({"networks": nets})
+            if url.path == "/api/import/formats":
+                if not self._need_owner(csrf=False):
+                    return
+                return self._json({"formats": [{"key": k, "label": l}
+                                               for k, l in BF.FORMATS]})
+            if url.path == "/api/fetch/image":
+                return self.proxy_image(p)
             if url.path == "/api/stream":
                 return self.stream(con, p)
         except (KeyError, ValueError, TypeError):
@@ -447,6 +500,108 @@ class Handler(SimpleHTTPRequestHandler):
             print(f"[error] GET {url.path}: {exc}")
             return self._json({"error": "server error"}, 500)
         self._json({"error": "not found"}, 404)
+
+    def do_import(self, con, body, *, commit, ip, who):
+        """Take history in from a URL or an uploaded log.
+
+        Both doors lead to ircarchive.backfill, which is what the command line
+        uses, so a log imported here is held to the same rules as one imported
+        with `./archive.py import` - the same formats, the same idea of what
+        counts as speech, the same dedupe key. Nothing is parsed twice, and
+        nothing is parsed differently.
+        """
+        fmt = str(body.get("format") or "auto")
+        if fmt not in BF.FORMAT_KEYS:
+            return self._json({"error": "unknown log format"}, 400)
+        channel = str(body.get("channel") or "").strip().lstrip("#").lower()
+        if channel and (any(c.isspace() for c in channel) or len(channel) > 64):
+            return self._json({"error": "that is not a channel name"}, 400)
+        year = body.get("year")
+        try:
+            year = int(year) if year else None
+        except (TypeError, ValueError):
+            return self._json({"error": "year must be a number"}, 400)
+        if year is not None and not (1988 <= year <= 2100):
+            return self._json({"error": "that year is not plausible"}, 400)
+        events = bool(body.get("events"))
+
+        docs, skipped = [], []
+        source = str(body.get("source") or "text")
+        if source == "url":
+            try:
+                docs, skipped = BF.documents_from_url(
+                    str(body.get("url") or "").strip(),
+                    follow=bool(body.get("follow")))
+            except F.FetchError as exc:
+                return self._json({"error": str(exc)}, 400)
+        else:
+            for doc in (body.get("documents") or [])[:200]:
+                name = str((doc or {}).get("name") or "log.txt")[:160]
+                text = (doc or {}).get("text")
+                if isinstance(text, str) and text.strip():
+                    docs.append((name, text))
+        if not docs:
+            return self._json({"error": "nothing to read in that"}, 400)
+
+        try:
+            report = BF.import_documents(
+                con, docs, fmt=fmt, channel=channel or None, year=year,
+                events=events, commit=commit,
+                source="url" if source == "url" else "import")
+        except sqlite3.DatabaseError as exc:
+            return self._json({"error": f"the archive refused it: {exc}"}, 500)
+        report["skipped"] = skipped
+        if commit:
+            A.log(con, "import", username=who, ip=ip,
+                  detail=f"{report['added']} of {report['seen']} from {source}")
+            _meta_cache["key"] = None          # counts and channels have moved
+        return self._json(report)
+
+    def proxy_image(self, p):
+        """Hand back a picture from elsewhere, through this server.
+
+        The page is locked to ``connect-src 'self'``, so script cannot reach
+        cross-origin bytes at all - which is why copying a picture to the
+        clipboard, saving it, or reading its real size and type has to come
+        back through here. Display still goes straight to the host, so this
+        costs nothing on an ordinary read.
+
+        A session is required: an open image proxy is bandwidth for anyone who
+        finds it. Everything is served as an attachment with the type the
+        remote actually sent, checked against a list of things browsers draw -
+        so nothing served from this origin can be a document.
+        """
+        s = self._need_auth(csrf=False)      # a GET, so nothing to forge
+        if not s:
+            return
+        target = p.get("url", [""])[0]
+        try:
+            res = F.fetch(target, timeout=15, max_bytes=MAX_IMAGE_BYTES,
+                          accept="image/*")
+        except F.FetchError as exc:
+            return self._json({"error": str(exc)}, 400)
+        ctype = (res["headers"].get("content-type") or "").split(";")[0].strip().lower()
+        if ctype not in IMAGE_TYPES:
+            return self._json(
+                {"error": f"that is {ctype or 'of unknown type'}, not a picture "
+                          f"this can hand back"}, 415)
+        name = F.filename_of(res["url"], "image")
+        if p.get("meta", [""])[0] == "1":
+            return self._json({"ok": True, "type": ctype, "bytes": len(res["body"]),
+                               "filename": name, "url": res["url"]})
+        body = res["body"]
+        self.send_response(200)
+        self.send_header("Content-Type", ctype)
+        self.send_header("Content-Length", str(len(body)))
+        # Always an attachment: a picture fetched through here is never a page
+        self.send_header("Content-Disposition",
+                         f'attachment; filename="{name}"')
+        self.send_header("Cache-Control", "private, max-age=300")
+        self.end_headers()
+        try:
+            self.wfile.write(body)
+        except (BrokenPipeError, ConnectionResetError):
+            pass
 
     def stream(self, con, p):
         """Server-sent events: push new messages as the live process records them."""
@@ -573,8 +728,14 @@ class Handler(SimpleHTTPRequestHandler):
     def do_POST(self):
         url = urlparse(self.path)
         con = _con(self.dbpath)
+        # An uploaded log is the payload rather than a few fields, so it gets a
+        # bigger allowance - but only after we know who is sending it. Reading
+        # sixteen megabytes from a stranger is not something to be talked into.
+        importing = url.path.startswith("/api/import")
+        if importing and not self._need_owner():
+            return
         try:
-            body = self._body()
+            body = self._body(MAX_IMPORT_BODY if importing else MAX_BODY)
         except ValueError:
             return          # _body already answered 413
         try:
@@ -608,9 +769,15 @@ class Handler(SimpleHTTPRequestHandler):
                 try:
                     uid = A.create_user(con, body.get("username"),
                                         str(body.get("password", "")), role="owner",
-                                        irc_nick=body.get("nick"))
+                                        irc_nick=body.get("nick"),
+                                        join_method=A.JOIN_SETUP)
                 except ValueError as exc:
                     return self._json({"error": str(exc)}, 400)
+                # The wizard names the server before the account exists, so it
+                # arrives here rather than through /api/appname (owners only).
+                app_name = str(body.get("appName") or "").strip()[:48]
+                if app_name:
+                    db.setting(con, "app_name", app_name)
                 # Remember who founded this archive; they stay root forever
                 db.setting(con, "root_user_id", uid)
                 A.log(con, "setup", username=str(body.get("username")), ip=ip)
@@ -845,17 +1012,57 @@ class Handler(SimpleHTTPRequestHandler):
                 s = self._need_owner()
                 if not s:
                     return
+                role = str(body.get("role", "member"))
+                uses = body.get("uses", 1)
                 try:
-                    token = A.create_invite(con, s["user_id"],
-                                            username=body.get("username"),
-                                            role=str(body.get("role", "member")))
+                    token = A.create_invite(con, s["user_id"], role=role,
+                                            uses=uses,
+                                            label=body.get("label"))
                 except ValueError as exc:
                     return self._json({"error": str(exc)}, 400)
                 A.log(con, "invite_created", username=s["username"], ip=ip,
-                      detail=str(body.get("username") or "any"))
+                      detail=f"{role} x{int(uses or 1)}")
                 return self._json({"token": token,
                                    "url": f"/#invite={token}",
-                                   "expiresHours": A.INVITE_HOURS})
+                                   "role": role, "uses": int(uses or 1),
+                                   "expiresHours": A.INVITE_HOURS,
+                                   "invites": A.invites(con, include_dead=True)})
+
+            if url.path == "/api/invites/revoke":
+                s = self._need_owner()
+                if not s:
+                    return
+                token = str(body.get("token", "")).strip()
+                if not token:
+                    return self._json({"error": "token required"}, 400)
+                A.revoke_invite(con, token)
+                A.log(con, "invite_revoked", username=s["username"], ip=ip)
+                return self._json({"ok": True,
+                                   "invites": A.invites(con, include_dead=True)})
+
+            if url.path in ("/api/import", "/api/import/preview"):
+                s = self._need_owner()
+                if not s:
+                    return
+                return self.do_import(
+                    con, body, commit=url.path == "/api/import", ip=ip,
+                    who=s["username"])
+
+            if url.path == "/api/networks/test":
+                # Prove the connection works before the wizard lets anyone past
+                # it. Nothing is written; this only opens a socket and closes it.
+                s = self._need_owner()
+                if not s:
+                    return
+                host = str(body.get("host", "")).strip()
+                if not host:
+                    return self._json({"ok": False, "error": "host required"}, 400)
+                from .connections import probe
+                res = probe(host, int(body.get("port", 6697) or 6697),
+                            tls=body.get("tls") is not False,
+                            nick=str(body.get("nick") or "aurora"),
+                            timeout=int(body.get("timeout", 15) or 15))
+                return self._json(res)
 
             if url.path == "/api/networks":
                 s = self._need_owner()
@@ -945,7 +1152,9 @@ class Handler(SimpleHTTPRequestHandler):
                     uid = A.create_user(con, body.get("username"),
                                         str(body.get("password", "")),
                                         role=str(body.get("role", "member")),
-                                        irc_nick=body.get("nick"))
+                                        irc_nick=body.get("nick"),
+                                        join_method=A.JOIN_MANUAL,
+                                        invited_by=s["user_id"])
                 except ValueError as exc:
                     return self._json({"error": str(exc)}, 400)
                 A.log(con, "user_create", username=s["username"], ip=ip,
@@ -1098,6 +1307,19 @@ class Handler(SimpleHTTPRequestHandler):
                     (name, label, color, int(time.time())))
                 return self._json({"tags": Q.tags(con)})
 
+            if url.path == "/api/history":
+                # Remembering what you searched for is an account feature, so
+                # it lives behind the same gate as everything else that writes.
+                s = self._need_auth()
+                if not s:
+                    return
+                act = str(body.get("action", "record"))
+                if act == "clear":
+                    A.clear_search_history(con, s["user_id"], body.get("query"))
+                else:
+                    A.record_search(con, s["user_id"], body.get("query"))
+                return self._json({"history": A.search_history(con, s["user_id"])})
+
             if url.path == "/api/searches":
                 if not self._need_auth():
                     return
@@ -1206,7 +1428,8 @@ class Handler(SimpleHTTPRequestHandler):
 
 
 def serve(dbpath, host="127.0.0.1", port=8420, behind_proxy=False,
-          proxy_hops=1):
+          proxy_hops=1, allow_local_fetch=False):
+    F.ALLOW_PRIVATE = bool(allow_local_fetch)
     con = db.connect(dbpath)
     A.purge_expired(con)
     set_up = A.any_users(con)
@@ -1222,6 +1445,9 @@ def serve(dbpath, host="127.0.0.1", port=8420, behind_proxy=False,
         print("Reachable from other devices on your network.")
     if behind_proxy:
         print("Trusting X-Forwarded-For - only correct behind a proxy you control.")
+    if allow_local_fetch:
+        print("Importing and image fetching may reach this network - owners only,")
+        print("but they can point it at anything this machine can see.")
     print("\nReading is open to anyone who can reach this address.")
     if set_up:
         print("Sign in to send messages, tag, or manage users.")

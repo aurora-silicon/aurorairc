@@ -21,6 +21,7 @@ import hmac
 import json
 import re
 import secrets
+import sqlite3
 import struct
 import time
 
@@ -48,6 +49,31 @@ CREATE TABLE IF NOT EXISTS invites (
     used_by    INTEGER REFERENCES users(id),
     used_at    INTEGER
 );
+
+-- Who actually joined on which link. An invite may be a *pass* good for
+-- several people, so "used_by" on the invite itself is not enough to answer
+-- "where did this account come from" - which is exactly what an owner needs
+-- when an account turns up they do not recognise.
+CREATE TABLE IF NOT EXISTS invite_uses (
+    id      INTEGER PRIMARY KEY,
+    token   TEXT NOT NULL,
+    user_id INTEGER REFERENCES users(id) ON DELETE CASCADE,
+    at      INTEGER NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_invite_uses_token ON invite_uses(token);
+CREATE INDEX IF NOT EXISTS idx_invite_uses_user  ON invite_uses(user_id);
+
+-- Recent searches, per account, so the bar can offer them back. Server-side
+-- rather than localStorage for the same reason saved searches are: the phone
+-- and the desktop should agree.
+CREATE TABLE IF NOT EXISTS search_history (
+    id      INTEGER PRIMARY KEY,
+    user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    query   TEXT NOT NULL,
+    at      INTEGER NOT NULL
+);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_hist_user_query
+    ON search_history(user_id, query);
 
 CREATE TABLE IF NOT EXISTS sessions (
     id        TEXT PRIMARY KEY,
@@ -124,6 +150,65 @@ USERNAME_RE = re.compile(r"^[A-Za-z0-9._-]{2,32}$")
 
 def init(con):
     con.executescript(SCHEMA)
+    _migrate(con)
+
+
+# How an account came to exist, recorded on the account itself so it survives
+# the invite being revoked or cleaned up.
+JOIN_SETUP, JOIN_INVITE, JOIN_MANUAL = "setup", "invite", "manual"
+
+
+def add_column(con, table, column, decl):
+    """Add a column if it is not there yet, tolerating a concurrent add.
+
+    Three processes share this database and any of them may be the first to
+    open it after an upgrade, so checking-then-altering is a race the loser
+    would otherwise crash on. The check is still worth doing - it keeps the
+    common path free of exceptions - but the ALTER has to survive losing.
+    """
+    have = {r[1] for r in con.execute(f"PRAGMA table_info({table})")}
+    if column in have:
+        return False
+    try:
+        con.execute(f"ALTER TABLE {table} ADD COLUMN {column} {decl}")
+        return True
+    except sqlite3.OperationalError as exc:
+        if "duplicate column" not in str(exc).lower():
+            raise
+        return False
+
+
+def _migrate(con):
+    """Additive only, safe on every open. Never drops or rewrites data."""
+    # A pass: one link several people may join on, rather than one seat.
+    add_column(con, "invites", "max_uses", "INTEGER NOT NULL DEFAULT 1")
+    add_column(con, "invites", "uses", "INTEGER NOT NULL DEFAULT 0")
+    add_column(con, "invites", "revoked", "INTEGER NOT NULL DEFAULT 0")
+    add_column(con, "invites", "label", "TEXT")
+    # Bring pre-pass invites in line: one already-redeemed seat counts as one use
+    con.execute("UPDATE invites SET uses = 1 WHERE used_by IS NOT NULL AND uses = 0")
+    con.execute(
+        "INSERT INTO invite_uses(token, user_id, at) "
+        "SELECT token, used_by, COALESCE(used_at, created) FROM invites "
+        "WHERE used_by IS NOT NULL AND token NOT IN "
+        "(SELECT token FROM invite_uses)")
+
+    add_column(con, "users", "invited_by", "INTEGER")
+    add_column(con, "users", "invite_token", "TEXT")
+    add_column(con, "users", "join_method", "TEXT")
+    # Existing accounts: the founder is 'setup', anything with a recorded
+    # invite is 'invite', and the rest were created by hand.
+    con.execute(
+        "UPDATE users SET join_method = 'invite', invite_token = ("
+        "  SELECT iu.token FROM invite_uses iu WHERE iu.user_id = users.id LIMIT 1), "
+        "invited_by = (SELECT i.created_by FROM invite_uses iu "
+        "  JOIN invites i ON i.token = iu.token WHERE iu.user_id = users.id LIMIT 1) "
+        "WHERE join_method IS NULL AND id IN (SELECT user_id FROM invite_uses)")
+    first = con.execute("SELECT MIN(id) AS id FROM users").fetchone()
+    if first and first["id"]:
+        con.execute("UPDATE users SET join_method = 'setup' "
+                    "WHERE id = ? AND join_method IS NULL", (first["id"],))
+    con.execute("UPDATE users SET join_method = 'manual' WHERE join_method IS NULL")
 
 
 # ------------------------------------------------------------------ passwords
@@ -222,7 +307,8 @@ def is_root(con, uid):
     return uid is not None and uid == root_id(con)
 
 
-def create_user(con, username, password, role="member", irc_nick=None):
+def create_user(con, username, password, role="member", irc_nick=None,
+                join_method=None, invited_by=None):
     username = str(username or "").strip()
     if not USERNAME_RE.match(username):
         raise ValueError("usernames are 2-32 chars: letters, digits, . _ -")
@@ -231,10 +317,11 @@ def create_user(con, username, password, role="member", irc_nick=None):
     if role not in ("owner", "member"):
         raise ValueError("unknown role")
     cur = con.execute(
-        "INSERT INTO users(username, password, role, irc_nick, created) "
-        "VALUES (?,?,?,?,?)",
+        "INSERT INTO users(username, password, role, irc_nick, created, "
+        "join_method, invited_by) VALUES (?,?,?,?,?,?,?)",
         (username, hash_password(password), role,
-         (irc_nick or username).strip(), int(time.time())))
+         (irc_nick or username).strip(), int(time.time()),
+         join_method or JOIN_MANUAL, invited_by))
     return cur.lastrowid
 
 
@@ -245,40 +332,187 @@ def set_password(con, uid, password):
 
 # -------------------------------------------------------------------- invites
 
-def create_invite(con, by_uid, username=None, role="member", hours=INVITE_HOURS):
+MAX_PASS_USES = 100
+
+
+def create_invite(con, by_uid, role="member", hours=INVITE_HOURS, uses=1,
+                  label=None):
+    """Mint an invite link.
+
+    ``uses`` above one makes it a *pass*: one link several people may join on,
+    which is how you hand a room a way in without minting a token each. Every
+    redemption is recorded against the token, so an owner can still see exactly
+    who came in on which link.
+    """
     if role not in ("owner", "member"):
         raise ValueError("unknown role")
-    if username and not USERNAME_RE.match(username.strip()):
-        raise ValueError("invalid username")
+    try:
+        uses = int(uses or 1)
+    except (TypeError, ValueError):
+        raise ValueError("uses must be a number")
+    if uses < 1 or uses > MAX_PASS_USES:
+        raise ValueError(f"a pass is good for 1 to {MAX_PASS_USES} people")
     token = secrets.token_urlsafe(24)
     now = int(time.time())
     con.execute(
-        "INSERT INTO invites(token, username, role, created_by, created, expires) "
-        "VALUES (?,?,?,?,?,?)",
-        (token, (username or "").strip() or None, role, by_uid, now,
-         now + int(hours) * 3600))
+        "INSERT INTO invites(token, username, role, created_by, created, expires, "
+        "max_uses, uses, revoked, label) VALUES (?,NULL,?,?,?,?,?,0,0,?)",
+        (token, role, by_uid, now, now + int(hours) * 3600, uses,
+         (str(label).strip()[:48] or None) if label else None))
     return token
 
 
 def invite_ok(con, token):
     row = con.execute("SELECT * FROM invites WHERE token = ?",
                       (str(token or ""),)).fetchone()
+    if not row or row["revoked"]:
+        return None
     # <=, not <: an invite whose lifetime has just run out is dead, not valid
-    if not row or row["used_by"] or row["expires"] <= int(time.time()):
+    if row["expires"] <= int(time.time()):
+        return None
+    if (row["uses"] or 0) >= (row["max_uses"] or 1):
         return None
     return row
+
+
+def revoke_invite(con, token):
+    """Kill a link immediately. Accounts already created on it are untouched -
+    revoking a pass must not orphan the people who joined honestly."""
+    con.execute("UPDATE invites SET revoked = 1 WHERE token = ?", (str(token or ""),))
 
 
 def redeem_invite(con, token, username, password):
     inv = invite_ok(con, token)
     if not inv:
-        raise ValueError("that invite is invalid or has expired")
+        raise ValueError("that invite is invalid, used up or has expired")
     if inv["username"] and inv["username"].lower() != str(username).strip().lower():
         raise ValueError(f"this invite is for {inv['username']}")
     uid = create_user(con, username, password, role=inv["role"])
-    con.execute("UPDATE invites SET used_by = ?, used_at = ? WHERE token = ?",
-                (uid, int(time.time()), token))
+    now = int(time.time())
+    con.execute("UPDATE invites SET uses = uses + 1, used_by = COALESCE(used_by, ?), "
+                "used_at = COALESCE(used_at, ?) WHERE token = ?", (uid, now, token))
+    con.execute("INSERT INTO invite_uses(token, user_id, at) VALUES (?,?,?)",
+                (token, uid, now))
+    con.execute("UPDATE users SET invited_by = ?, invite_token = ?, "
+                "join_method = ? WHERE id = ?",
+                (inv["created_by"], token, JOIN_INVITE, uid))
     return uid
+
+
+def invites(con, include_dead=False):
+    """Every invite with its state, creator and who joined on it."""
+    now = int(time.time())
+    rows = con.execute(
+        "SELECT i.*, u.username AS creator FROM invites i "
+        "LEFT JOIN users u ON u.id = i.created_by ORDER BY i.created DESC")
+    out = []
+    for r in rows:
+        d = dict(r)
+        d.pop("username", None)             # legacy per-seat pin, no longer used
+        d["maxUses"] = d.pop("max_uses", 1) or 1
+        d["uses"] = d.get("uses") or 0
+        d["revoked"] = bool(d.get("revoked"))
+        d["expired"] = d["expires"] <= now
+        d["spent"] = d["uses"] >= d["maxUses"]
+        d["live"] = not (d["revoked"] or d["expired"] or d["spent"])
+        d["joiners"] = [
+            {"name": x["username"], "at": x["at"]}
+            for x in con.execute(
+                "SELECT iu.at, us.username FROM invite_uses iu "
+                "LEFT JOIN users us ON us.id = iu.user_id "
+                "WHERE iu.token = ? ORDER BY iu.at", (d["token"],))
+            if x["username"]]
+        d.pop("used_by", None)
+        d.pop("used_at", None)
+        if d["live"] or include_dead:
+            out.append(d)
+    return out
+
+
+def user_detail(con, username):
+    """Provenance for one account: when it appeared, and by whose hand.
+
+    Owners asked for this so an unfamiliar name in the list can be traced back
+    to the link it came in on, rather than being a mystery.
+    """
+    u = user_by_name(con, username)
+    if not u:
+        return None
+    inviter = None
+    if u["invited_by"]:
+        row = con.execute("SELECT username FROM users WHERE id = ?",
+                          (u["invited_by"],)).fetchone()
+        inviter = row["username"] if row else None
+    inv = None
+    if u["invite_token"]:
+        row = con.execute(
+            "SELECT i.token, i.role, i.created, i.expires, i.max_uses, i.uses, "
+            "i.revoked, i.label, c.username AS creator FROM invites i "
+            "LEFT JOIN users c ON c.id = i.created_by WHERE i.token = ?",
+            (u["invite_token"],)).fetchone()
+        if row:
+            inv = dict(row)
+            inv["maxUses"] = inv.pop("max_uses", 1) or 1
+            inv["isPass"] = inv["maxUses"] > 1
+            inv["revoked"] = bool(inv["revoked"])
+    joined_at = con.execute(
+        "SELECT at FROM invite_uses WHERE user_id = ? ORDER BY at LIMIT 1",
+        (u["id"],)).fetchone()
+    return {
+        "name": u["username"],
+        "role": u["role"],
+        "nick": u["irc_nick"],
+        "disabled": bool(u["disabled"]),
+        "root": is_root(con, u["id"]),
+        "created": u["created"],
+        "lastSeen": u["last_seen"],
+        "totp": bool(u["totp_enabled"]),
+        "passkeys": con.execute(
+            "SELECT COUNT(*) FROM credentials WHERE user_id = ?",
+            (u["id"],)).fetchone()[0],
+        "sessions": con.execute(
+            "SELECT COUNT(*) FROM sessions WHERE user_id = ? AND expires > ?",
+            (u["id"], int(time.time()))).fetchone()[0],
+        "joinMethod": u["join_method"] or JOIN_MANUAL,
+        "joinedAt": joined_at["at"] if joined_at else u["created"],
+        "invitedBy": inviter,
+        "invite": inv,
+    }
+
+
+# --------------------------------------------------------------- history
+
+HISTORY_KEEP = 40
+
+
+def record_search(con, uid, query):
+    """Remember a search this account ran. Newest wins; the list is capped."""
+    q = str(query or "").strip()
+    if not q or len(q) > 200:
+        return
+    now = int(time.time())
+    con.execute(
+        "INSERT INTO search_history(user_id, query, at) VALUES (?,?,?) "
+        "ON CONFLICT(user_id, query) DO UPDATE SET at = excluded.at",
+        (uid, q, now))
+    con.execute(
+        "DELETE FROM search_history WHERE user_id = ? AND id NOT IN "
+        "(SELECT id FROM search_history WHERE user_id = ? ORDER BY at DESC LIMIT ?)",
+        (uid, uid, HISTORY_KEEP))
+
+
+def search_history(con, uid, limit=12):
+    return [{"query": r["query"], "at": r["at"]} for r in con.execute(
+        "SELECT query, at FROM search_history WHERE user_id = ? "
+        "ORDER BY at DESC LIMIT ?", (uid, max(1, min(int(limit), 50))))]
+
+
+def clear_search_history(con, uid, query=None):
+    if query:
+        con.execute("DELETE FROM search_history WHERE user_id = ? AND query = ?",
+                    (uid, str(query)))
+    else:
+        con.execute("DELETE FROM search_history WHERE user_id = ?", (uid,))
 
 
 # ------------------------------------------------------------------- sessions
