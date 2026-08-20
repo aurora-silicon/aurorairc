@@ -60,10 +60,11 @@ def tiny_png(width=8, height=8, rgb=(90, 140, 240), gradient=False):
         if gradient:
             row = b""
             for x in range(width):
+                clamp = lambda v: max(0, min(255, v))
                 row += bytes((
-                    min(255, rgb[0] + (x * 90) // max(1, width)),
-                    min(255, rgb[1] + (y * 70) // max(1, height)),
-                    min(255, rgb[2] - (x * 60) // max(1, width)),
+                    clamp(rgb[0] + (x * 90) // max(1, width)),
+                    clamp(rgb[1] + (y * 70) // max(1, height)),
+                    clamp(rgb[2] - (x * 60) // max(1, width)),
                 ))
             raw += b"\x00" + row
             continue

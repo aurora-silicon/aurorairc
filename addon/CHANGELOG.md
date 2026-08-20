@@ -1,5 +1,16 @@
 # Changelog
 
+## 1.1.2
+
+- A message permalink stays on its message. The jump landed and highlighted
+  the right line, then the composer appeared - it shows up about half a
+  second after boot, once the session is confirmed - and the resize handler
+  pinned the view to the bottom of the loaded page, four hours of scrollback
+  away. A jump owns the viewport now, and the bottom is only re-pinned for a
+  reader who was already there.
+- Pasting a permalink into the same tab's address bar works. That only
+  changes the hash, the page never reloads, and nothing was listening for it.
+
 ## 1.1.1
 
 Graphical fixes, from a sweep after watching it run on a real screen:

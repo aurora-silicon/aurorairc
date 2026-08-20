@@ -3718,10 +3718,19 @@ function measureComposer(){
   const was=parseInt(document.documentElement.style.getPropertyValue('--composer-h'))||0;
   document.documentElement.style.setProperty('--composer-h',h+'px');
   if(!log||h===was)return;
+  // A permalink jump owns the viewport. The composer appears half a second
+  // after boot (once the session is confirmed), and pinning to the bottom
+  // here is what threw a #msg= link off its highlighted message and onto the
+  // newest end of the loaded page.
+  if(state.anchor)return;
   // The reading pane is what shrinks when the box grows. Left alone the
   // browser keeps scrollTop where it was, so the newest lines slide in behind
-  // the composer instead of the conversation moving up with it.
-  if(was===0||log.scrollHeight-log.scrollTop-log.clientHeight<160+Math.abs(h-was)){
+  // the composer instead of the conversation moving up with it. Only when the
+  // reader is already near the bottom, though - reading mid-history is not an
+  // invitation to drag them to the end. A boot at the live end passes this
+  // test on its own: reload() has already pinned the bottom, so the composer
+  // appearing leaves the distance at exactly its own height change.
+  if(log.scrollHeight-log.scrollTop-log.clientHeight<160+Math.abs(h-was)){
     log.scrollTop=log.scrollHeight;
     requestAnimationFrame(()=>{log.scrollTop=log.scrollHeight});
   }
@@ -6405,6 +6414,15 @@ document.onkeydown=e=>{
   else if(k==='l'){e.preventDefault();$('#live-btn').click()}
   else if(k==='g'){e.preventDefault();jumpToLatest()}
 };
+
+/* A permalink pasted into this tab's address bar only changes the hash - the
+   page does not reload, and nothing was listening. syncHash uses replaceState,
+   which never fires this, so only real navigation lands here. */
+addEventListener('hashchange',()=>{
+  const p=new URLSearchParams(location.hash.slice(1));
+  const msg=p.get('msg');
+  if(msg&&/^\d+$/.test(msg))jumpTo(+msg);
+});
 
 /* ---------------- boot ---------------- */
 (async function init(){

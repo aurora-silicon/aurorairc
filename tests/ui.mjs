@@ -872,6 +872,47 @@ const run = async () => {
     check('and the conversation is still where it was',
       await page.isVisible('#log .msg'));
 
+    // ------------------------------------------------------- permalinks
+    head('Permalinks');
+    // A #msg= link must land on its message and STAY there. The composer
+    // appears about half a second after boot, and pinning the view to the
+    // bottom at that moment is exactly the reported bug: the highlight
+    // flashed, then the page sat at the newest end of the loaded window.
+    const early = await page.evaluate(async () => {
+      const d = await (await fetch('/api/messages?channel=mychannel&limit=1&offset=1')).json();
+      return d.messages[0].id;
+    });
+    await page.goto(base + '/#chan=mychannel&msg=' + early,
+      { waitUntil: 'domcontentloaded' });
+    await page.waitForSelector(`.msg.focus[data-id="${early}"]`, { timeout: 20000 });
+    check('the link lands on its message', true);
+    await page.waitForSelector('.composer.on', { timeout: 30000 });
+    await sleep(1600);   // rAF scroll pins, stream ticks, strip load - let it all run
+    const anchored = await page.evaluate(id => {
+      const log = document.querySelector('#log');
+      const el = document.querySelector(`.msg.focus[data-id="${id}"]`);
+      if (!el) return { visible: false };
+      const r = el.getBoundingClientRect(), l = log.getBoundingClientRect();
+      return { visible: r.bottom > l.top + 10 && r.top < l.bottom - 10,
+               atBottom: log.scrollHeight - log.scrollTop - log.clientHeight < 60 };
+    }, early);
+    check('and is still on it once the composer has appeared',
+      anchored.visible, JSON.stringify(anchored));
+    check('rather than at the bottom of the loaded page', !anchored.atBottom);
+    check('the jump is named in the filter chips',
+      (await page.textContent('#applied')).includes('jumped to a message'));
+
+    // Pasting a permalink into the same tab only changes the hash
+    const later = await page.evaluate(async () => {
+      const d = await (await fetch('/api/messages?channel=mychannel&limit=1&order=desc')).json();
+      return d.messages[0].id;
+    });
+    await page.evaluate(id => { location.hash = '#chan=mychannel&msg=' + id }, later);
+    await page.waitForSelector(`.msg.focus[data-id="${later}"]`, { timeout: 20000 });
+    check('a hash change in the same tab jumps too', true);
+    await page.evaluate(() => clearFilters());
+    await waitFor(() => page.evaluate(() => !state.anchor));
+
     // ------------------------------------------------------------ phone
     head('On a phone');
     const phone = await browser.newPage({
