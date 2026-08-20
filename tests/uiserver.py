@@ -27,6 +27,7 @@ sys.path.insert(0, str(ROOT))
 sys.path.insert(0, str(ROOT / "tests"))
 
 from fakeircd import FakeIRCd                                  # noqa: E402
+from fakeweb import FakeWeb                                    # noqa: E402
 
 
 def control_server(ircd, port=0):
@@ -104,6 +105,7 @@ def main():
     base = f"http://127.0.0.1:{a.port}"
 
     ircd = FakeIRCd(port=0).start()
+    web = FakeWeb().start()
     ctrl = control_server(ircd)
     ctrl_url = f"http://127.0.0.1:{ctrl.server_address[1]}"
 
@@ -111,7 +113,8 @@ def main():
     logs = {"serve": [], "live": []}
     serve = subprocess.Popen(
         [sys.executable, str(ROOT / "archive.py"), "--db", str(dbpath),
-         "serve", "--host", "127.0.0.1", "--port", str(a.port)],
+         "serve", "--host", "127.0.0.1", "--port", str(a.port),
+         "--allow-local-fetch"],
         stdout=subprocess.PIPE, stderr=subprocess.STDOUT, env=env)
     threading.Thread(target=drain, args=(serve, logs["serve"]), daemon=True).start()
     live = subprocess.Popen(
@@ -122,6 +125,7 @@ def main():
     up = wait_for(lambda: urllib.request.urlopen(base + "/api/meta", timeout=3).status == 200)
     print(f"serve   {base}")
     print(f"ircd    127.0.0.1:{ircd.port}")
+    print(f"web     {web.base}")
     print(f"control {ctrl_url}")
     print(f"db      {dbpath}")
     if not up:
@@ -140,7 +144,7 @@ def main():
             script = "shots.mjs" if a.shots else "ui.mjs"
             rc = subprocess.call(
                 ["node", str(ROOT / "tests" / script), base, ctrl_url,
-                 str(ircd.port)], env=env2)
+                 str(ircd.port), web.base], env=env2)
     except KeyboardInterrupt:
         pass
     finally:
@@ -151,6 +155,7 @@ def main():
             except subprocess.TimeoutExpired:
                 proc.kill()
         ircd.stop()
+        web.stop()
         ctrl.shutdown()
     if rc:
         print("\nlive log tail:")

@@ -26,6 +26,7 @@ sys.path.insert(0, str(ROOT))
 sys.path.insert(0, str(ROOT / "tests"))
 
 from fakeircd import FakeIRCd                                  # noqa: E402
+from fakeweb import FakeWeb                                    # noqa: E402
 from ircarchive import auth as A, db                           # noqa: E402
 
 PASS = "\033[32m✓\033[0m"
@@ -69,6 +70,15 @@ class Client:
                 return json.loads(r.read().decode())
         except urllib.error.HTTPError as e:
             return json.loads(e.read().decode() or "{}")
+
+    def raw(self, path):
+        """A response with its bytes and headers intact, for the image proxy."""
+        req = urllib.request.Request(self.base + path)
+        try:
+            with self.opener.open(req, timeout=30) as r:
+                return r.status, {k.lower(): v for k, v in r.getheaders()}, r.read()
+        except urllib.error.HTTPError as e:
+            return e.code, {k.lower(): v for k, v in e.headers.items()}, e.read()
 
     def post(self, path, body=None, headers=None):
         data = json.dumps(body or {}).encode()
@@ -114,12 +124,14 @@ def main():
     base = f"http://127.0.0.1:{port}"
 
     ircd = FakeIRCd(port=0).start()
-    print(f"fake ircd on 127.0.0.1:{ircd.port}, db at {dbpath}")
+    web = FakeWeb().start()
+    print(f"fake ircd on 127.0.0.1:{ircd.port}, fake web on {web.base}, db at {dbpath}")
 
     env = {**os.environ, "PYTHONUNBUFFERED": "1"}
     serve = subprocess.Popen(
         [sys.executable, str(ROOT / "archive.py"), "--db", str(dbpath),
-         "serve", "--host", "127.0.0.1", "--port", str(port)],
+         "serve", "--host", "127.0.0.1", "--port", str(port),
+         "--allow-local-fetch"],
         stdout=subprocess.PIPE, stderr=subprocess.STDOUT, env=env)
     serve_log = []
     threading.Thread(target=drain, args=(serve, "serve", serve_log), daemon=True).start()
@@ -408,6 +420,126 @@ def main():
         check("an agent can search", payload.get("total", 0) >= 1, str(payload)[:200])
         check("agents get no tool that could send",
               not any("send" in n for n in names), str(names))
+
+        # -------------------------------------------------------- importing
+        head("Importing history")
+        r = c.post("/api/import/preview",
+                   {"source": "url", "url": web.base + "/logs/mychannel-chat.txt"})
+        check("a log at a URL is read", r.get("seen") == 6, str(r)[:200])
+        check("the format is recognised", r.get("format") == "export", str(r.get("format")))
+        check("it says what would be new", r.get("added") == 6 and r.get("duplicates") == 0)
+        check("and shows what it parsed", len(r.get("sample") or []) > 0)
+        check("presence is left out of conversation",
+              all("has joined" not in x["text"] for x in r["sample"]), str(r["sample"]))
+        check("a preview stores nothing", r.get("committed") is False)
+        before = c.get("/api/messages", channel="mychannel", limit=1)["total"]
+
+        r = c.post("/api/import",
+                   {"source": "url", "url": web.base + "/logs/mychannel-chat.txt"})
+        check("committing stores it", r.get("added") == 6, str(r)[:200])
+        after = c.get("/api/messages", channel="mychannel", limit=1)["total"]
+        check("the archive grew by exactly that much", after - before == 6,
+              f"{before} -> {after}")
+
+        r = c.post("/api/import",
+                   {"source": "url", "url": web.base + "/logs/mychannel-chat.txt"})
+        check("importing the same log twice adds nothing",
+              r.get("added") == 0 and r.get("duplicates") == 6, str(r)[:160])
+        check("and the archive did not grow",
+              c.get("/api/messages", channel="mychannel", limit=1)["total"] == after)
+
+        r = c.post("/api/import", {"source": "url", "events": True,
+                                   "url": web.base + "/logs/mychannel-chat.txt"})
+        check("joins and quits can be imported separately", r.get("added") == 2, str(r)[:160])
+        check("and still are not messages",
+              c.get("/api/messages", channel="mychannel", limit=1)["total"] == after)
+
+        r = c.post("/api/import/preview", {"source": "url", "url": web.base + "/logs/"})
+        check("a directory listing is not mistaken for a log", "error" in r, str(r)[:160])
+        check("and it says how to pull it in",
+              "follow" in (r.get("error") or "").lower(), str(r.get("error")))
+        r = c.post("/api/import/preview",
+                   {"source": "url", "url": web.base + "/logs/", "follow": True})
+        check("following the listing reads every log on it",
+              len(r.get("files") or []) == 2, str([f["name"] for f in r.get("files", [])]))
+        check("in two different formats",
+              {f["format"] for f in r["files"]} == {"export", "znc"},
+              str([f["format"] for f in r.get("files", [])]))
+        check("nothing outside that directory is touched",
+              all("secret" not in f["name"] for f in r["files"]),
+              str([f["name"] for f in r["files"]]))
+        check("and nothing off-site",
+              all("elsewhere" not in f["name"] for f in r["files"]))
+
+        r = c.post("/api/import", {"source": "url", "follow": True,
+                                   "url": web.base + "/logs/"})
+        check("the znc half lands too", r.get("added") == 3, str(r)[:200])
+        znc = c.get("/api/messages", q="lunch")
+        check("and is searchable", znc["total"] == 1, str(znc["total"]))
+
+        r = c.post("/api/import/preview", {"source": "text", "documents": [
+            {"name": "#chan.weechatlog",
+             "text": "2026-08-19 11:00:00\talice\tuploaded weechat line\n"}]})
+        check("an uploaded file is read the same way", r.get("added") == 1, str(r)[:200])
+        check("and detected as weechat", r.get("format") == "weechat")
+        r = c.post("/api/import/preview", {"source": "text", "documents": [
+            {"name": "prose.txt", "text": "just some prose\nand more of it\n"}]})
+        check("something that is not a log is refused, not guessed",
+              r.get("seen") == 0 and len(r.get("unreadable") or []) == 1, str(r)[:160])
+
+        r = c.post("/api/import/preview", {"source": "text", "format": "nonsense",
+                                           "documents": [{"name": "a", "text": "b"}]})
+        check("an unknown format is refused", "error" in r)
+        r = c.post("/api/import/preview",
+                   {"source": "url", "url": "file:///etc/passwd"})
+        check("file: addresses are refused", "error" in r, str(r))
+        r = c.post("/api/import/preview",
+                   {"source": "url", "url": "http://nothing.invalid/x.txt"})
+        check("a name that does not resolve fails cleanly", "error" in r, str(r))
+        r = joiner.post("/api/import/preview",
+                        {"source": "url", "url": web.base + "/logs/mychannel-chat.txt"})
+        check("a member cannot import", "error" in r, str(r))
+
+        # ------------------------------------------------- image quick-look
+        head("Image quick-look")
+        from urllib.parse import quote
+        pic = "/api/fetch/image?url=" + quote(web.base + "/img/shot.png", safe="")
+
+        status, _hdr, _body = anon.raw(pic)
+        check("the image proxy is not open to anonymous callers", status == 401,
+              str(status))
+
+        status, hdr, body = c.raw(pic)
+        check("a signed-in reader gets the bytes", status == 200, str(status))
+        check("as the type the host actually sent",
+              hdr.get("content-type") == "image/png", str(hdr.get("content-type")))
+        check("and they are a real PNG", body[:8] == b"\x89PNG\r\n\x1a\n", str(body[:8]))
+        check("always as an attachment, never as a page",
+              hdr.get("content-disposition", "").startswith("attachment"),
+              str(hdr.get("content-disposition")))
+        check("with the filename from the address",
+              "shot.png" in hdr.get("content-disposition", ""),
+              str(hdr.get("content-disposition")))
+        check("and nosniff, so the type cannot be talked around",
+              hdr.get("x-content-type-options") == "nosniff")
+
+        meta = c.get("/api/fetch/image",
+                     url=web.base + "/img/shot.png", meta="1")
+        check("its type and size can be read for the details card",
+              meta.get("type") == "image/png" and meta.get("bytes") == len(body),
+              str(meta))
+        check("along with a filename", meta.get("filename") == "shot.png", str(meta))
+
+        status, _h, _b = c.raw("/api/fetch/image?url="
+                               + quote(web.base + "/img/notreally.txt", safe=""))
+        check("something that is not a picture is refused", status == 415, str(status))
+        status, _h, _b = c.raw("/api/fetch/image?url="
+                               + quote(web.base + "/img/missing.png", safe=""))
+        check("a missing picture fails cleanly", status == 400, str(status))
+        status, _h, _b = c.raw("/api/fetch/image?url=" + quote("file:///etc/passwd", safe=""))
+        check("and file: addresses are refused here too", status == 400, str(status))
+        status, _h, _b = c.raw("/api/fetch/image?url=" + quote("http://nothing.invalid/a.png", safe=""))
+        check("as is a name that does not resolve", status == 400, str(status))
 
         # ------------------------------------------------------ permissions
         head("Permissions")

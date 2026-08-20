@@ -661,25 +661,22 @@ input[type=color]{flex:1;height:42px;padding:3px;border-radius:10px;
 }
 #toast.on{opacity:1;transform:translateX(-50%) translateY(0)}
 
-/* tag manager rows */
-.tagedit{display:flex;align-items:center;gap:8px;padding:6px 4px;
-  border-bottom:1px solid var(--line-soft)}
-.tagedit.new{border:0;padding-top:0}
-.tagedit .swatch{width:13px;height:13px;border-radius:50%;background:var(--tg-dot);flex:none;
-  box-shadow:0 0 0 2px color-mix(in srgb,var(--tg-dot) 25%,transparent)}
-.tagedit .lbl{flex:1 1 auto;min-width:0;height:36px;padding:0 10px;border-radius:9px;
-  background:var(--sunken);border:1px solid transparent;font-size:16px}
-.tagedit .lbl:focus{outline:none;border-color:var(--accent);background:var(--surface)}
-.tagedit .slug{font:12px var(--mono);color:var(--fg-3);flex:none}
-.tagedit .col{height:36px;border-radius:9px;background:var(--sunken);
-  border:1px solid transparent;font-size:13px;flex:none;max-width:104px}
-.tagedit .ct{font-size:12px;color:var(--fg-3);font-variant-numeric:tabular-nums;
-  min-width:34px;text-align:right;flex:none}
-.tagedit .del{width:30px;height:30px;border-radius:8px;display:grid;place-items:center;
-  color:var(--fg-3);font-size:18px;line-height:1;flex:none}
-.tagedit .del:hover{background:var(--raised);color:var(--danger)}
-@media (max-width:520px){
-  .tagedit .slug,.tagedit .ct{display:none}
+/* tag manager rows: the shared .row, with the two controls it needs */
+.row .swatch{width:14px;height:14px;border-radius:50%;background:var(--tg-dot);flex:none;
+  box-shadow:0 0 0 3px color-mix(in srgb,var(--tg-dot) 22%,transparent);margin-left:2px}
+.row input.inline{
+  width:100%;height:28px;padding:0 8px;margin-left:-8px;border-radius:8px;
+  background:transparent;border:1px solid transparent;font-size:14px;font-weight:580;
+}
+.row input.inline:hover{background:var(--sunken)}
+.row input.inline:focus{outline:none;background:var(--surface);border-color:var(--accent)}
+.row select.tagcolor{
+  flex:none;height:32px;max-width:104px;padding:0 8px;border-radius:9px;
+  background:var(--sunken);border:1px solid var(--line);font-size:13px;
+}
+.row select.tagcolor:focus{outline:none;border-color:var(--accent)}
+@media (max-width:460px){
+  .row select.tagcolor{max-width:84px;font-size:12px}
 }
 
 /* tag picker popover */
@@ -836,6 +833,14 @@ input[type=color]{flex:1;height:42px;padding:3px;border-radius:10px;
 .btn.danger{background:color-mix(in srgb,var(--danger) 15%,transparent);color:var(--danger);
   border:1px solid color-mix(in srgb,var(--danger) 30%,transparent)}
 .btn.sm{height:var(--ctl-sm);font-size:13.5px;border-radius:9px;padding:0 14px;width:auto}
+.btn.auto{width:auto}
+.btn.fill{width:auto;flex:1 1 auto}
+label.btn{cursor:pointer}
+.dim{opacity:.68}
+.row.muted{opacity:.62}
+/* A block of log lines shown back as they were read */
+.sample{font-family:var(--mono);font-size:12px;line-height:1.75;
+  white-space:pre-wrap;overflow-wrap:anywhere}
 .btn:disabled{opacity:.45;cursor:default}
 .btnrow{display:flex;gap:8px;flex-wrap:wrap}
 .btnrow .btn{width:auto;flex:1 1 auto}
@@ -895,6 +900,9 @@ input[type=color]{flex:1;height:42px;padding:3px;border-radius:10px;
   margin:0;font-size:19px;font-weight:680;letter-spacing:-.02em;color:var(--fg)}
 .sect > .lede{margin:-12px 0 0;font-size:13.5px;color:var(--fg-2);line-height:1.55}
 .hr{height:1px;background:var(--line-soft);margin:2px 0}
+/* A second heading inside one block - "Spent and revoked", "What it read" -
+   sits closer to what it labels than a new block would. */
+.subhead{margin-top:2px}
 
 /* =====================================================================
    Big panel: Settings and the setup wizard
@@ -1095,6 +1103,111 @@ input[type=color]{flex:1;height:42px;padding:3px;border-radius:10px;
   text-transform:none;letter-spacing:0;display:block;margin-bottom:4px}
 .swatches{display:flex;flex-wrap:wrap;gap:9px}
 .swatch-btn{width:30px;height:30px}
+/* =====================================================================
+   Image quick-look
+   ---------------------------------------------------------------------
+   Clicking a picture used to throw you out of the archive and onto
+   whatever host it lives on. It opens here instead: zoom, pan, and the
+   handful of things anyone actually wants to do with a picture, without
+   losing your place in the conversation.
+   ===================================================================== */
+#lightbox{
+  position:fixed;inset:0;z-index:65;display:none;flex-direction:column;
+  background:rgba(8,8,12,.92);
+  padding:max(14px,env(safe-area-inset-top)) 14px max(14px,env(safe-area-inset-bottom));
+  gap:14px;opacity:0;transition:opacity .14s;
+}
+#lightbox.on{display:flex;opacity:1}
+@supports (backdrop-filter:blur(2px)){
+  #lightbox{backdrop-filter:blur(6px)}
+}
+#lightbox .lbtop{
+  flex:none;display:flex;align-items:center;gap:12px;padding:0 2px;
+  color:#f4f4f8;min-width:0;min-height:38px;
+}
+#lightbox .lbname{min-width:0;display:flex;flex-direction:column;gap:1px}
+#lightbox .lbname b{font-size:14px;font-weight:620;overflow:hidden;
+  text-overflow:ellipsis;white-space:nowrap}
+#lightbox .lbname span{font-size:12px;opacity:.65;overflow:hidden;
+  text-overflow:ellipsis;white-space:nowrap}
+
+#lightbox .lbstage{
+  flex:1;min-height:0;position:relative;overflow:hidden;
+  display:grid;place-items:center;touch-action:none;cursor:zoom-in;
+}
+#lightbox .lbstage.zoomed{cursor:grab}
+#lightbox .lbstage.dragging{cursor:grabbing}
+#lightbox img{
+  max-width:100%;max-height:100%;display:block;
+  transform-origin:center center;will-change:transform;
+  -webkit-user-select:none;user-select:none;-webkit-user-drag:none;
+}
+#lightbox .lbwait{position:absolute;color:#f4f4f8;font-size:13px;opacity:.7}
+#lightbox .lbfail{
+  position:absolute;color:#f4f4f8;font-size:14px;text-align:center;
+  padding:24px;max-width:min(420px,86vw);line-height:1.6;
+}
+
+/* controls */
+#lightbox .lbbar{
+  flex:none;display:flex;align-items:center;justify-content:center;
+  gap:6px;flex-wrap:wrap;padding:0 2px;
+}
+.lbbtn{
+  height:38px;min-width:38px;padding:0 10px;border-radius:11px;
+  display:inline-flex;align-items:center;justify-content:center;gap:7px;
+  color:#ececf2;background:rgba(255,255,255,.09);font-size:13.5px;font-weight:560;
+  transition:background .12s,color .12s,opacity .12s;
+}
+.lbbtn:hover{background:rgba(255,255,255,.18)}
+.lbbtn:disabled{opacity:.35;cursor:default}
+.lbbtn:disabled:hover{background:rgba(255,255,255,.09)}
+.lbbtn svg{width:18px;height:18px;stroke:currentColor;fill:none;stroke-width:1.9;
+  stroke-linecap:round;stroke-linejoin:round}
+.lbbtn.wide{padding:0 14px}
+#lb-zoomlevel{font-variant-numeric:tabular-nums;min-width:64px}
+#lightbox .lbsep{width:1px;height:22px;background:rgba(255,255,255,.16);margin:0 6px}
+
+#lightbox .lbnav{
+  position:absolute;top:50%;transform:translateY(-50%);z-index:2;
+  width:44px;height:64px;border-radius:12px;display:none;place-items:center;
+  color:#ececf2;background:rgba(255,255,255,.09);
+}
+#lightbox .lbnav:hover{background:rgba(255,255,255,.2)}
+#lightbox .lbnav.on{display:grid}
+#lightbox .lbnav.prev{left:10px}
+#lightbox .lbnav.next{right:10px}
+#lightbox .lbnav svg{width:22px;height:22px;stroke:currentColor;fill:none;
+  stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
+#lightbox .lbcount{
+  position:absolute;bottom:10px;left:50%;transform:translateX(-50%);
+  font-size:12px;color:#ececf2;opacity:.6;font-variant-numeric:tabular-nums;
+  pointer-events:none;
+}
+
+#lb-menu{
+  position:fixed;z-index:66;min-width:230px;max-width:min(320px,92vw);
+  background:var(--surface);border:1px solid var(--line);border-radius:13px;
+  box-shadow:var(--shadow);padding:6px;display:none;
+}
+#lb-menu.on{display:block}
+#lb-menu .tagrow .ic{width:16px;height:16px;flex:0 0 16px;fill:none;
+  stroke:currentColor;stroke-width:1.9;stroke-linecap:round;stroke-linejoin:round;
+  color:var(--fg-3)}
+#lb-menu .tagrow[aria-disabled="true"]{opacity:.45;cursor:default}
+#lb-menu .tagrow[aria-disabled="true"]:hover{background:none}
+
+@media (max-width:600px){
+  #lightbox .lbbar{gap:2px}
+  .lbbtn{height:40px;min-width:40px;padding:0 8px}
+  .lbbtn .lbword{display:none}
+  #lb-zoomlevel{min-width:58px}
+  #lightbox .lbnav{width:38px;height:56px}
+}
+
+/* Inline pictures now open in place, so say so on the way past */
+.imgw{cursor:zoom-in}
+.imgw.broken{cursor:pointer}
 </style>
 </head>
 <body>
@@ -1250,10 +1363,10 @@ input[type=color]{flex:1;height:42px;padding:3px;border-radius:10px;
   <div class="steps" id="wiz-steps"></div>
   <div class="pbody"><div class="pmain" id="wiz-content"></div></div>
   <footer>
-    <button class="btn ghost" id="wiz-back" style="width:auto">Back</button>
+    <button class="btn ghost auto" id="wiz-back">Back</button>
     <span class="grow"></span>
-    <button class="btn ghost" id="wiz-alt" style="width:auto;display:none"></button>
-    <button class="btn" id="wiz-next" style="width:auto">Next</button>
+    <button class="btn ghost auto" id="wiz-alt" hidden></button>
+    <button class="btn auto" id="wiz-next">Next</button>
   </footer>
 </div>
 
@@ -1263,6 +1376,44 @@ input[type=color]{flex:1;height:42px;padding:3px;border-radius:10px;
     <button class="linkbtn" id="dlg-close">Close</button></header>
   <div class="content" id="dlg-body"></div>
 </div>
+
+<!-- image quick-look -->
+<div id="lightbox" role="dialog" aria-label="Picture" aria-modal="true">
+  <div class="lbtop">
+    <span class="lbname"><b id="lb-title">Picture</b><span id="lb-sub"></span></span>
+    <span class="grow"></span>
+    <button class="lbbtn" id="lb-close" data-tip="Close (Esc)" aria-label="Close">
+      <svg viewBox="0 0 24 24"><path d="M18 6 6 18M6 6l12 12"/></svg></button>
+  </div>
+  <div class="lbstage" id="lb-stage">
+    <button class="lbnav prev" id="lb-prev" data-tip="Previous picture" aria-label="Previous">
+      <svg viewBox="0 0 24 24"><path d="m14 6-6 6 6 6"/></svg></button>
+    <img id="lb-img" alt="">
+    <button class="lbnav next" id="lb-next" data-tip="Next picture" aria-label="Next">
+      <svg viewBox="0 0 24 24"><path d="m10 6 6 6-6 6"/></svg></button>
+    <div class="lbcount" id="lb-count"></div>
+  </div>
+  <div class="lbbar">
+    <button class="lbbtn" id="lb-zoomout" data-tip="Zoom out (−)" aria-label="Zoom out">
+      <svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="M8 11h6"/><path d="m20 20-3.2-3.2"/></svg></button>
+    <button class="lbbtn" id="lb-zoomlevel" data-tip="Fit to screen, or actual size">100%</button>
+    <button class="lbbtn" id="lb-zoomin" data-tip="Zoom in (+)" aria-label="Zoom in">
+      <svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="M8 11h6M11 8v6"/><path d="m20 20-3.2-3.2"/></svg></button>
+    <span class="lbsep"></span>
+    <button class="lbbtn wide" id="lb-reply" data-tip="Reply to this message">
+      <svg viewBox="0 0 24 24"><path d="M9 14 4 9l5-5"/><path d="M4 9h9a7 7 0 0 1 7 7v4"/></svg>
+      <span class="lbword">Reply</span></button>
+    <button class="lbbtn wide" id="lb-download" data-tip="Save this picture">
+      <svg viewBox="0 0 24 24"><path d="M12 4v10"/><path d="m8 11 4 4 4-4"/><path d="M5 19h14"/></svg>
+      <span class="lbword">Download</span></button>
+    <button class="lbbtn wide" id="lb-open" data-tip="Open where it is hosted">
+      <svg viewBox="0 0 24 24"><path d="M14 5h5v5"/><path d="M19 5 11 13"/><path d="M18 14v4a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4"/></svg>
+      <span class="lbword">Open</span></button>
+    <button class="lbbtn" id="lb-more" data-tip="More" aria-label="More">
+      <svg viewBox="0 0 24 24"><circle cx="5" cy="12" r="1.4"/><circle cx="12" cy="12" r="1.4"/><circle cx="19" cy="12" r="1.4"/></svg></button>
+  </div>
+</div>
+<div id="lb-menu" role="menu"></div>
 
 <div id="tip" role="status"></div>
 
@@ -1307,7 +1458,7 @@ input[type=color]{flex:1;height:42px;padding:3px;border-radius:10px;
   <div class="field">
     <label class="fhead">Background</label>
     <div class="formrow">
-      <label class="btn ghost" for="bgfile" style="cursor:pointer;flex:1 1 auto">Choose image…</label>
+      <label class="btn ghost fill" for="bgfile">Choose image…</label>
       <input id="bgfile" type="file" accept="image/*" hidden>
       <button class="btn ghost" id="bgclear">Clear</button>
     </div>
@@ -1672,7 +1823,7 @@ function openSaveSearch(){
               value="${esc(existing?existing.name:'')}" autocomplete="off">
        <button class="btn sm" id="sv-go" type="button">Save</button>
      </div>
-     <div class="grouphd" style="padding-top:2px">${esc(q||'everything')}</div>`);
+     <div class="grouphd">${esc(q||'everything')}</div>`);
   const name=$('#sv-name');
   name.focus();name.select();
   const go=async()=>{
@@ -2493,41 +2644,57 @@ const TAG_COLOR_LIST=['red','orange','yellow','green','blue','purple','pink','gr
 function drawTagManager(){
   const box=$('#tags-content');
   if(!SESSION.signedIn){
-    box.innerHTML=`<div class="note">Sign in to create or edit tags. You can still
-      filter by the existing ones.</div>
-      <div class="taglist"></div>
-      <button class="btn" id="tags-signin">Sign in</button>`;
+    box.innerHTML=`<div class="sect">
+      <div class="note">Sign in to create or edit tags. You can still filter by
+        the ones that already exist.</div>
+      <div class="field"><label class="fhead">Tags</label>
+        <div class="taglist"></div></div>
+      <button class="btn" id="tags-signin">Sign in</button></div>`;
     drawTagList();
     $('#tags-signin').onclick=()=>{closeAll();$('#live-btn').click()};
     return;
   }
-  box.innerHTML=
-    tagDefs().map(t=>`
-      <div class="tagedit" data-name="${esc(t.name)}" style="${tagStyle(t.color)}">
-        <span class="swatch"></span>
-        <input class="lbl" value="${esc(t.label||t.name)}" maxlength="32" aria-label="Tag label">
-        <span class="slug">&amp;${esc(t.name)}</span>
-        <select class="col" aria-label="Tag colour">${TAG_COLOR_LIST.map(c=>
-          `<option value="${c}"${c===t.color?' selected':''}>${c}</option>`).join('')}</select>
-        <span class="ct">${fmtN(t.count)}</span>
-        <button class="del" title="${t.builtin?'Built-in tags can be deleted too':'Delete'}">×</button>
-      </div>`).join('')+
-    `<div class="field" style="margin-top:6px">
-       <label class="fhead">New tag</label>
-       <div class="tagedit new">
-         <input class="lbl" id="mk-name" placeholder="e.g. gpu" maxlength="24" autocomplete="off">
-         <select class="col" id="mk-color">${TAG_COLOR_LIST.map(c=>
-           `<option value="${c}">${c}</option>`).join('')}</select>
-         <button class="btn" id="mk-go" style="width:auto;padding:0 14px;height:36px">Add</button>
-       </div>
-       <div class="hint">Use it in search as <code>&amp;name</code>. Colours are searchable
-         too — <code>&amp;red</code> finds every red tag.</div>
-     </div>
-     <div id="tags-err"></div>`;
+  // The same row component as every other list in the app, so a tag reads
+  // like a device or a person rather than like a form that grew.
+  box.innerHTML=`<div class="sect">
+    <div class="field">
+      <label class="fhead">Your tags</label>
+      <div class="stack">${tagDefs().map(t=>`
+        <div class="row tagedit" data-name="${esc(t.name)}" style="${tagStyle(t.color)}">
+          <span class="swatch"></span>
+          <span class="rmain">
+            <input class="inline lbl" value="${esc(t.label||t.name)}" maxlength="32"
+                   aria-label="Name of the ${esc(t.name)} tag">
+            <span class="sub2">&amp;${esc(t.name)} · ${fmtN(t.count)} message(s)</span>
+          </span>
+          <select class="tagcolor" aria-label="Colour of the ${esc(t.name)} tag">${
+            TAG_COLOR_LIST.map(c=>
+              `<option value="${c}"${c===t.color?' selected':''}>${c}</option>`).join('')}</select>
+          <span class="act"><button class="iconact danger" data-tagdel="${esc(t.name)}"
+            data-tip="Delete this tag everywhere" aria-label="Delete">${BIN}</button></span>
+        </div>`).join('')||'<div class="empty-row">None yet</div>'}
+      </div>
+    </div>
+
+    <div class="hr"></div>
+
+    <div class="field">
+      <label class="fhead">New tag</label>
+      <div class="formrow">
+        <input id="mk-name" placeholder="e.g. gpu" maxlength="24" autocomplete="off">
+        <select id="mk-color" aria-label="Colour">${TAG_COLOR_LIST.map(c=>
+          `<option value="${c}">${c}</option>`).join('')}</select>
+        <button class="btn" id="mk-go">Add</button>
+      </div>
+      <div class="hint">Use it in search as <code>&amp;name</code>. Colours are
+        searchable too — <code>&amp;red</code> finds every red tag.</div>
+    </div>
+    <div id="tags-err"></div>
+  </div>`;
 
   const err=m=>$('#tags-err').innerHTML=`<div class="note err">${esc(m)}</div>`;
 
-  for(const row of $$('#tags-content .tagedit:not(.new)')){
+  for(const row of $$('#tags-content .tagedit')){
     const name=row.dataset.name;
     const save=async patch=>{
       const r=await post('/api/tags/update',{name,...patch});
@@ -2535,11 +2702,11 @@ function drawTagManager(){
       await refreshTags();drawTagManager();
     };
     row.querySelector('.lbl').onchange=e=>save({label:e.target.value.trim()});
-    row.querySelector('.col').onchange=e=>save({color:e.target.value});
-    row.querySelector('.del').onclick=()=>deleteTag(name);
+    row.querySelector('.tagcolor').onchange=e=>save({color:e.target.value});
+    row.querySelector('[data-tagdel]').onclick=()=>deleteTag(name);
   }
   const go=$('#mk-go');
-  if(go)go.onclick=async()=>{
+  const add=async()=>{
     const name=$('#mk-name').value.trim();
     if(!name)return;
     const r=await post('/api/tags',{name,color:$('#mk-color').value});
@@ -2547,6 +2714,8 @@ function drawTagManager(){
     $('#mk-name').value='';
     await refreshTags();drawTagManager();
   };
+  if(go)go.onclick=add;
+  $('#mk-name').onkeydown=e=>{if(e.key==='Enter'){e.preventDefault();add()}};
 }
 
 async function refreshTags(){
@@ -2702,6 +2871,387 @@ async function applyTag(id,name,on){
   refreshTags();
 }
 
+
+/* =====================================================================
+   Image quick-look
+   ---------------------------------------------------------------------
+   A picture in the feed opens here rather than throwing you out to
+   whatever host it lives on. Zoom and pan, step through every picture on
+   screen, and the things people actually want: reply, save, open where it
+   really lives, copy it, copy its address, and see what it actually is.
+
+   Copying and saving go through this server (see /api/fetch/image). They
+   have to: the page is locked to `connect-src 'self'`, so script here
+   cannot read a single byte of a cross-origin picture. Displaying still
+   goes straight to the host, so an ordinary read costs nothing extra.
+   ===================================================================== */
+const LB={list:[],i:0,scale:1,fit:true,x:0,y:0,natural:{w:0,h:0},
+          url:'',msg:null,open:false,meta:null};
+
+const ZOOM_MIN=0.1,ZOOM_MAX=8;
+
+function lbImagesIn(container){
+  return [...container.querySelectorAll('.imgw:not(.broken)')].map(a=>({
+    url:a.getAttribute('href'),
+    row:a.closest('.msg'),
+  })).filter(x=>x.url);
+}
+
+function openLightbox(anchor){
+  const container=anchor.closest('#log,#ctxbody')||document;
+  LB.list=lbImagesIn(container);
+  const url=anchor.getAttribute('href');
+  LB.i=Math.max(0,LB.list.findIndex(x=>x.url===url));
+  LB.open=true;
+  $('#lightbox').classList.add('on');
+  document.body.style.overflow='hidden';
+  showLbImage();
+}
+
+function closeLightbox(){
+  if(!LB.open)return;
+  LB.open=false;
+  $('#lightbox').classList.remove('on');
+  $('#lb-menu').classList.remove('on');
+  $('#lb-img').removeAttribute('src');
+  document.body.style.overflow='';
+}
+
+function lbCurrent(){ return LB.list[LB.i]||null }
+
+function showLbImage(){
+  const cur=lbCurrent();
+  if(!cur)return closeLightbox();
+  LB.url=cur.url;LB.msg=cur.row;LB.meta=null;
+  LB.scale=1;LB.fit=true;LB.x=0;LB.y=0;LB.natural={w:0,h:0};
+
+  const img=$('#lb-img'),stage=$('#lb-stage');
+  stage.querySelectorAll('.lbwait,.lbfail').forEach(e=>e.remove());
+  img.style.display='';
+  const wait=document.createElement('div');
+  wait.className='lbwait';wait.textContent='Loading…';
+  stage.appendChild(wait);
+
+  img.onload=()=>{
+    wait.remove();
+    LB.natural={w:img.naturalWidth,h:img.naturalHeight};
+    applyLbTransform();
+    drawLbHeader();
+  };
+  img.onerror=()=>{
+    wait.remove();
+    img.style.display='none';
+    const fail=document.createElement('div');
+    fail.className='lbfail';
+    fail.innerHTML=`This picture would not load.<br>`+
+      `<span class="dim">${esc(hostOf(LB.url))} may have removed it, or it `+
+      `may need a login this archive does not have.</span>`;
+    stage.appendChild(fail);
+    drawLbHeader();
+  };
+  img.src=LB.url;
+
+  const many=LB.list.length>1;
+  $('#lb-prev').classList.toggle('on',many);
+  $('#lb-next').classList.toggle('on',many);
+  $('#lb-count').textContent=many?`${LB.i+1} of ${LB.list.length}`:'';
+  $('#lb-menu').classList.remove('on');
+  drawLbHeader();
+}
+
+function hostOf(url){
+  try{ return new URL(url,location.href).hostname.replace(/^www\./,'') }
+  catch(e){ return '' }
+}
+function filenameOf(url){
+  try{
+    const path=new URL(url,location.href).pathname;
+    return decodeURIComponent(path.split('/').filter(Boolean).pop()||'')||'image';
+  }catch(e){ return 'image' }
+}
+const fmtBytes = n =>
+  n<1024?`${n} B`:n<1048576?`${(n/1024).toFixed(0)} KB`:`${(n/1048576).toFixed(1)} MB`;
+
+function drawLbHeader(){
+  $('#lb-title').textContent=filenameOf(LB.url);
+  const bits=[hostOf(LB.url)];
+  if(LB.natural.w)bits.push(`${LB.natural.w} × ${LB.natural.h}`);
+  const row=LB.msg;
+  if(row){
+    const who=row.dataset.rownick;
+    const ts=+row.dataset.ts;
+    if(who)bits.push(`${who} · ${hhmm(ts)}`);
+  }
+  $('#lb-sub').textContent=bits.filter(Boolean).join(' · ');
+  $('#lb-reply').disabled=!(row&&row.dataset.rownick);
+}
+
+/* ---- zoom and pan ---- */
+/* The picture is laid out at max-width/max-height, so scale 1 *is* fit; the
+   interesting number is how much bigger than that its real pixels are. */
+function lbActualScale(){
+  const img=$('#lb-img');
+  const shown=img.getBoundingClientRect();
+  if(!shown.width||!img.naturalWidth)return 1;
+  // getBoundingClientRect already carries the current transform
+  const laidOut=shown.width/(LB.scale||1);
+  return Math.max(1,img.naturalWidth/laidOut);
+}
+function clampZoom(v){ return Math.max(ZOOM_MIN,Math.min(ZOOM_MAX,v)) }
+
+function applyLbTransform(){
+  const img=$('#lb-img'),stage=$('#lb-stage');
+  if(LB.scale<=1.001){LB.x=0;LB.y=0}
+  img.style.transform=`translate(${LB.x}px,${LB.y}px) scale(${LB.scale})`;
+  stage.classList.toggle('zoomed',LB.scale>1.001);
+  const pct=Math.round(LB.scale*100);
+  $('#lb-zoomlevel').textContent=pct+'%';
+  $('#lb-zoomin').disabled=LB.scale>=ZOOM_MAX-0.001;
+  $('#lb-zoomout').disabled=LB.scale<=ZOOM_MIN+0.001;
+}
+function lbZoom(to,originX,originY){
+  const before=LB.scale;
+  const next=clampZoom(to);
+  if(Math.abs(next-before)<0.0005)return;
+  if(originX!=null){
+    // Keep whatever is under the pointer under the pointer
+    const stage=$('#lb-stage').getBoundingClientRect();
+    const cx=originX-(stage.left+stage.width/2);
+    const cy=originY-(stage.top+stage.height/2);
+    LB.x=cx-(cx-LB.x)*(next/before);
+    LB.y=cy-(cy-LB.y)*(next/before);
+  }
+  LB.scale=next;LB.fit=next<=1.001;
+  applyLbTransform();
+}
+function lbToggleZoom(x,y){
+  if(LB.scale>1.001){LB.scale=1;LB.x=LB.y=0;LB.fit=true;applyLbTransform()}
+  else lbZoom(Math.max(2,lbActualScale()),x,y);
+}
+
+$('#lb-zoomin').onclick=()=>lbZoom(LB.scale*1.4);
+$('#lb-zoomout').onclick=()=>lbZoom(LB.scale/1.4);
+$('#lb-zoomlevel').onclick=()=>lbToggleZoom();
+$('#lb-close').onclick=closeLightbox;
+$('#lb-prev').onclick=e=>{e.stopPropagation();lbStep(-1)};
+$('#lb-next').onclick=e=>{e.stopPropagation();lbStep(1)};
+function lbStep(by){
+  if(LB.list.length<2)return;
+  LB.i=(LB.i+by+LB.list.length)%LB.list.length;
+  showLbImage();
+}
+
+/* Pointer handling: drag to pan, pinch to zoom, double-tap or double-click to
+   toggle. Written on pointer events so a mouse, a finger and a pen all take
+   the same path rather than three near-copies of it. */
+(function lbPointers(){
+  const stage=$('#lb-stage');
+  const active=new Map();
+  let dragging=false,last={x:0,y:0},pinch=null,lastTap=0;
+
+  stage.addEventListener('pointerdown',e=>{
+    if(e.target.closest('.lbnav'))return;
+    stage.setPointerCapture(e.pointerId);
+    active.set(e.pointerId,{x:e.clientX,y:e.clientY});
+    if(active.size===2){
+      const [a,b]=[...active.values()];
+      pinch={d:Math.hypot(a.x-b.x,a.y-b.y),scale:LB.scale};
+      dragging=false;
+    }else{
+      dragging=LB.scale>1.001;
+      last={x:e.clientX,y:e.clientY};
+      stage.classList.toggle('dragging',dragging);
+    }
+  });
+  stage.addEventListener('pointermove',e=>{
+    if(!active.has(e.pointerId))return;
+    active.set(e.pointerId,{x:e.clientX,y:e.clientY});
+    if(pinch&&active.size===2){
+      const [a,b]=[...active.values()];
+      const d=Math.hypot(a.x-b.x,a.y-b.y);
+      if(pinch.d>0)lbZoom(pinch.scale*(d/pinch.d),(a.x+b.x)/2,(a.y+b.y)/2);
+      return;
+    }
+    if(!dragging)return;
+    LB.x+=e.clientX-last.x;LB.y+=e.clientY-last.y;
+    last={x:e.clientX,y:e.clientY};
+    applyLbTransform();
+  });
+  const release=e=>{
+    active.delete(e.pointerId);
+    if(active.size<2)pinch=null;
+    if(!active.size){dragging=false;stage.classList.remove('dragging')}
+  };
+  stage.addEventListener('pointerup',e=>{
+    const moved=Math.hypot(e.clientX-last.x,e.clientY-last.y)>6;
+    const wasPinching=!!pinch;
+    release(e);
+    if(moved||wasPinching)return;
+    const now=Date.now();
+    if(now-lastTap<320){lastTap=0;return lbToggleZoom(e.clientX,e.clientY)}
+    lastTap=now;
+    // A single click on the backdrop closes; on the picture it does nothing,
+    // so an accidental tap while reading does not throw the picture away.
+    if(e.target===stage)setTimeout(()=>{if(lastTap===now)closeLightbox()},320);
+  });
+  stage.addEventListener('pointercancel',release);
+  stage.addEventListener('dblclick',e=>{e.preventDefault();lbToggleZoom(e.clientX,e.clientY)});
+  stage.addEventListener('wheel',e=>{
+    e.preventDefault();
+    lbZoom(LB.scale*(e.deltaY<0?1.12:1/1.12),e.clientX,e.clientY);
+  },{passive:false});
+})();
+
+/* ---- the actions ---- */
+const imageProxy = url => '/api/fetch/image?url='+encodeURIComponent(url);
+
+$('#lb-open').onclick=()=>{
+  window.open(LB.url,'_blank','noopener,noreferrer');
+};
+$('#lb-reply').onclick=()=>{
+  const row=LB.msg;
+  if(!row)return;
+  const chan=(row.querySelector('[data-chan]')||{dataset:{}}).dataset.chan;
+  closeLightbox();
+  replyTo(row.dataset.rownick,chan);
+};
+$('#lb-download').onclick=async()=>{
+  if(!SESSION.signedIn){
+    // Without a session there is no proxy, and a cross-origin download
+    // attribute is ignored - so this is the honest fallback.
+    toast('Opening it where it is hosted — sign in to save it directly');
+    return window.open(LB.url,'_blank','noopener,noreferrer');
+  }
+  const a=document.createElement('a');
+  a.href=imageProxy(LB.url);
+  a.download=filenameOf(LB.url);
+  document.body.appendChild(a);a.click();a.remove();
+  toast('Saving '+filenameOf(LB.url));
+};
+
+$('#lb-more').onclick=e=>{
+  e.stopPropagation();
+  const box=$('#lb-menu');
+  if(box.classList.contains('on'))return box.classList.remove('on');
+  const canCopy=!!(SESSION.signedIn&&window.isSecureContext&&
+                   window.ClipboardItem&&navigator.clipboard&&navigator.clipboard.write);
+  const why=!SESSION.signedIn?'Sign in to copy the picture itself'
+    :!window.isSecureContext?'Copying a picture needs HTTPS, or localhost'
+    :'This browser cannot put a picture on the clipboard';
+  box.innerHTML=
+    `<div class="tagrow" data-lb="copyimg" ${canCopy?'':`aria-disabled="true" title="${esc(why)}"`}>
+       <svg class="ic" viewBox="0 0 24 24"><rect x="9" y="9" width="11" height="11" rx="2"/>
+       <path d="M5 15V5a2 2 0 0 1 2-2h8"/></svg>
+       <span class="nm">Copy picture</span></div>
+     <div class="tagrow" data-lb="copyurl">
+       <svg class="ic" viewBox="0 0 24 24"><path d="M10 13a5 5 0 0 0 7 0l2-2a5 5 0 0 0-7-7l-1 1"/>
+       <path d="M14 11a5 5 0 0 0-7 0l-2 2a5 5 0 0 0 7 7l1-1"/></svg>
+       <span class="nm">Copy image address</span></div>
+     <div class="tagrow" data-lb="details">
+       <svg class="ic" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/>
+       <path d="M12 11v5M12 8h.01"/></svg>
+       <span class="nm">Image details</span></div>`;
+  const r=e.currentTarget.getBoundingClientRect();
+  box.classList.add('on');
+  const w=box.offsetWidth,h=box.offsetHeight;
+  box.style.left=Math.max(8,Math.min(innerWidth-w-8,r.left+r.width/2-w/2))+'px';
+  box.style.top=(r.top-h-8>8?r.top-h-8:r.bottom+8)+'px';
+};
+$('#lb-menu').onclick=async e=>{
+  const row=e.target.closest('[data-lb]');
+  if(!row)return;
+  if(row.getAttribute('aria-disabled')==='true')
+    return toast(row.getAttribute('title')||'Not available here');
+  $('#lb-menu').classList.remove('on');
+  if(row.dataset.lb==='copyurl')return copyText(LB.url,'Image address copied');
+  if(row.dataset.lb==='details')return showImageDetails();
+  if(row.dataset.lb==='copyimg')return copyImage();
+};
+document.addEventListener('click',e=>{
+  if(!e.target.closest('#lb-menu')&&!e.target.closest('#lb-more'))
+    $('#lb-menu').classList.remove('on');
+},true);
+
+async function copyImage(){
+  toast('Copying…');
+  try{
+    const res=await fetch(imageProxy(LB.url));
+    if(!res.ok){
+      const err=await res.json().catch(()=>({}));
+      throw new Error(err.error||`the server answered ${res.status}`);
+    }
+    let blob=await res.blob();
+    // Browsers only reliably take PNG on the clipboard, so anything else is
+    // re-encoded here. The blob is same-origin, so the canvas is not tainted.
+    if(blob.type!=='image/png')blob=await toPngBlob(blob);
+    await navigator.clipboard.write([new ClipboardItem({'image/png':blob})]);
+    toast('Picture copied');
+  }catch(err){
+    toast('Could not copy it — '+(err&&err.message||err));
+  }
+}
+function toPngBlob(blob){
+  return new Promise((resolve,reject)=>{
+    const url=URL.createObjectURL(blob);
+    const im=new Image();
+    im.onload=()=>{
+      const cv=document.createElement('canvas');
+      cv.width=im.naturalWidth;cv.height=im.naturalHeight;
+      cv.getContext('2d').drawImage(im,0,0);
+      cv.toBlob(b=>{URL.revokeObjectURL(url);
+        b?resolve(b):reject(new Error('the picture could not be re-encoded'))},'image/png');
+    };
+    im.onerror=()=>{URL.revokeObjectURL(url);reject(new Error('the picture could not be read'))};
+    im.src=url;
+  });
+}
+
+async function showImageDetails(){
+  const url=LB.url,row=LB.msg;
+  const facts=()=>{
+    const out=[
+      ['Filename',esc(filenameOf(url))],
+      ['Host',esc(hostOf(url))||'—'],
+      ['Resolution',LB.natural.w
+        ? `${LB.natural.w} × ${LB.natural.h} pixels` : 'not loaded'],
+      ['Type',LB.meta?esc(LB.meta.type||'unknown')
+        :`<span class="dim">${SESSION.signedIn?'reading…':'sign in to read it'}</span>`],
+      ['Size',LB.meta&&LB.meta.bytes!=null?esc(fmtBytes(LB.meta.bytes))
+        :`<span class="dim">${SESSION.signedIn?'reading…':'sign in to read it'}</span>`],
+    ];
+    if(row){
+      out.push(['Posted by',esc(row.dataset.rownick||'—')]);
+      out.push(['When',esc(stamp(+row.dataset.ts))]);
+      const chan=(row.querySelector('[data-chan]')||{dataset:{}}).dataset.chan;
+      if(chan)out.push(['Channel','#'+esc(chan)]);
+    }
+    return out;
+  };
+  const summary=()=>`<div class="summary" id="lb-facts">`+facts().map(([k,v])=>
+    `<div class="kv"><span class="k">${esc(k)}</span><span class="v">${v}</span></div>`)
+    .join('')+`</div>`;
+
+  LB.meta=null;
+  openDialog('Image details',summary()+
+    `<div class="field"><label class="fhead">Address</label>
+       <div class="copyfield"><code>${esc(url)}</code>
+         <button class="btn ghost" data-copy-url="1" type="button">Copy</button></div></div>`);
+  $('#dlg-body').onclick=e=>{
+    if(e.target.closest('[data-copy-url]'))copyText(url,'Image address copied');
+  };
+  if(!SESSION.signedIn)return;
+
+  // The real type and size are only knowable through the proxy: the browser
+  // will not let this page read a cross-origin response at all.
+  let meta;
+  try{ meta=await api('/api/fetch/image','url='+encodeURIComponent(url)+'&meta=1') }
+  catch(e){ meta={error:'could not be read'} }
+  if(!$('#dlg').classList.contains('on')||LB.url!==url)return;
+  LB.meta=meta.error?{type:meta.error,bytes:null}:meta;
+  const box=$('#lb-facts');
+  if(box)box.outerHTML=summary();
+}
+
 /* ---------------- applied filter tags ---------------- */
 function drawApplied(){
   const box=$('#applied');box.innerHTML='';
@@ -2817,6 +3367,7 @@ function closeAll(opts={}){
     if(el.id==='wizard')WIZ.open=false;
   });
   $('#picker').classList.remove('on');
+  closeLightbox();
   hideTip();
   $('#scrim').classList.toggle('on',keepWiz);
   $$('.iconbtn').forEach(b=>b.setAttribute('aria-pressed','false'));
@@ -3421,6 +3972,15 @@ $('#log').onclick=e=>{
   // Selecting text must never trigger navigation
   const sel=window.getSelection&&String(window.getSelection());
   if(sel&&sel.trim())return;
+
+  // A picture opens here rather than sending you off to whoever hosts it.
+  // It stays a real link underneath, so middle-click and "open in new tab"
+  // still do the obvious thing, and it still works with script disabled.
+  const pic=e.target.closest('.imgw');
+  if(pic&&!pic.classList.contains('broken')&&!e.metaKey&&!e.ctrlKey&&!e.shiftKey){
+    e.preventDefault();
+    return openLightbox(pic);
+  }
   if(e.target.closest('a'))return;                 // real links behave normally
 
   const day=e.target.closest('[data-day]');
@@ -3446,6 +4006,11 @@ $('#log').onclick=e=>{
   if(row&&COARSE)return openRowMenu(+row.dataset.id,row);
 };
 $('#ctxbody').onclick=e=>{
+  const pic=e.target.closest('.imgw');
+  if(pic&&!pic.classList.contains('broken')&&!e.metaKey&&!e.ctrlKey&&!e.shiftKey){
+    e.preventDefault();
+    return openLightbox(pic);
+  }
   const row=e.target.closest('.msg');
   if(row&&e.target.closest('[data-nick]'))jumpTo(+row.dataset.id);
 };
@@ -3644,6 +4209,7 @@ async function drawSettings(force){
     if(slot&&look){look.removeAttribute('hidden');slot.appendChild(look);drawLook()}
   }
   if(setTab==='security'){drawTotp();drawPasskeys();drawTokens()}
+  if(setTab==='server')wireImporter();
   wireSettings(box);
 }
 
@@ -3801,7 +4367,7 @@ function setServer(){
                 <button class="iconact danger" data-chdel="${esc(c)}" data-net="${n.id}"
                   data-tip="Remove entirely" aria-label="Remove">${BIN}</button></span></div>`).join('')}
           ${(n.paused||[]).map(c=>`
-            <div class="row" style="opacity:.65"><span class="rmain">
+            <div class="row muted"><span class="rmain">
               <span class="nm">#${esc(c)}</span><span class="sub2">paused</span></span>
               <span class="act">
                 <button class="iconact" data-chresume="${esc(c)}" data-net="${n.id}"
@@ -3834,6 +4400,10 @@ function setServer(){
       <div class="hint">The archivist only ever listens. Port 6697 is TLS;
         6667 is plain — test before you save either way.</div>
     </div>
+
+    <div class="hr"></div>
+
+    ${importerHTML()}
   </div>`;
 }
 
@@ -3925,7 +4495,7 @@ function setPeople(u){
       <div class="hint">A pass is one link several people may join on. Every
         redemption is recorded, so you can always see who came in on which link.
         Links expire after ${SETDATA.expiresHours} hours.</div>
-      ${dead.length?`<div class="fhead" style="margin-top:4px">Spent and revoked</div>
+      ${dead.length?`<div class="fhead subhead">Spent and revoked</div>
         <div class="stack">${dead.slice(0,8).map(inviteRow).join('')}</div>`:''}
     </div>
 
@@ -4089,6 +4659,267 @@ async function beginTotp(slot,done){
   $('#totp-confirm').onclick=go;
   $('#totp-code').onkeydown=e=>{if(e.key==='Enter'){e.preventDefault();go()}};
 }
+
+
+/* =====================================================================
+   Importing history
+   ---------------------------------------------------------------------
+   Two doors, one road. A URL is fetched by the server; a file is read
+   here and posted. Either way the text goes to ircarchive.backfill, which
+   is exactly what `./archive.py import` and `./archive.py ingest` use — so
+   a log brought in here is held to the same rules, gets the same dedupe
+   key, and cannot land twice.
+
+   Nothing is written until you have seen what it parsed. "Check" runs the
+   whole import for real inside a transaction and rolls it back, which is
+   the only honest way to say how many lines are actually new.
+   ===================================================================== */
+const IMPORT={docs:[],report:null,checked:null,busy:false,formats:null};
+
+function importerHTML(){
+  const fmts=IMPORT.formats||[{key:'auto',label:'Detect automatically'}];
+  return `
+    <div class="field">
+      <label class="fhead">Import history</label>
+      <div class="seg" id="im-seg">
+        <button data-im="url" aria-pressed="true">From a web address</button>
+        <button data-im="file" aria-pressed="false">From a file</button>
+      </div>
+
+      <div id="im-url-pane">
+        <div class="formrow">
+          <input id="im-url" placeholder="https://logs.example.org/mychannel/"
+                 autocomplete="off" spellcheck="false"></div>
+        <div class="chips">
+          <button class="chip" id="im-follow" aria-pressed="false" type="button">
+            <i class="dotm"></i>Follow the links on that page</button>
+        </div>
+        <div class="hint">A log file, or a directory listing of them. Only
+          public addresses are fetched, only over http and https, and only
+          files linked from that same directory.</div>
+      </div>
+
+      <div id="im-file-pane" style="display:none">
+        <div class="formrow">
+          <label class="btn ghost fill" for="im-files">Choose log files…</label>
+          <input id="im-files" type="file" multiple hidden
+                 accept=".txt,.log,.weechatlog,.irclog,text/plain"></div>
+        <div id="im-chosen" class="stack"></div>
+        <div class="hint">ZNC, irssi, WeeChat, HexChat, or an AuroraIRC export.
+          Read in this browser and sent here — nothing is uploaded anywhere else.</div>
+      </div>
+
+      <div class="formrow">
+        <select id="im-format" aria-label="Log format">${fmts.map(f=>
+          `<option value="${esc(f.key)}">${esc(f.label)}</option>`).join('')}</select>
+        <input id="im-channel" placeholder="Channel, if the file does not say"
+               autocomplete="off">
+      </div>
+      <div class="formrow">
+        <input id="im-year" class="narrow" placeholder="Year" inputmode="numeric"
+               aria-label="Starting year">
+        <button class="chip" id="im-events" aria-pressed="false" type="button">
+          <i class="dotm"></i>Include joins &amp; quits</button>
+      </div>
+      <div class="hint">A year is only needed for formats whose lines carry
+        none — irssi, mostly. Joins and quits go to the presence table, never
+        into conversation.</div>
+
+      <div class="btnrow">
+        <button class="btn ghost" id="im-check">Check it first</button>
+        <button class="btn" id="im-go" disabled>Import</button>
+      </div>
+      <div id="im-out"></div>
+    </div>`;
+}
+
+function importKindOf(k){ return ['message','action','topic'][k]||'message' }
+
+function importReportHTML(r,{preview}){
+  if(r.error)return `<div class="note err">${esc(r.error)}</div>`;
+  const dates=r.first
+    ? `${dateOnly(r.first)} → ${dateOnly(r.last)}`
+    : 'no dates read';
+  const chans=(r.channels||[]).map(c=>`#${esc(c.name)} (${fmtN(c.count)})`).join(', ');
+  const head=preview
+    ? (r.seen
+        ? `<div class="note ok">Read ${fmtN(r.seen)} line(s). <b>${fmtN(r.added)}</b>
+             would be new; ${fmtN(r.duplicates)} are already here. Nothing has
+             been stored yet.</div>`
+        : `<div class="note err">Nothing in that parsed as conversation.</div>`)
+    : `<div class="note ok">Imported. <b>${fmtN(r.added)}</b> new
+         ${r.events?'event':'message'}(s) stored; ${fmtN(r.duplicates)} were
+         already here and were left alone.</div>`;
+  return head+
+    `<div class="summary">
+       <div class="kv"><span class="k">Format</span>
+         <span class="v">${esc(r.format||'—')}</span></div>
+       <div class="kv"><span class="k">Channels</span>
+         <span class="v${chans?'':' dim'}">${chans||'none'}</span></div>
+       <div class="kv"><span class="k">People</span>
+         <span class="v">${fmtN(r.nicks||0)}</span></div>
+       <div class="kv"><span class="k">Dates</span>
+         <span class="v${r.first?'':' dim'}">${esc(dates)}</span></div>
+       <div class="kv"><span class="k">Files</span>
+         <span class="v">${fmtN((r.files||[]).length)}</span></div>
+     </div>`+
+    ((r.sample||[]).length
+      ? `<div class="fhead subhead">What it read</div>
+         <div class="note sample">`+
+        r.sample.map(x=>`${esc(dayKey(x.ts))} ${esc(hhmm(x.ts))} #${esc(x.channel)} `+
+          `&lt;${esc(x.nick)}&gt; ${esc(x.text)}`+
+          (x.kind?` <span class="dim">[${importKindOf(x.kind)}]</span>`:'')
+        ).join('<br>')+`</div>`
+      : '')+
+    ((r.unreadable||[]).length
+      ? `<div class="note err">Not recognised: `+
+        r.unreadable.map(u=>esc(u.name)).join(', ')+`</div>` : '')+
+    ((r.skipped||[]).length
+      ? `<div class="note">Skipped: `+
+        r.skipped.map(u=>`${esc(u.name)} — ${esc(u.why)}`).join('; ')+`</div>` : '');
+}
+
+function importPayload(){
+  const mode=$$('#im-seg button').find(b=>b.getAttribute('aria-pressed')==='true');
+  const source=mode?mode.dataset.im:'url';
+  const body={
+    source,
+    format:$('#im-format').value,
+    channel:$('#im-channel').value.trim()||undefined,
+    year:$('#im-year').value.trim()||undefined,
+    events:$('#im-events').getAttribute('aria-pressed')==='true',
+  };
+  if(source==='url'){
+    body.url=$('#im-url').value.trim();
+    body.follow=$('#im-follow').getAttribute('aria-pressed')==='true';
+    if(!body.url)return {error:'A web address to read from, first.'};
+  }else{
+    if(!IMPORT.docs.length)return {error:'Choose a log file, first.'};
+    body.documents=IMPORT.docs;
+  }
+  return {body};
+}
+/* What was checked, so Import cannot quietly send something else. */
+const importSignature = b => JSON.stringify({
+  source:b.source,format:b.format,channel:b.channel,year:b.year,
+  events:b.events,url:b.url,follow:b.follow,
+  docs:(b.documents||[]).map(d=>[d.name,d.text.length]),
+});
+
+async function runImport(commit){
+  if(IMPORT.busy)return;
+  const {body,error}=importPayload();
+  const out=$('#im-out');
+  if(error)return void(out.innerHTML=`<div class="note err">${esc(error)}</div>`);
+  IMPORT.busy=true;
+  $('#im-check').disabled=$('#im-go').disabled=true;
+  out.innerHTML=`<div class="note"><span class="spin"></span> ${
+    commit?'Importing':'Reading'}…</div>`;
+  let r;
+  try{ r=await post(commit?'/api/import':'/api/import/preview',body) }
+  catch(e){ r={error:'the server did not answer'} }
+  IMPORT.busy=false;
+  $('#im-check').disabled=false;
+  out.innerHTML=importReportHTML(r,{preview:!commit});
+  if(r.error||!r.seen){
+    IMPORT.checked=null;
+    $('#im-go').disabled=true;
+    return;
+  }
+  if(commit){
+    IMPORT.checked=null;
+    $('#im-go').disabled=true;
+    toast(`${fmtN(r.added)} message(s) imported`);
+    // The archive has a different shape now: counts, channels, the rail
+    await refreshMeta().catch(()=>{});
+    refresh();
+  }else{
+    IMPORT.checked=importSignature(body);
+    $('#im-go').disabled=false;
+  }
+}
+
+function wireImporter(){
+  if(!$('#im-seg'))return;
+  if(!IMPORT.formats)
+    api('/api/import/formats').then(d=>{
+      if(!d||!d.formats)return;
+      IMPORT.formats=d.formats;
+      const sel=$('#im-format');
+      if(!sel)return;
+      const was=sel.value;
+      sel.innerHTML=d.formats.map(f=>
+        `<option value="${esc(f.key)}">${esc(f.label)}</option>`).join('');
+      sel.value=was||'auto';
+    }).catch(()=>{});
+
+  $$('#im-seg button').forEach(b=>b.onclick=()=>{
+    $$('#im-seg button').forEach(x=>x.setAttribute('aria-pressed',String(x===b)));
+    $('#im-url-pane').style.display=b.dataset.im==='url'?'':'none';
+    $('#im-file-pane').style.display=b.dataset.im==='file'?'':'none';
+    IMPORT.checked=null;$('#im-go').disabled=true;
+  });
+  for(const id of ['#im-follow','#im-events'])
+    $(id).onclick=()=>{
+      const el=$(id);
+      el.setAttribute('aria-pressed',
+        String(el.getAttribute('aria-pressed')!=='true'));
+      IMPORT.checked=null;$('#im-go').disabled=true;
+    };
+  for(const id of ['#im-url','#im-format','#im-channel','#im-year'])
+    $(id).oninput=$(id).onchange=()=>{IMPORT.checked=null;$('#im-go').disabled=true};
+
+  $('#im-files').onchange=async e=>{
+    const files=[...(e.target.files||[])];
+    IMPORT.docs=[];IMPORT.checked=null;$('#im-go').disabled=true;
+    const chosen=$('#im-chosen');
+    if(!files.length){chosen.innerHTML='';return}
+    let total=0;
+    const rows=[];
+    for(const f of files.slice(0,60)){
+      if(total+f.size>IMPORT_MAX_BYTES){
+        rows.push(`<div class="row"><span class="rmain">
+          <span class="nm">${esc(f.name)}</span>
+          <span class="sub2">skipped — over the ${IMPORT_MAX_BYTES/1048576}MB total</span>
+          </span><span class="pill warn">too big</span></div>`);
+        continue;
+      }
+      let text='';
+      try{ text=await f.text() }catch(err){ text='' }
+      if(!text.trim()){
+        rows.push(`<div class="row"><span class="rmain">
+          <span class="nm">${esc(f.name)}</span>
+          <span class="sub2">empty, or not text</span></span>
+          <span class="pill warn">skipped</span></div>`);
+        continue;
+      }
+      total+=f.size;
+      IMPORT.docs.push({name:f.name,text});
+      rows.push(`<div class="row"><span class="rmain">
+        <span class="nm">${esc(f.name)}</span>
+        <span class="sub2">${esc(fmtBytes(f.size))}</span></span>
+        <span class="pill ok">ready</span></div>`);
+    }
+    chosen.innerHTML=rows.join('');
+    e.target.value='';
+  };
+
+  $('#im-check').onclick=()=>runImport(false);
+  $('#im-go').onclick=()=>{
+    const {body,error}=importPayload();
+    if(error||!IMPORT.checked)return;
+    if(importSignature(body)!==IMPORT.checked){
+      $('#im-out').innerHTML=
+        `<div class="note err">That has changed since it was checked —
+          check it again.</div>`;
+      $('#im-go').disabled=true;
+      return;
+    }
+    runImport(true);
+  };
+}
+/* The server refuses more than this outright; stop it here with a reason. */
+const IMPORT_MAX_BYTES=14*1024*1024;
 
 /* ------------------------------------------------------------- wiring */
 function wireSettings(box){
@@ -4346,7 +5177,8 @@ $('#set-close').onclick=()=>closeAll();
 const WIZ={
   open:false,dismissable:false,flow:'setup',step:0,sub:'',busy:false,
   data:{appName:'',username:'',nick:'',created:false,invite:null,
-        manual:[],network:null,networkSkipped:false,secured:[]},
+        manual:[],membersSkipped:false,network:null,networkSkipped:false,
+        secured:[]},
 };
 
 const WIZ_FLOWS={
@@ -4365,7 +5197,8 @@ function startWizard(flow,opts={}){
   WIZ.flow=flow;WIZ.step=0;WIZ.sub='';WIZ.busy=false;
   WIZ.dismissable=!!opts.dismissable;
   WIZ.data={appName:APPNAME,username:'',nick:'',created:false,invite:null,
-            manual:[],network:null,networkSkipped:false,secured:[]};
+            manual:[],membersSkipped:false,network:null,networkSkipped:false,
+            secured:[]};
   WIZ.open=true;
   openPanel('#wizard');
   drawWizard();
@@ -4388,12 +5221,17 @@ function drawWizard(){
   next.textContent=key==='done'?'Finish'
     :(key==='account'&&!WIZ.data.created)?'Create account':'Next';
   next.disabled=false;
-  alt.style.display='none';
+  alt.hidden=true;
   if(key==='network'&&!WIZ.data.network){
-    alt.style.display='';alt.textContent='Set up later';
+    alt.hidden=false;alt.textContent='Set up later';
+  }
+  // Nobody has to invite anyone during setup. Saying so out loud beats
+  // leaving people to work out that Next on an untouched form is allowed.
+  if(key==='members'&&!WIZ.data.invite&&!WIZ.data.manual.length){
+    alt.hidden=false;alt.textContent='Skip for now';
   }
   if(key==='account'&&WIZ.data.created&&WIZ.sub==='secure'){
-    alt.style.display='';alt.textContent='Skip for now';
+    alt.hidden=false;alt.textContent='Skip for now';
   }
   WIZ_WIRE[key]&&WIZ_WIRE[key]();
 }
@@ -4521,7 +5359,8 @@ members(){
     <p class="lede">Other people reach this archive one of two ways. Hand out a
       link — a single invitation, or a <b>pass</b> that several people can join
       on — or create an account for someone directly. Either can wait: you can
-      do all of this later from Settings → People.</p>
+      do all of this later from Settings → People — <b>Skip for now</b> leaves
+      this until then.</p>
 
     <div class="field">
       <label class="fhead">Generate a join link</label>
@@ -4677,7 +5516,8 @@ done(){
           : 'none created'}</span></div>
       <div class="kv"><span class="k">Accounts added by hand</span>
         <span class="v${d.manual.length?'':' dim'}">${
-          d.manual.length?d.manual.map(m=>esc(m.name)).join(', '):'none'}</span></div>
+          d.manual.length?d.manual.map(m=>esc(m.name)).join(', ')
+            :(d.membersSkipped?'none — skipped for now':'none')}</span></div>
       <div class="kv"><span class="k">IRC network</span>
         <span class="v${n?'':' dim'}">${n
           ? `${esc(n.name)} · ${esc(n.host)}:${n.port} ${n.tls?'TLS':'plain'}`
@@ -4953,6 +5793,7 @@ $('#wiz-alt').onclick=async()=>{
                 'Settings → Server. Everything else stays set up.'))return;
     WIZ.data.networkSkipped=true;
   }
+  if(key==='members')WIZ.data.membersSkipped=true;
   WIZ.step++;WIZ.sub='';drawWizard();
 };
 
@@ -5395,6 +6236,17 @@ function isTyping(){
   return /^(INPUT|TEXTAREA|SELECT)$/.test(el.tagName)||el.isContentEditable;
 }
 document.onkeydown=e=>{
+  // While a picture is open it owns the keyboard: arrows step through the
+  // pictures on screen rather than doing whatever they do in the feed.
+  if(LB.open){
+    if(e.key==='Escape'){e.preventDefault();return closeLightbox()}
+    if(e.key==='ArrowLeft'){e.preventDefault();return lbStep(-1)}
+    if(e.key==='ArrowRight'){e.preventDefault();return lbStep(1)}
+    if(e.key==='+'||e.key==='='){e.preventDefault();return lbZoom(LB.scale*1.4)}
+    if(e.key==='-'||e.key==='_'){e.preventDefault();return lbZoom(LB.scale/1.4)}
+    if(e.key==='0'){e.preventDefault();LB.scale=1;LB.x=LB.y=0;return applyLbTransform()}
+    return;
+  }
   if(e.key==='Escape'){
     if(isTyping())document.activeElement.blur();
     return closeAll();

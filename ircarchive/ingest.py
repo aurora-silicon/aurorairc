@@ -69,13 +69,29 @@ def channel_for(path, text):
 
 
 def parse_file(path, events=False):
-    """Yield rows from a log file.
+    """Yield rows from a log file on disk. See parse_text for the shapes."""
+    raw = Path(path).read_text(encoding="utf-8", errors="replace")
+    yield from parse_text(raw, path, events=events)
+
+
+def looks_like_export(text):
+    """Whether this is the exported-log shape rather than a client log."""
+    head = "\n".join(str(text or "").split("\n")[:200])
+    return bool(RE_HEADER.search(head) or RE_MSG.search(head)
+                or RE_ACTION.search(head) or RE_TOPIC.search(head))
+
+
+def parse_text(raw, path="log.txt", events=False, quiet=False):
+    """Yield rows from log text.
 
     With ``events`` false: (channel, nick, ts, kind, text) for conversation.
     With ``events`` true:  (channel, nick, ts, kind, detail) for join/quit
     traffic. The two are stored in different tables and never mixed.
+
+    Split out from parse_file so that text arriving over HTTP goes through
+    exactly the same parser as text read off disk - one grammar, one set of
+    rules about what counts as a message, whichever door it came in.
     """
-    raw = Path(path).read_text(encoding="utf-8", errors="replace")
     channel = channel_for(path, raw)
     skipped = 0
     seen = 0
@@ -130,7 +146,7 @@ def parse_file(path, events=False):
 
         skipped += 1
 
-    if skipped:
+    if skipped and not quiet:
         print(f"    note: {skipped} line(s) in {Path(path).name} matched no known format")
 
 

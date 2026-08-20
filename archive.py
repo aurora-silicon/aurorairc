@@ -35,7 +35,8 @@ def cmd_ingest(args):
 def cmd_serve(args):
     server_mod.serve(args.db, host=args.host, port=args.port,
                      behind_proxy=args.behind_proxy,
-                     proxy_hops=args.proxy_hops)
+                     proxy_hops=args.proxy_hops,
+                     allow_local_fetch=args.allow_local_fetch)
 
 
 def cmd_live(args):
@@ -230,6 +231,10 @@ def main():
     p.add_argument("--proxy-hops", type=int, default=1,
                    help="how many proxies sit in front; the client IP is counted "
                         "in from the right of X-Forwarded-For")
+    p.add_argument("--allow-local-fetch", action="store_true",
+                   help="let import and image fetching reach private addresses "
+                        "(a log server on your LAN). Owners only either way, but "
+                        "off by default because it points this at your network")
     p.set_defaults(func=cmd_serve)
 
     p = sub.add_parser("live", help="run every network's archivist and send queue")

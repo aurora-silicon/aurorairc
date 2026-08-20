@@ -6,7 +6,7 @@ import { createRequire } from 'node:module';
 const require_ = createRequire(import.meta.url);
 const { chromium } = require_('playwright');
 
-const [base, ctrl, ircPort] = process.argv.slice(2);
+const [base, ctrl, ircPort, web] = process.argv.slice(2);
 const OUT = '/tmp/aurora-shots';
 fs.mkdirSync(OUT, { recursive: true });
 const sleep = ms => new Promise(r => setTimeout(r, ms));
@@ -85,6 +85,8 @@ await shot(page, 'feed');
 
 await page.click('#filter-btn'); await sleep(450);
 await shot(page, 'filters');
+await page.click('#manage-tags'); await sleep(500);
+await shot(page, 'tags');
 await page.click('#scrim'); await sleep(350);
 
 await page.click('#q'); await page.fill('#q', 'firmware'); await page.press('#q', 'Enter');
@@ -95,6 +97,42 @@ await page.fill('#q', '#mychannel firmware'); await page.click('#qsave'); await 
 await shot(page, 'search-save');
 await page.press('#sv-name', 'Escape'); await page.fill('#q', ''); await page.press('#q', 'Enter');
 await sleep(400);
+
+/* the importer, and a picture opened in place */
+await page.click('#live-btn'); await page.click('#open-settings');
+await page.waitForSelector('#setpanel.on');
+await page.click('#set-nav button[data-tab="server"]');
+await page.waitForSelector('#im-seg');
+await page.fill('#im-url', web + '/logs/');
+await page.click('#im-follow');
+await page.click('#im-check');
+await page.waitForSelector('#im-out .note.ok', { timeout: 30000 });
+await page.evaluate(() => document.querySelector('#im-check')
+  .scrollIntoView({ block: 'center' }));
+await sleep(400);
+await shot(page, 'settings-import');
+await page.click('#im-go');
+await sleep(2500);
+await shot(page, 'settings-import-done');
+await page.click('#set-close');
+
+await control('/inject', { nick: 'jules', text: 'the board shot: ' + web + '/img/shot.png' });
+await sleep(2500);
+// The import reloaded the feed, so we may be sitting away from the live end
+await page.evaluate(() => jumpToLatest());
+await page.waitForSelector('#log .imgw', { timeout: 20000 });
+await sleep(800);
+await page.click('#log .imgw >> nth=0');
+await page.waitForSelector('#lightbox.on');
+await sleep(800);
+await shot(page, 'lightbox');
+await page.click('#lb-more'); await sleep(400);
+await shot(page, 'lightbox-menu');
+await page.click('[data-lb="details"]');
+await page.waitForSelector('#dlg.on'); await sleep(1200);
+await shot(page, 'lightbox-details');
+await page.click('#dlg-close');
+await page.keyboard.press('Escape'); await sleep(400);
 
 await page.click('#live-btn'); await sleep(400);
 await shot(page, 'account-sheet');

@@ -63,6 +63,10 @@ consequence is that logging never stops, whatever anyone else is doing.
 - **The bar remembers** — recent searches come back in the bar itself, and the
   bookmark beside it saves the current one. Both are per account and follow you
   between devices; an anonymous reader gets neither.
+- **Pictures open in place** — a quick look with zoom and pan, arrows through
+  every picture on screen, and reply, save, open where it lives, copy the
+  picture, copy its address, or read what it actually is. No leaving the
+  archive to look at a screenshot.
 - **Tags** — Finder-style coloured flags for marking messages worth finding again.
 - **Jump to context** — land on any message in its surrounding conversation, with
   a linkable URL.
@@ -117,8 +121,27 @@ re-running only adds what is new:
 ./archive.py import ~/.weechat/logs --channel mychannel
 ```
 
-Recognised automatically: **ZNC, irssi, WeeChat, HexChat**. Joins and quits are
-filtered out of conversation and stored separately.
+Recognised automatically: **ZNC, irssi, WeeChat, HexChat**, and the exported
+log shape. Joins and quits are filtered out of conversation and stored
+separately.
+
+The same thing is in **Settings → Server**, which matters on Home Assistant
+where there is no shell: give it a web address — a log file, or a directory
+listing it may follow — or hand it files from your own machine. Either way the
+text goes through the parsers above, so nothing is parsed twice or parsed
+differently.
+
+**Check it first** runs the whole import for real inside a transaction and
+rolls it back, then shows you the format it recognised, the channels and dates
+it found, and the first lines exactly as it read them — including how many are
+already in the archive. Only then does Import light up.
+
+Fetching a URL means this server makes a request somewhere you chose, so it is
+kept on a short lead: http and https only, public addresses only — checked for
+every address a name resolves to, and the socket is opened to the address that
+was checked — a few redirects at most, each re-checked, and hard caps on size
+and time. A log server on your own network is refused by default; start the
+server with `--allow-local-fetch` if that is really what you want.
 
 ---
 
@@ -198,6 +221,11 @@ if they are not installed.
   hostname, not the machine, so keep the domain stable.
 - Runs comfortably on a Raspberry Pi 4. Put the database on an SSD rather than
   an SD card — live capture writes continuously and will wear a card out.
+- Pictures are displayed straight from wherever they are hosted, exactly as
+  before. Copying, saving and reading a picture's real type and size go through
+  `/api/fetch/image` instead, because the page is locked to `connect-src 'self'`
+  and script cannot touch cross-origin bytes at all. That route needs a session,
+  serves only things browsers draw, and always as an attachment.
 - WebAuthn verification (CBOR, ECDSA P-256, RSA PKCS#1 v1.5) is implemented in
   `ircarchive/webauthn.py` because no crypto library is assumed. It handles only
   public values — public keys, signatures, messages — so there are no secrets to

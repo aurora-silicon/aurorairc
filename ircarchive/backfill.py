@@ -13,7 +13,9 @@ live capture, so imports dedupe against what is already there.
 
 import re
 from datetime import datetime, timezone
+from html.parser import HTMLParser
 from pathlib import Path
+from urllib.parse import urljoin, urlsplit, urlunsplit
 
 from . import db
 
@@ -57,13 +59,9 @@ def _body(text):
     return None
 
 
-def sniff(path):
+def sniff_text(text):
     """Guess a client format from the first lines that look like content."""
-    try:
-        head = Path(path).read_text(encoding="utf-8", errors="replace").split("\n")[:80]
-    except OSError:
-        return None
-    for line in head:
+    for line in str(text or "").split("\n")[:80]:
         if RE_WEECHAT.match(line):
             return "weechat"
         if RE_ZNC.match(line):
@@ -73,6 +71,14 @@ def sniff(path):
         if RE_IRSSI_DAY.match(line) or RE_IRSSI.match(line):
             return "irssi"
     return None
+
+
+def sniff(path):
+    """The same guess, for a file on disk."""
+    try:
+        return sniff_text(Path(path).read_text(encoding="utf-8", errors="replace"))
+    except OSError:
+        return None
 
 
 def date_from_name(path):
@@ -90,11 +96,27 @@ def channel_from_path(path, fallback=None):
 
 def parse_client_log(path, fmt=None, channel=None, year=None):
     """Yield (channel, nick, ts, kind, text) from one client log file."""
-    fmt = fmt or sniff(path)
+    try:
+        text = Path(path).read_text(encoding="utf-8", errors="replace")
+    except OSError:
+        return
+    yield from parse_client_text(text, fmt or sniff_text(text), channel=channel,
+                                 year=year, name=str(path))
+
+
+def parse_client_text(text, fmt=None, channel=None, year=None, name="log.txt"):
+    """The same parse, for text that never touched the disk.
+
+    Import from a URL and import from a file go through this one function, so
+    a log read over HTTP is held to exactly the rules the command line applies
+    - the same formats, the same idea of what is speech, the same refusal to
+    treat join and quit traffic as conversation.
+    """
+    path = name
+    fmt = fmt or sniff_text(text)
     if not fmt:
         return
     chan = (channel or channel_from_path(path)).lstrip("#")
-    text = Path(path).read_text(encoding="utf-8", errors="replace")
 
     named = date_from_name(path)
     cur = list(named) if named else None          # [y, m, d]
@@ -212,3 +234,226 @@ def import_files(con, paths, fmt=None, channel=None, year=None, batch=20000):
         total += added
         print(f"  {path.name:<34} {guess:<8} {seen:>7,} parsed  {added:>7,} new")
     return total
+
+
+# ------------------------------------------------------------------ importing
+#
+# The web importer exists so that a Home Assistant install - which has no
+# shell - can still take in history. It deliberately owns no parsing of its
+# own: every byte goes through the parsers above, or through ingest.py, which
+# is what `./archive.py import` and `./archive.py ingest` use. One grammar,
+# one dedupe key, whichever door the log came in by.
+
+FORMATS = [
+    ("auto",    "Detect automatically"),
+    ("export",  "AuroraIRC / web export"),
+    ("znc",     "ZNC"),
+    ("irssi",   "irssi"),
+    ("weechat", "WeeChat"),
+    ("hexchat", "HexChat"),
+]
+FORMAT_KEYS = {k for k, _ in FORMATS}
+FORMAT_NAMES = dict(FORMATS)
+
+MAX_DOCS = 60                       # files pulled from one index page
+MAX_TOTAL_BYTES = 48 * 1024 * 1024
+LOG_SUFFIXES = (".txt", ".log", ".weechatlog", ".irclog")
+
+
+def detect(text, name=""):
+    """Which of the supported formats this text is, or None.
+
+    The export shape is checked first: it carries a full date on every line,
+    so a client-log regex would never match it anyway, but being explicit
+    keeps the order of preference obvious.
+    """
+    from . import ingest
+    if ingest.looks_like_export(text):
+        return "export"
+    return sniff_text(text)
+
+
+def parse_any(text, fmt, channel=None, year=None, name="log.txt", events=False):
+    """Rows from one document, in whichever supported format it is."""
+    from . import ingest
+    if fmt == "export":
+        rows = ingest.parse_text(text, name, events=events, quiet=True)
+    elif events:
+        return                       # presence only exists in the export shape
+    else:
+        rows = parse_client_text(text, fmt, channel=channel, year=year, name=name)
+    override = (channel or "").lstrip("#").lower()
+    for chan, nick, ts, kind, body in rows:
+        yield (override or chan), nick, ts, kind, body
+
+
+def import_documents(con, docs, *, fmt="auto", channel=None, year=None,
+                     events=False, commit=True, batch=20000, samples=8,
+                     source="import"):
+    """Import one or more (name, text) documents. Returns a report.
+
+    ``commit=False`` is a dry run: the work is done for real, inside a
+    transaction that is then rolled back. That is the only honest way to say
+    how many lines are new - the answer depends on what is already stored, and
+    the dedupe key is the database's, not something worth reimplementing here.
+
+    Idempotent either way: repeated lines within one document keep their own
+    occurrence numbers, and re-importing the same document produces the same
+    keys, which INSERT OR IGNORE then drops.
+    """
+    ids = db.Ids(con)
+    report = {"files": [], "seen": 0, "added": 0, "duplicates": 0,
+              "channels": [], "nicks": 0, "first": None, "last": None,
+              "sample": [], "committed": bool(commit), "events": bool(events),
+              "unreadable": []}
+    chans, nicks = {}, set()
+    insert = db.insert_events if events else db.insert_messages
+
+    con.execute("BEGIN")
+    try:
+        for name, text in docs:
+            use = fmt if fmt and fmt != "auto" else detect(text, name)
+            if not use or use not in FORMAT_KEYS or use == "auto":
+                report["unreadable"].append(
+                    {"name": name, "why": "no supported format recognised"})
+                continue
+            # Occurrence numbers restart per document, exactly as the command
+            # line does between files - otherwise two exports covering the same
+            # day would each get fresh numbers and duplicate it.
+            ids.reset_seq()
+            buf, seen, added = [], 0, 0
+            for row in parse_any(text, use, channel=channel, year=year,
+                                 name=name, events=events):
+                buf.append(row)
+                seen += 1
+                chan, nick, ts, kind, body = row
+                chans[chan] = chans.get(chan, 0) + 1
+                nicks.add(nick)
+                if report["first"] is None or ts < report["first"]:
+                    report["first"] = ts
+                if report["last"] is None or ts > report["last"]:
+                    report["last"] = ts
+                if len(report["sample"]) < samples:
+                    report["sample"].append(
+                        {"channel": chan, "nick": nick, "ts": ts,
+                         "kind": kind, "text": body[:200]})
+                if len(buf) >= batch:
+                    added += insert(con, ids, buf, source)
+                    buf.clear()
+            added += insert(con, ids, buf, source)
+            if commit and not events:
+                db.record_ingest(con, name, seen, added)
+            report["files"].append(
+                {"name": name, "format": use, "seen": seen, "added": added,
+                 "duplicates": seen - added})
+            report["seen"] += seen
+            report["added"] += added
+            report["duplicates"] += seen - added
+        con.execute("COMMIT" if commit else "ROLLBACK")
+    except Exception:
+        con.execute("ROLLBACK")
+        raise
+
+    report["channels"] = sorted(
+        ({"name": c, "count": n} for c, n in chans.items()),
+        key=lambda x: -x["count"])
+    report["nicks"] = len(nicks)
+    report["format"] = (report["files"][0]["format"] if report["files"]
+                        else (fmt if fmt != "auto" else None))
+    return report
+
+
+# ---------------------------------------------------------------- from a URL
+
+class _Links(HTMLParser):
+    """Every href on a page, in the order they appear."""
+
+    def __init__(self):
+        super().__init__(convert_charrefs=True)
+        self.hrefs = []
+
+    def handle_starttag(self, tag, attrs):
+        if tag != "a":
+            return
+        for name, value in attrs:
+            if name == "href" and value:
+                self.hrefs.append(value)
+
+
+def log_links(html, base):
+    """Log files linked from an index page, restricted to the same place.
+
+    A directory listing is the usual shape of a web archive, so following it
+    is the point - but only downwards, and only on the same host. A link that
+    wanders off elsewhere is not part of this archive and is not fetched.
+    """
+    parser = _Links()
+    parser.feed(html)
+    here = urlsplit(base)
+    root = here.path.rsplit("/", 1)[0] + "/"
+    out, seen = [], set()
+    for href in parser.hrefs:
+        if href.startswith(("#", "javascript:", "mailto:", "data:")):
+            continue
+        target = urljoin(base, href)
+        parts = urlsplit(target)
+        if parts.scheme not in ("http", "https"):
+            continue
+        if parts.netloc != here.netloc:
+            continue
+        if not parts.path.startswith(root):
+            continue                        # no climbing out of the directory
+        if not parts.path.lower().endswith(LOG_SUFFIXES):
+            continue
+        clean = urlunsplit((parts.scheme, parts.netloc, parts.path, "", ""))
+        if clean in seen or clean.rstrip("/") == base.rstrip("/"):
+            continue
+        seen.add(clean)
+        out.append(clean)
+    return out
+
+
+def documents_from_url(url, *, follow=False, max_docs=MAX_DOCS,
+                       max_total=MAX_TOTAL_BYTES, timeout=20):
+    """Fetch (name, text) documents from a URL. Raises fetching.FetchError."""
+    from . import fetching as F
+    text, res = F.fetch_text(url, timeout=timeout,
+                             max_bytes=min(max_total, F.DEFAULT_MAX_BYTES),
+                             accept="text/plain, text/html;q=0.8, */*;q=0.5")
+    ctype = (res["headers"].get("content-type") or "").split(";")[0].strip().lower()
+    looks_html = ctype in ("text/html", "application/xhtml+xml") or \
+        text.lstrip()[:200].lower().startswith(("<!doctype html", "<html"))
+
+    if not looks_html:
+        return [(F.filename_of(res["url"], "log.txt"), text)], []
+
+    links = log_links(text, res["url"])
+    if not follow:
+        raise F.FetchError(
+            f"that address is a web page, not a log file"
+            + (f" — it links to {len(links)} log file(s); tick "
+               f"“follow the links on this page” to pull them in"
+               if links else ", and nothing on it looks like a log file"))
+    if not links:
+        raise F.FetchError("no log files are linked from that page")
+
+    docs, skipped, budget = [], [], max_total - len(text.encode("utf-8", "replace"))
+    for link in links[:max_docs]:
+        if budget <= 0:
+            skipped.append({"name": link, "why": "size limit reached"})
+            continue
+        try:
+            body, sub = F.fetch_text(link, timeout=timeout,
+                                     max_bytes=min(budget, F.DEFAULT_MAX_BYTES),
+                                     accept="text/plain, */*;q=0.5")
+        except F.FetchError as exc:
+            skipped.append({"name": link, "why": str(exc)})
+            continue
+        budget -= len(body.encode("utf-8", "replace"))
+        docs.append((F.filename_of(link, "log.txt"), body))
+    if len(links) > max_docs:
+        skipped.append({"name": f"{len(links) - max_docs} more file(s)",
+                        "why": f"only {max_docs} are taken from one page"})
+    if not docs:
+        raise F.FetchError("none of the linked files could be read")
+    return docs, skipped

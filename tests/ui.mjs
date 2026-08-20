@@ -19,7 +19,7 @@ const { chromium } = (() => {
   process.exit(0);
 })();
 
-const [base, ctrl, ircPort] = process.argv.slice(2);
+const [base, ctrl, ircPort, web] = process.argv.slice(2);
 let checks = 0;
 const failures = [];
 
@@ -511,6 +511,207 @@ const run = async () => {
     check('and lands in the app signed in',
       await invited.isVisible('.composer.on') || true);
     await invited.close();
+
+    // ---------------------------------------------------------- tags
+    head('Tag manager');
+    await page.click('#filter-btn');
+    await page.waitForSelector('#filter-sheet.on');
+    await page.click('#manage-tags');
+    await page.waitForSelector('#tags-sheet.on');
+    check('the tag manager uses the same row as every other list',
+      await page.evaluate(() =>
+        document.querySelectorAll('#tags-content .row.tagedit').length >= 6));
+    check('every block in it is spaced the same', await page.evaluate(() => {
+      const gaps = [...document.querySelectorAll('#tags-content .field')]
+        .map(f => getComputedStyle(f).gap);
+      return gaps.length > 1 && new Set(gaps).size === 1;
+    }));
+    check('nothing in it is patched with an inline style', await page.evaluate(() =>
+      [...document.querySelectorAll('#tags-content *')].every(el =>
+        !el.getAttribute('style') || /--tg-/.test(el.getAttribute('style')))));
+    await page.fill('#mk-name', 'firmware');
+    await page.selectOption('#mk-color', 'green');
+    await page.click('#mk-go');
+    await waitFor(async () => (await page.textContent('#tags-content')).includes('firmware'));
+    check('a tag can be added', true);
+    check('and carries a delete control that says what it does',
+      await page.getAttribute('[data-tagdel="firmware"]', 'data-tip') ===
+        'Delete this tag everywhere');
+    await page.click('#scrim');
+
+    // -------------------------------------------------------- importing
+    head('Importing history');
+    await page.click('#live-btn');
+    await page.waitForSelector('#live-sheet.on');
+    await page.click('#open-settings');
+    await page.waitForSelector('#setpanel.on');
+    await page.click('#set-nav button[data-tab="server"]');
+    await page.waitForSelector('#im-seg');
+    check('Server settings offer an importer', await page.isVisible('#im-url'));
+    check('Import is held back until it has been checked',
+      await page.isDisabled('#im-go'));
+
+    await page.fill('#im-url', web + '/logs/');
+    await page.click('#im-check');
+    await page.waitForSelector('#im-out .note.err', { timeout: 25000 });
+    check('a directory listing is not mistaken for a log',
+      (await page.textContent('#im-out')).includes('web page'));
+    check('and Import stays disabled', await page.isDisabled('#im-go'));
+
+    await page.click('#im-follow');
+    await page.click('#im-check');
+    await page.waitForSelector('#im-out .note.ok', { timeout: 30000 });
+    const preview = await page.textContent('#im-out');
+    check('following the listing reads the logs on it',
+      /would be new/.test(preview), preview.slice(0, 160));
+    check('it shows what it actually parsed',
+      preview.includes('What it read') && preview.includes('morning all'));
+    check('and names the channel it found', preview.includes('#mychannel'));
+    check('only then is Import offered', !(await page.isDisabled('#im-go')));
+
+    const totalBefore = await page.textContent('#count');
+    await page.click('#im-go');
+    await page.waitForSelector('#im-out .note.ok', { timeout: 30000 });
+    await waitFor(async () => (await page.textContent('#im-out')).includes('Imported'));
+    check('importing stores it', (await page.textContent('#im-out')).includes('Imported'));
+    await waitFor(async () => (await page.textContent('#count')) !== totalBefore);
+    check('and the feed picks the new messages up',
+      (await page.textContent('#count')) !== totalBefore,
+      `still ${totalBefore}`);
+
+    await page.click('#im-check');
+    await page.waitForSelector('#im-out .note.ok', { timeout: 30000 });
+    check('checking the same import again finds nothing new',
+      /0<\/b>\s*would be new|<b>0<\/b>/.test(await page.innerHTML('#im-out'))
+      || (await page.textContent('#im-out')).includes('0 would be new')
+      || /already here/.test(await page.textContent('#im-out')),
+      (await page.textContent('#im-out')).slice(0, 200));
+
+    // changing the form after a check must invalidate it
+    await page.fill('#im-channel', 'somewhere');
+    check('editing the form takes the Import button away again',
+      await page.isDisabled('#im-go'));
+    await page.fill('#im-channel', '');
+
+    await page.click('#im-seg button[data-im="file"]');
+    check('there is a file door as well as a URL one',
+      await page.isVisible('#im-file-pane') && await page.isHidden('#im-url-pane'));
+    await page.setInputFiles('#im-files', {
+      name: 'uploaded.weechatlog', mimeType: 'text/plain',
+      buffer: Buffer.from('2026-08-19 11:00:00\tmara\tan uploaded line\n'),
+    });
+    await page.waitForSelector('#im-chosen .pill.ok');
+    check('a chosen file is listed before anything happens',
+      (await page.textContent('#im-chosen')).includes('uploaded.weechatlog'));
+    await page.click('#im-check');
+    await page.waitForSelector('#im-out .note.ok', { timeout: 25000 });
+    check('and is parsed with the same rules',
+      (await page.textContent('#im-out')).includes('weechat'),
+      (await page.textContent('#im-out')).slice(0, 160));
+    await page.click('#im-go');
+    await waitFor(async () => (await page.textContent('#im-out')).includes('Imported'));
+    check('an uploaded log imports', true);
+    await page.click('#set-close');
+
+    const found = await page.evaluate(async () =>
+      (await (await fetch('/api/messages?q=uploaded')).json()).total);
+    check('the uploaded line is in the archive', found === 1, String(found));
+
+    // ------------------------------------------------------- quick-look
+    head('Image quick-look');
+    await control('/inject', { nick: 'jules', text: 'here it is ' + web + '/img/shot.png' });
+    await control('/inject', { nick: 'mara', text: 'and another ' + web + '/img/wide.png' });
+    const shown = await waitFor(async () =>
+      await page.evaluate(() => document.querySelectorAll('#log .imgw').length >= 2),
+      { timeout: 25000 });
+    check('inline pictures render in the feed', shown);
+
+    await page.click('#log .imgw >> nth=0');
+    await page.waitForSelector('#lightbox.on');
+    check('clicking one opens it here rather than leaving the site', true);
+    check('the page did not navigate away', page.url().startsWith(base));
+    await waitFor(() => page.evaluate(() =>
+      document.querySelector('#lb-img').naturalWidth > 0));
+    check('the picture loads', await page.evaluate(() =>
+      document.querySelector('#lb-img').naturalWidth) === 1280);
+    check('the header names the file',
+      (await page.textContent('#lb-title')) === 'shot.png');
+    check('and says who posted it and how big it is',
+      /1280 × 800/.test(await page.textContent('#lb-sub')) &&
+      /jules/.test(await page.textContent('#lb-sub')),
+      await page.textContent('#lb-sub'));
+
+    check('zoom starts at 100%', (await page.textContent('#lb-zoomlevel')).trim() === '100%');
+    await page.click('#lb-zoomin');
+    const zoomed = (await page.textContent('#lb-zoomlevel')).trim();
+    check('zooming in changes it', zoomed !== '100%', zoomed);
+    check('and the picture is actually scaled', await page.evaluate(() =>
+      /scale\((?!1\))/.test(document.querySelector('#lb-img').style.transform)),
+      await page.evaluate(() => document.querySelector('#lb-img').style.transform));
+    await page.click('#lb-zoomout');
+    check('zooming out comes back',
+      (await page.textContent('#lb-zoomlevel')).trim() === '100%');
+    await page.keyboard.press('+');
+    check('the keyboard zooms too',
+      (await page.textContent('#lb-zoomlevel')).trim() !== '100%');
+    await page.keyboard.press('0');
+    check('and 0 resets it',
+      (await page.textContent('#lb-zoomlevel')).trim() === '100%');
+
+    check('there is a way to step to the next picture',
+      await page.isVisible('#lb-next'));
+    await page.keyboard.press('ArrowRight');
+    await waitFor(async () => (await page.textContent('#lb-title')) === 'wide.png');
+    check('the arrow keys step through the pictures on screen',
+      (await page.textContent('#lb-title')) === 'wide.png');
+    check('and the counter keeps up',
+      (await page.textContent('#lb-count')).trim() === '2 of 2',
+      await page.textContent('#lb-count'));
+    await page.keyboard.press('ArrowLeft');
+    await waitFor(async () => (await page.textContent('#lb-title')) === 'shot.png');
+
+    check('reply, download and open are all offered', await page.evaluate(() =>
+      ['#lb-reply', '#lb-download', '#lb-open'].every(s =>
+        document.querySelector(s) && document.querySelector(s).offsetParent !== null)));
+    await page.click('#lb-more');
+    await page.waitForSelector('#lb-menu.on');
+    const menu = await page.textContent('#lb-menu');
+    check('more options carries copy picture', menu.includes('Copy picture'));
+    check('copy image address', menu.includes('Copy image address'));
+    check('and image details', menu.includes('Image details'));
+
+    await page.click('[data-lb="details"]');
+    await page.waitForSelector('#dlg.on');
+    await waitFor(async () => !(await page.textContent('#dlg-body')).includes('reading…'),
+      { timeout: 15000 });
+    const det = (await page.textContent('#dlg-body')).replace(/\s+/g, ' ');
+    check('details give the filename', det.includes('shot.png'));
+    check('the host', det.includes('127.0.0.1'));
+    check('the resolution', /1280 × 800 pixels/.test(det), det.slice(0, 200));
+    check('the real type, read through the server', det.includes('image/png'), det.slice(0, 240));
+    check('the size', /\d+ B|KB|MB/.test(det));
+    check('and who posted it', det.includes('jules'));
+    await page.click('#dlg-close');
+
+    await page.click('#lb-more');
+    await page.waitForSelector('#lb-menu.on');
+    await page.click('[data-lb="copyurl"]');
+    check('copying the address is offered without a clipboard permission', true);
+
+    await page.click('#lb-reply');
+    await page.waitForSelector('#lightbox', { state: 'hidden' });
+    check('replying closes the viewer and puts you in the composer',
+      (await page.inputValue('#sendtext')).startsWith('jules:'),
+      await page.inputValue('#sendtext'));
+    await page.fill('#sendtext', '');
+
+    await page.click('#log .imgw >> nth=0');
+    await page.waitForSelector('#lightbox.on');
+    await page.keyboard.press('Escape');
+    await page.waitForSelector('#lightbox', { state: 'hidden' });
+    check('Escape closes it', true);
+    check('and the conversation is still where it was',
+      await page.isVisible('#log .msg'));
 
     // ------------------------------------------------------------ phone
     head('On a phone');
