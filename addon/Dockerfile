@@ -14,7 +14,7 @@ ARG AURORAIRC_REF=v1.2.0
 # the version lands on main - before the tag is pushed, or if it never is.
 # A sha, not a branch: it is the same immutable tree the tag would name, so
 # nothing here can quietly drift onto later work.
-ARG AURORAIRC_COMMIT=da80c07d710b5319d4edf8a9ded8652ee853df40
+ARG AURORAIRC_COMMIT=bf5393136b65641d1187baf3c9b541188722c4e3
 ARG AURORAIRC_URL=https://codeload.github.com/aurora-silicon/aurorairc/tar.gz/refs/tags/${AURORAIRC_REF}
 ARG AURORAIRC_FALLBACK=https://codeload.github.com/aurora-silicon/aurorairc/tar.gz/${AURORAIRC_COMMIT}
 
