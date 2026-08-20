@@ -1,5 +1,34 @@
 # Changelog
 
+## 1.2.0
+
+- **Two-factor enforcement for admins.** An admin without two-factor
+  authentication must enrol before using management controls. The founding
+  owner remains exempt from the hard server gate so the instance cannot be
+  locked out, while users receive a one-time, dismissible enrolment offer.
+  Passkeys are named automatically from the device and browser.
+- **Single-use password reset links.** Admins can mint 24-hour reset links
+  from People; opening one sets a new password, signs the account in and
+  revokes its other sessions. A newer link invalidates the old one, and only
+  the owner can reset the owner account.
+- **Profile pictures.** Accounts can upload a locally cropped JPEG, PNG or
+  WebP avatar. Pictures appear beside matching IRC nicks in the feed, sidebar
+  and People list for signed-in members; anonymous readers keep coloured
+  initials. Uploads are type-checked and capped at 300 KB by the server.
+- **Appearance follows the account.** Theme, accent, clock and background
+  preferences sync across signed-in devices and update during the live
+  session poll. A compact "This device only" switch keeps a local override.
+- **Help is built in.** The new header button and `?` shortcut open a guide to
+  keyboard controls and search syntax. Signed-out readers receive the public
+  version without member-only tag syntax.
+- **Member data stays private.** Anonymous API responses and the live stream
+  no longer expose tags or saved searches, tag filters cannot leak counts,
+  and signing out scrubs member-only data already rendered in the page.
+- Change password is now first in Security, account rows show avatars instead
+  of a two-factor badge, and anonymous readers no longer see tag controls.
+- Dismissible setup flows no longer clear their own open state, and the
+  `hidden` attribute once again wins over button styling on wizard footers.
+
 ## 1.1.2
 
 - **Roles renamed.** The role once called "owner" is **admin**, a "member" is
