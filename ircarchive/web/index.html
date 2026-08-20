@@ -139,21 +139,26 @@ button{border:0;background:none;cursor:pointer}
 /* ============================ app bar ============================ */
 /* Flex-wrap does the responsive work: the search field is full-width (and so
    wraps to its own line) on narrow screens, and shrinks onto the title row
-   once there is room. No duplicated markup, no JS. */
+   once there is room. The title starts from a zero flex basis so a long server
+   name yields space before the fixed-width actions are pushed onto a new row. */
 .appbar{
   position:sticky;top:0;z-index:30;background:var(--surface);
   border-bottom:1px solid var(--line);
   padding:max(6px,env(safe-area-inset-top)) 10px 0;
   display:flex;flex-wrap:wrap;align-items:center;column-gap:10px;
 }
-.title{order:1;flex:1 1 auto;min-width:0;height:44px;display:flex;align-items:center;
-  font-weight:680;letter-spacing:-.02em;font-size:16px;white-space:nowrap}
+.title{order:1;flex:1 1 0;min-width:0;height:44px;display:flex;align-items:center;
+  overflow:hidden;text-overflow:ellipsis;font-weight:680;letter-spacing:-.02em;
+  font-size:16px;white-space:nowrap}
 .actions{order:2;flex:0 0 auto;display:flex;align-items:center;gap:3px}
 .searchwrap{order:3;flex:1 1 100%}
 .rail{order:4;flex:1 1 100%}
 .applied{order:5;flex:1 1 100%}
 .title span{color:var(--fg-3);font-weight:450;font-size:13px;margin-left:7px;
   font-variant-numeric:tabular-nums}
+/* The search field repeats the archive count. On a phone, keeping that copy
+   would either wrap the actions or leave half a word clipped after the title. */
+@media (max-width:520px){.title #subtitle{display:none}}
 .grow{flex:1;min-width:0}
 
 .iconbtn{
@@ -619,7 +624,7 @@ input[type=color]{flex:1;height:42px;padding:3px;border-radius:10px;
    regardless of how wide either side happens to be. */
 @media (min-width:768px){
   .searchwrap{order:2;flex:0 1 560px;padding-bottom:0}
-  .title{flex:1 1 0;overflow:hidden;text-overflow:ellipsis;font-size:17px}
+  .title{font-size:17px}
   .actions{order:3;flex:1 1 0;justify-content:flex-end}
   .rail{padding-top:8px}
 }
@@ -1149,7 +1154,13 @@ label.btn{cursor:pointer}
 #dlg header{display:flex;align-items:center;gap:12px;padding:14px 16px;
   border-bottom:1px solid var(--line-soft);flex:none}
 #dlg header h3{margin:0;font-size:16px;font-weight:660}
-#dlg .content{overflow-y:auto;padding:16px;display:flex;flex-direction:column;gap:var(--gap)}
+#dlg .content{overflow-y:auto;min-height:0;padding:16px;display:flex;
+  flex-direction:column;gap:var(--gap)}
+/* A scrolling flex column otherwise shrinks its children to avoid overflow.
+   Summary cards clip their contents by design for rounded corners, so that
+   shrinkage cut off rows and even the bottoms of letters instead of making
+   the dialog scroll. */
+#dlg .content > *{flex-shrink:0}
 /* Search dropdown rows that carry their own delete control */
 .sgrow{display:flex;align-items:center;gap:2px}
 .sgrow > button[role="option"]{flex:1;min-width:0}
@@ -1444,8 +1455,10 @@ details.card[open] > summary{margin-bottom:2px}
         <button class="chip" data-kind="0" aria-pressed="false"><i class="dotm"></i>Messages</button>
         <button class="chip" data-kind="1" aria-pressed="false"><i class="dotm"></i>Actions</button>
         <button class="chip" data-kind="2" aria-pressed="false"><i class="dotm"></i>Topics</button>
+        <button class="chip" id="show-events" aria-pressed="false"><i class="dotm"></i>Events</button>
       </div>
-      <div class="hint">Leave all off to include everything.</div>
+      <div class="hint">Leave the first three off to include every message type.
+        Events adds joins, leaves, quits, nick changes, kicks and modes.</div>
     </div>
 
     <div class="field">
@@ -4193,8 +4206,8 @@ $$('#order-seg button').forEach(b=>b.onclick=()=>{
   $$('#order-seg button').forEach(x=>x.setAttribute('aria-pressed',x===b));
   refresh();
 });
-{ // The joins-and-quits toggle left the Filters sheet; the wiring stays so
-  // the stored preference (and any future home for the control) keeps working.
+{ // Events are a separate feed layer, but the control lives beside the three
+  // stored message kinds because all four answer the same question: what shows.
   const ev=$('#show-events');
   if(ev)ev.onclick=()=>{
     state.showEvents=!state.showEvents;

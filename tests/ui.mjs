@@ -334,8 +334,21 @@ const run = async () => {
       JSON.stringify(heads) === JSON.stringify(
         ['Sort', 'Date range', 'Show', 'Inline images', 'Tags', 'Saved searches']),
       JSON.stringify(heads));
-    check('Show is the three message kinds, nothing else',
-      await page.evaluate(() => document.querySelectorAll('#kinds .chip').length) === 3);
+    check('Show has the three message kinds and Events',
+      await page.evaluate(() => {
+        const chips = [...document.querySelectorAll('#kinds .chip')];
+        return chips.length === 4 && chips.at(-1).id === 'show-events'
+          && chips.at(-1).textContent.trim() === 'Events';
+      }));
+    await control('/join', { nick: 'event_tester', chan: '#mychannel' });
+    await sleep(600);
+    await page.click('#show-events');
+    await page.waitForSelector('#log .evt', { timeout: 5000 });
+    check('Events adds presence traffic to the feed',
+      (await page.locator('#log .evt').allTextContents())
+        .some(text => text.includes('event_tester')));
+    await page.click('#show-events');
+    await page.waitForSelector('#log .evt', { state: 'detached' });
     check('the quick date ranges hold one line', await page.evaluate(() => {
       const tops = [...document.querySelectorAll('#presets .chip')]
         .map(c => c.getBoundingClientRect().top);
@@ -813,6 +826,7 @@ const run = async () => {
 
     // ------------------------------------------------------- help modal
     head('Help');
+    await page.setViewportSize({ width: 506, height: 849 });
     await page.keyboard.press('?');
     await page.waitForSelector('#dlg.on');
     const helptext = await page.textContent('#dlg-body');
@@ -820,12 +834,26 @@ const run = async () => {
     check('it explains the search grammar', helptext.includes('@dj')
       && helptext.includes('#general'));
     check('members see the tag syntax too', helptext.includes('&important'));
+    const helpLayout = await page.evaluate(() => {
+      const body = document.querySelector('#dlg-body');
+      const clipped = [...body.querySelectorAll('.summary')].some(card => {
+        const bounds = card.getBoundingClientRect();
+        return [...card.querySelectorAll('.kv')].some(row => {
+          const r = row.getBoundingClientRect();
+          return r.top < bounds.top - 1 || r.bottom > bounds.bottom + 1;
+        });
+      });
+      return { clipped, scrollable: body.scrollHeight > body.clientHeight };
+    });
+    check('narrow Help cards keep every row intact and scroll instead of clipping',
+      !helpLayout.clipped && helpLayout.scrollable, JSON.stringify(helpLayout));
     await page.keyboard.press('Escape');
     await sleep(200);
     check('Escape closes it',
       !(await page.isVisible('#dlg.on')));
     check('there is a help button in the bar for the keyless',
       await page.isVisible('#help-btn'));
+    await page.setViewportSize({ width: 1280, height: 900 });
 
     // -------------------------------------- members' things stay theirs
     head('Signed out, members’ things vanish');
@@ -1245,6 +1273,21 @@ const run = async () => {
     check('the feed reads on a narrow screen', await phone.evaluate(() =>
       document.documentElement.scrollWidth <= window.innerWidth + 1),
       'the page scrolls sideways');
+    const mobileBar = await phone.evaluate(() => {
+      const bar = document.querySelector('.appbar').getBoundingClientRect();
+      const title = document.querySelector('.title').getBoundingClientRect();
+      const actions = document.querySelector('.actions').getBoundingClientRect();
+      return { barRight: bar.right, titleTop: title.top, titleRight: title.right,
+               actionsTop: actions.top, actionsLeft: actions.left,
+               actionsRight: actions.right,
+               subtitleHidden: getComputedStyle(document.querySelector('#subtitle')).display === 'none' };
+    });
+    check('the toolbar stays to the right of the title on a phone',
+      Math.abs(mobileBar.titleTop - mobileBar.actionsTop) < 5
+        && mobileBar.titleRight <= mobileBar.actionsLeft + 1
+        && mobileBar.actionsRight <= mobileBar.barRight + 1
+        && mobileBar.subtitleHidden,
+      JSON.stringify(mobileBar));
     await phone.click('#filter-btn');
     await phone.waitForSelector('#filter-sheet.on');
     check('Filters is a bottom sheet there', await phone.evaluate(() => {

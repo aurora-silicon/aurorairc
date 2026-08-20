@@ -154,7 +154,8 @@ def main():
         check("index.html is served", "<title>AuroraIRC</title>" in page)
         for needed in ("id=\"wizard\"", "id=\"setpanel\"", "id=\"tip\"",
                        "id=\"qsave\"", "id=\"look-controls\"", "id=\"img-toggle\"",
-                       "id=\"help-btn\"", "id=\"look-local\""):
+                       "id=\"help-btn\"", "id=\"look-local\"",
+                       "id=\"show-events\""):
             check(f"page carries {needed}", needed in page)
 
         # ----------------------------------------------------------- setup
