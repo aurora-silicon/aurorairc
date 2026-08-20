@@ -1,5 +1,15 @@
 # Changelog
 
+## 1.2.1
+
+- **Events are back in Filters.** The Show row once again has a control for
+  joins, leaves, quits, nick changes, kicks and modes, now named **Events**.
+- Help cards no longer compress and cut off rows on shorter screens; the
+  dialog keeps each row intact and scrolls normally.
+- Mobile toolbar buttons stay beside the server name instead of wrapping
+  below it. The duplicate message count yields on narrow phones while the
+  same count remains in the search field.
+
 ## 1.2.0
 
 - **Two-factor enforcement for admins.** An admin without two-factor
