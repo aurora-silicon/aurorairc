@@ -628,6 +628,228 @@ const run = async () => {
       await invited.isVisible('.composer.on') || true);
     await invited.close();
 
+    // -------------------------------------------- the follow-on prompt
+    head('The follow-on security prompt');
+    // A user without two-factor is offered it right after signing in, once
+    const upage = await browser.newPage();
+    upage.on('pageerror', e => errors.push('upage: ' + e));
+    await upage.goto(base, { waitUntil: 'domcontentloaded' });
+    await upage.click('#live-btn');
+    await upage.waitForSelector('#li-user');
+    await upage.fill('#li-user', 'alice');
+    await upage.fill('#li-pw', 'another good one');
+    await upage.click('#do-login');
+    await upage.waitForSelector('#wizard.on', { timeout: 15000 });
+    const utext = await upage.textContent('#wiz-content');
+    check('a user is offered two-factor after signing in',
+      utext.includes('Protect your account'), utext.slice(0, 80));
+    check('with a single passkey button and nothing to name',
+      await upage.isVisible('#sc-pk-add') &&
+      await upage.evaluate(() => !document.querySelector('#wiz-content input')));
+    check('and a way to say no', await upage.isVisible('#wiz-alt') &&
+      (await upage.textContent('#wiz-alt')).trim() === 'Not now');
+    check('Finish is not held hostage',
+      await upage.evaluate(() => !document.querySelector('#wiz-next').disabled));
+    await upage.click('#wiz-alt');
+    await upage.waitForSelector('#wizard', { state: 'hidden' });
+    // Saying no once is remembered on the account, not on the device
+    await upage.click('#live-btn');
+    await upage.waitForSelector('#do-signout');
+    await upage.click('#do-signout');
+    await upage.waitForSelector('#do-login');
+    await upage.fill('#li-user', 'alice');
+    await upage.fill('#li-pw', 'another good one');
+    await upage.click('#do-login');
+    await waitFor(() => upage.isVisible('#do-signout'), { timeout: 15000 });
+    await sleep(1200);
+    check('having declined once, alice is not asked again',
+      !(await upage.isVisible('#wizard.on')));
+    check('the account row carries no 2FA badge',
+      !(await upage.textContent('#live-content')).includes('2FA'));
+    await upage.close();
+
+    // An admin cannot wave it away: the wizard blocks until enrolment
+    await page.click('#live-btn');
+    await page.waitForSelector('#open-settings');
+    await page.click('#open-settings');
+    await page.waitForSelector('#setpanel.on');
+    await page.click('#set-nav button[data-tab="people"]');
+    await page.waitForSelector('#na-user');
+    await page.fill('#na-user', 'dj');
+    await page.fill('#na-pass', 'a decent one too');
+    await page.selectOption('#na-role', 'admin');
+    await page.click('#na-go');
+    await waitFor(async () =>
+      (await page.textContent('#set-content')).includes('dj'), { timeout: 10000 });
+    check('an admin account is created for dj', true);
+    await page.click('#set-close');
+
+    const dj = await browser.newPage();
+    dj.on('pageerror', e => errors.push('dj: ' + e));
+    await dj.goto(base, { waitUntil: 'domcontentloaded' });
+    await dj.click('#live-btn');
+    await dj.waitForSelector('#li-user');
+    await dj.fill('#li-user', 'dj');
+    await dj.fill('#li-pw', 'a decent one too');
+    await dj.click('#do-login');
+    await dj.waitForSelector('#wizard.on', { timeout: 15000 });
+    const djtext = await dj.textContent('#wiz-content');
+    check('an admin signing in without two-factor is stopped',
+      djtext.includes('Two-factor is required for admins'), djtext.slice(0, 80));
+    check('there is no way to decline', await dj.isHidden('#wiz-alt'));
+    check('and Finish is disabled until it is on',
+      await dj.evaluate(() => document.querySelector('#wiz-next').disabled));
+    await dj.keyboard.press('Escape');
+    await sleep(300);
+    check('Escape does not dismiss it', await dj.isVisible('#wizard.on'));
+    await dj.click('#sc-totp-on');
+    await dj.waitForSelector('#totp-secret');
+    const djsecret = (await dj.textContent('#totp-secret')).trim();
+    await dj.fill('#totp-code', totp(djsecret));
+    await dj.click('#totp-confirm');
+    await waitFor(async () =>
+      (await dj.textContent('#sc-totp')).includes('Two-factor is on'),
+      { timeout: 10000 });
+    check('enrolling flips the step to done', true);
+    check('and unlocks Finish',
+      await dj.evaluate(() => !document.querySelector('#wiz-next').disabled));
+    await dj.click('#wiz-next');
+    await dj.waitForSelector('#wizard', { state: 'hidden' });
+    await dj.click('#live-btn');
+    await dj.waitForSelector('#open-settings');
+    await dj.click('#open-settings');
+    await dj.waitForSelector('#setpanel.on');
+    await waitFor(async () =>
+      (await dj.$$('#set-nav button')).length === 5, { timeout: 10000 });
+    check('with two-factor on, dj reaches the admin sections', true);
+    await dj.close();
+
+    // ------------------------------------------------------ reset links
+    head('Password reset links');
+    await page.click('#live-btn');
+    await page.waitForSelector('#open-settings');
+    await page.click('#open-settings');
+    await page.waitForSelector('#setpanel.on');
+    await page.click('#set-nav button[data-tab="people"]');
+    await page.waitForSelector('[data-reset="alice"]');
+    page.once('dialog', d => d.accept());
+    await page.click('[data-reset="alice"]');
+    await page.waitForSelector('#dlg.on');
+    const rlink = (await page.textContent('#dlg-body code')).trim();
+    check('a reset link is minted from the People list',
+      rlink.includes('#reset='), rlink);
+    await page.click('#dlg-close');
+    await page.click('#set-close');
+
+    const rpage = await browser.newPage();
+    rpage.on('pageerror', e => errors.push('rpage: ' + e));
+    await rpage.goto(rlink, { waitUntil: 'domcontentloaded' });
+    await rpage.waitForSelector('#rs-pw1', { timeout: 15000 });
+    check('the link opens straight onto the reset form',
+      (await rpage.textContent('#live-title')).trim() === 'Reset password');
+    await rpage.fill('#rs-pw1', 'a fresh password 9');
+    await rpage.fill('#rs-pw2', 'a fresh password 9');
+    await rpage.click('#do-reset');
+    await waitFor(() => rpage.isVisible('#do-signout'), { timeout: 15000 });
+    check('setting a new password signs alice straight in',
+      (await rpage.textContent('#live-content')).includes('alice'));
+    await rpage.close();
+
+    // ------------------------------------------------- profile pictures
+    head('Profile pictures');
+    await page.click('#live-btn');
+    await page.waitForSelector('#open-settings');
+    await page.click('#open-settings');
+    await page.waitForSelector('#setpanel.on');
+    await page.click('#set-nav button[data-tab="account"]');
+    await page.waitForSelector('#st-av-file', { state: 'attached' });
+    check('the password form moved out of Account',
+      await page.evaluate(() => !document.querySelector('#st-pw')));
+    const png1x1 = Buffer.from(
+      'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8'
+      + 'z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==', 'base64');
+    await page.setInputFiles('#st-av-file', {
+      name: 'face.png', mimeType: 'image/png', buffer: png1x1 });
+    await page.waitForSelector('#st-av.pic img', { timeout: 15000 });
+    check('an uploaded picture replaces the initial', true);
+    check('and the feed shows it on ryan_’s messages',
+      await waitFor(() => page.evaluate(() =>
+        !!document.querySelector('#log .av.pic img')), { timeout: 10000 }));
+    await page.click('#st-av-clear');
+    await page.waitForSelector('#st-av:not(.pic)', { timeout: 15000 });
+    check('removing it brings the initial back', true);
+
+    // ---------------------------------------- appearance follows along
+    head('Appearance follows the account');
+    await page.click('#set-nav button[data-tab="security"]');
+    await page.waitForSelector('#st-pw');
+    check('changing the password now lives at the top of Security', true);
+    check('the passkey button needs no name field',
+      await page.evaluate(() => !document.querySelector('#pk-label')));
+    check('an admin is not offered a way to turn two-factor off',
+      await page.evaluate(() => !document.querySelector('#totp-off')));
+    await page.click('#set-nav button[data-tab="appearance"]');
+    await page.waitForSelector('#look-local');
+    check('the device-only switch sits above the controls', true);
+    await page.click('#theme-seg button[data-th="borealis"]');
+    await sleep(1400);          // the push is debounced
+    let prefs = await page.evaluate(() => fetch('/api/prefs').then(r => r.json()));
+    check('a theme change lands on the server',
+      prefs.prefs && prefs.prefs.theme === 'borealis', JSON.stringify(prefs).slice(0, 120));
+    await page.click('#look-local');
+    await page.click('#theme-seg button[data-th="light"]');
+    await sleep(1400);
+    prefs = await page.evaluate(() => fetch('/api/prefs').then(r => r.json()));
+    check('with device-only on, changes stay on the device',
+      prefs.prefs && prefs.prefs.theme === 'borealis', JSON.stringify(prefs).slice(0, 120));
+    await page.click('#look-local');
+    await waitFor(() => page.evaluate(() =>
+      document.documentElement.getAttribute('data-theme') === 'borealis'),
+      { timeout: 10000 });
+    check('turning it back off pulls the account’s look', true);
+    await page.click('#theme-seg button[data-th=""]');
+    await sleep(1400);
+    await page.click('#set-close');
+
+    // ------------------------------------------------------- help modal
+    head('Help');
+    await page.keyboard.press('?');
+    await page.waitForSelector('#dlg.on');
+    const helptext = await page.textContent('#dlg-body');
+    check('question mark opens the help modal', helptext.includes('Keyboard'));
+    check('it explains the search grammar', helptext.includes('@dj')
+      && helptext.includes('#general'));
+    check('members see the tag syntax too', helptext.includes('&important'));
+    await page.keyboard.press('Escape');
+    await sleep(200);
+    check('Escape closes it',
+      !(await page.isVisible('#dlg.on')));
+    check('there is a help button in the bar for the keyless',
+      await page.isVisible('#help-btn'));
+
+    // -------------------------------------- members' things stay theirs
+    head('Signed out, members’ things vanish');
+    const anon2 = await browser.newPage();
+    anon2.on('pageerror', e => errors.push('anon2: ' + e));
+    await anon2.goto(base, { waitUntil: 'domcontentloaded' });
+    await anon2.waitForSelector('#log .msg');
+    check('the public page is marked public',
+      await anon2.evaluate(() => document.body.classList.contains('public')));
+    await anon2.click('#filter-btn');
+    await anon2.waitForSelector('#filter-sheet.on');
+    check('the tags section is gone entirely',
+      await anon2.isHidden('#tags-field'));
+    check('and so are saved searches',
+      await anon2.isHidden('#saved-field'));
+    await anon2.keyboard.press('Escape');
+    check('no tag quick-action on hover',
+      await anon2.evaluate(() => !document.querySelector('#log [data-rowact="tag"]')));
+    await anon2.keyboard.press('?');
+    await anon2.waitForSelector('#dlg.on');
+    check('anonymous help skips the tag syntax',
+      !(await anon2.textContent('#dlg-body')).includes('&important'));
+    await anon2.close();
+
     // ----------------------------------------------- nothing may jump
     head('Nothing moves under the pointer');
     // Grouped rows: hovering shows the time in the gutter; it must not

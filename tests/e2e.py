@@ -9,6 +9,7 @@ than a real IRC network. Nothing here touches the outside world.
     python3 tests/e2e.py
 """
 
+import base64
 import http.cookiejar
 import json
 import os
@@ -152,7 +153,8 @@ def main():
             page = r.read().decode()
         check("index.html is served", "<title>AuroraIRC</title>" in page)
         for needed in ("id=\"wizard\"", "id=\"setpanel\"", "id=\"tip\"",
-                       "id=\"qsave\"", "id=\"look-controls\"", "id=\"img-toggle\""):
+                       "id=\"qsave\"", "id=\"look-controls\"", "id=\"img-toggle\"",
+                       "id=\"help-btn\"", "id=\"look-local\""):
             check(f"page carries {needed}", needed in page)
 
         # ----------------------------------------------------------- setup
@@ -566,6 +568,145 @@ def main():
         check("another admin cannot demote the owner", "error" in r, str(r))
         r = joiner.post("/api/users/update", {"username": "ryan", "delete": True})
         check("nor delete the owner", "error" in r)
+
+        # ------------------------------------------- two-factor for admins
+        head("Two-factor is the admin's key")
+        r = joiner.get("/api/users")
+        check("an admin without two-factor is refused the management surface",
+              "error" in r and r.get("totpSetup") is True, str(r))
+        beg = joiner.post("/api/me/totp", {"action": "begin"})
+        check("but may still enrol", bool(beg.get("secret")), str(beg))
+        r = joiner.post("/api/me/totp",
+                        {"action": "confirm", "code": A.totp_codes(beg["secret"])[1]})
+        check("and turn it on", r.get("enabled") is True, str(r))
+        r = joiner.get("/api/users")
+        check("after which the surface opens", "users" in r, str(r))
+        r = joiner.post("/api/users/update", {"username": "ryan", "role": "user"})
+        check("with two-factor on the owner still cannot be demoted",
+              "error" in r, str(r))
+        r = joiner.post("/api/me/totp", {"action": "disable"})
+        check("an admin cannot turn two-factor back off", "error" in r, str(r))
+        r = joiner.post("/api/me/totp", {"action": "decline"})
+        check("nor decline it", "error" in r, str(r))
+        r = bob.post("/api/me/totp", {"action": "decline"})
+        check("a user may decline once", r.get("declined") is True, str(r))
+        s = bob.get("/api/session")
+        check("and the choice rides the session",
+              (s.get("user") or {}).get("totpDeclined") is True, str(s))
+        check("the founder stays exempt from the hard gate",
+              "users" in c.get("/api/users"))
+
+        # ------------------------------------------------------ reset links
+        head("Password reset links")
+        r = c.post("/api/users/reset", {"username": "nobody"})
+        check("a link needs a real account", "error" in r, str(r))
+        r = c.post("/api/users/reset", {"username": "dave"})
+        rtok = r.get("token")
+        check("the owner mints a reset link for dave",
+              bool(rtok) and r.get("url", "").startswith("/#reset="), str(r))
+        r = Client(base).post("/api/reset/complete",
+                              {"token": rtok, "password": "short"})
+        check("a short replacement password is refused", "error" in r, str(r))
+        dave2 = Client(base)
+        r = dave2.post("/api/reset/complete",
+                       {"token": rtok, "password": "a brand new one 9"})
+        check("a good one sets it and signs dave in",
+              r.get("signedIn") is True, str(r))
+        r = Client(base).post("/api/reset/complete",
+                              {"token": rtok, "password": "again again 999"})
+        check("a reset link is single use", "error" in r, str(r))
+        r = Client(base).post("/api/login", {"username": "dave",
+                                             "password": "another good one"})
+        check("the old password is dead", "error" in r, str(r))
+        r = Client(base).post("/api/login", {"username": "dave",
+                                             "password": "a brand new one 9"})
+        check("the new one signs in", r.get("signedIn") is True, str(r))
+        r = joiner.post("/api/users/reset", {"username": "ryan"})
+        check("only the owner may reset the owner", "error" in r, str(r))
+        first = c.post("/api/users/reset", {"username": "dave"}).get("token")
+        c.post("/api/users/reset", {"username": "dave"})
+        r = Client(base).post("/api/reset/complete",
+                              {"token": first, "password": "should not work 9"})
+        check("minting a new link kills the old one", "error" in r, str(r))
+
+        # ------------------------------------------------- profile pictures
+        head("Profile pictures")
+        png = base64.b64decode(
+            "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8"
+            "z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==")
+        r = c.post("/api/me/avatar",
+                   {"image": "data:image/png;base64,"
+                             + base64.b64encode(png).decode()})
+        check("a small PNG is accepted", bool(r.get("avatar")), str(r))
+        status, hdr, body = c.raw("/api/avatar?u=ryan")
+        check("members read it back", status == 200, str(status))
+        check("as the type it really is",
+              hdr.get("content-type") == "image/png", str(hdr.get("content-type")))
+        check("byte for byte", body == png)
+        status, _h, _b = anon.raw("/api/avatar?u=ryan")
+        check("anonymous readers get nothing", status == 401, str(status))
+        m = c.get("/api/meta")
+        check("meta maps the nick to the picture for members",
+              (m.get("avatars") or {}).get("ryan_", {}).get("u") == "ryan",
+              str(m.get("avatars")))
+        m = anon.get("/api/meta")
+        check("and not for anyone else", "avatars" not in m)
+        r = c.post("/api/me/avatar",
+                   {"image": "data:image/jpeg;base64,"
+                             + base64.b64encode(png).decode()})
+        check("bytes must match the declared type", "error" in r, str(r))
+        r = c.post("/api/me/avatar", {"image": "data:image/gif;base64,AAAA"})
+        check("only JPEG, PNG and WebP are taken", "error" in r, str(r))
+        big = png + b"\x00" * (301 * 1024)
+        r = c.post("/api/me/avatar",
+                   {"image": "data:image/png;base64,"
+                             + base64.b64encode(big).decode()})
+        check("an oversized picture is refused", "error" in r, str(r))
+        r = c.post("/api/me/avatar", {"clear": True})
+        check("the picture can be removed", r.get("avatar") == 0, str(r))
+        status, _h, _b = c.raw("/api/avatar?u=ryan")
+        check("after which there is nothing to fetch", status == 404, str(status))
+
+        # ------------------------------------------------ appearance prefs
+        head("Appearance follows the account")
+        r = c.post("/api/prefs", {"prefs": {"theme": "borealis",
+                                            "accent": "#8b9dff"}})
+        check("preferences are stored", bool(r.get("at")), str(r))
+        r = c.get("/api/prefs")
+        check("and come back on any device",
+              (r.get("prefs") or {}).get("theme") == "borealis", str(r))
+        r = anon.get("/api/prefs")
+        check("anonymous readers have none", "error" in r, str(r))
+        r = c.post("/api/prefs", {"prefs": "nonsense"})
+        check("prefs must be an object", "error" in r, str(r))
+        r = c.post("/api/prefs", {"prefs": {"bg": "x" * 810_000}})
+        check("and are capped in size", "error" in r, str(r))
+
+        # ---------------------------------------------- tags stay members'
+        head("Tags stay behind the sign-in")
+        r = c.post("/api/tags", {"name": "secret", "color": "red"})
+        check("a member makes a tag", "error" not in r, str(r))
+        mid = c.get("/api/messages", limit=1)["messages"][0]["id"]
+        r = c.post("/api/message/tag", {"message_id": mid, "tag": "secret",
+                                        "on": True})
+        check("and puts it on a message",
+              any(t["name"] == "secret" for t in r.get("tags", [])), str(r))
+        r = c.get("/api/messages", limit=5)
+        check("members see it in the feed",
+              any(any(t["name"] == "secret" for t in m.get("tags", []))
+                  for m in r["messages"]), str(r)[:200])
+        r = anon.get("/api/tags")
+        check("anonymous readers get no tag list", r.get("tags") == [], str(r))
+        check("no tags in meta", anon.get("/api/meta").get("tags") == [])
+        r = anon.get("/api/messages", limit=200)
+        check("and none on any message",
+              all(m.get("tags") == [] for m in r["messages"]))
+        with_f = anon.get("/api/messages", tag="secret")["total"]
+        without = anon.get("/api/messages")["total"]
+        check("a tag filter does not even leak by count", with_f == without,
+              f"{with_f} != {without}")
+        check("saved searches stay behind it too",
+              anon.get("/api/searches").get("searches") == [])
 
     finally:
         for proc in (live, serve):

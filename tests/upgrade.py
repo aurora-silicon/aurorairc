@@ -321,11 +321,13 @@ def main():
         check("the server keeps its name", meta.get("appName") == "Aurora Silicon Live")
         check("both channels survive",
               sorted(c["name"] for c in meta["channels"]) == ["another", "mychannel"])
-        check("the custom tag survives", any(t["name"] == "gpu" for t in meta["tags"]))
-        check("tagged messages are still tagged",
-              anon.get("/api/messages", tag="important")["total"] > 0)
+        # Tags and saved searches became members-only in this release, so the
+        # anonymous view must be empty - their survival is checked signed in.
+        check("tags are no longer offered to anonymous readers",
+              meta.get("tags") == [], str(meta.get("tags"))[:80])
+        check("nor are saved searches",
+              anon.get("/api/searches")["searches"] == [])
         check("search still works", anon.get("/api/messages", q="history")["total"] == 500)
-        check("saved searches survive", len(anon.get("/api/searches")["searches"]) == 2)
         check("setup is not offered again", anon.get("/api/session")["setupNeeded"] is False)
 
         head("Credentials issued before the upgrade")
@@ -361,6 +363,13 @@ def main():
                                     r.get("result", {}).get("tools", [])], str(r)[:120])
         check("the registered passkey is still registered",
               len(ryan.post("/api/me/passkey", {"action": "list"}).get("passkeys") or []) == 1)
+        check("the custom tag survives, behind the sign-in",
+              any(t["name"] == "gpu"
+                  for t in ryan.get("/api/meta").get("tags", [])))
+        check("tagged messages are still tagged",
+              ryan.get("/api/messages", tag="important")["total"] > 0)
+        check("saved searches survive, behind it too",
+              len(ryan.get("/api/searches")["searches"]) == 2)
 
         head("Invitations keep their history")
         invites = ryan.get("/api/invites")["invites"]

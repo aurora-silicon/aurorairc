@@ -273,8 +273,16 @@ aside{
 .av{
   width:26px;height:26px;border-radius:50%;flex:none;display:grid;place-items:center;
   font-size:12px;font-weight:680;color:#fff;text-transform:uppercase;
-  font-family:-apple-system,sans-serif;
+  font-family:-apple-system,sans-serif;overflow:hidden;
 }
+/* A set profile picture replaces the initial. Same circle, same size, so a
+   feed of mixed faces and letters still reads as one column. */
+.av.pic{background:var(--sunken)}
+.av.pic img{width:100%;height:100%;object-fit:cover;display:block}
+.av.big{width:64px;height:64px;font-size:26px}
+/* Member-only surfaces disappear entirely for anonymous readers - a section
+   that only says "sign in" is clutter, not an invitation. */
+.public #tags-field,.public #saved-field{display:none}
 
 /* feed */
 .feed{flex:1;display:flex;flex-direction:column;min-width:0;position:relative}
@@ -1152,6 +1160,10 @@ label.btn{cursor:pointer}
 /* The appearance controls are one node that Settings borrows */
 #look-controls{display:flex;flex-direction:column;gap:var(--gap)}
 #look-controls[hidden]{display:none}
+/* The hidden attribute must always win: buttons and rows set display of
+   their own, which would otherwise quietly override it (the wizard's spare
+   footer button showed on every step because of exactly that). */
+[hidden]{display:none!important}
 #look-controls .sub{font-size:12px;font-weight:560;color:var(--fg-3);
   text-transform:none;letter-spacing:0;display:block;margin-bottom:4px}
 .swatches{display:flex;flex-wrap:wrap;gap:9px}
@@ -1342,6 +1354,9 @@ details.card[open] > summary{margin-bottom:2px}
     <button class="iconbtn" id="copy" data-tip="Copy what's on screen" aria-label="Copy the visible messages">
       <svg viewBox="0 0 24 24"><rect x="9" y="9" width="11" height="11" rx="2"/><path d="M5 15V5a2 2 0 0 1 2-2h8"/></svg>
     </button>
+    <button class="iconbtn" id="help-btn" data-tip="Help (?)" aria-label="Help">
+      <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M9.4 9.2a2.7 2.7 0 0 1 5.3.8c0 1.8-2.7 2.2-2.7 3.7"/><path d="M12 17h.01"/></svg>
+    </button>
     <button class="iconbtn" id="live-btn" data-tip="Account and live connection (L)" aria-label="Account">
       <svg viewBox="0 0 24 24"><path d="M12 2a10 10 0 0 1 10 10"/><path d="M12 8a6 6 0 0 1 6 6"/><circle cx="8" cy="16" r="2.4"/></svg>
       <i class="badge"></i>
@@ -1442,7 +1457,7 @@ details.card[open] > summary{margin-bottom:2px}
         Turn this off to stop that.</div>
     </div>
 
-    <div class="field">
+    <div class="field" id="tags-field">
       <label class="fhead">Tags
         <button class="linkbtn" id="manage-tags">Manage</button></label>
       <div class="taglist"></div>
@@ -1450,7 +1465,7 @@ details.card[open] > summary{margin-bottom:2px}
         tag, or <code>&amp;red</code> for a whole colour.</div>
     </div>
 
-    <div class="field">
+    <div class="field" id="saved-field">
       <label class="fhead">Saved searches
         <button class="linkbtn" id="save-search">Save current</button></label>
       <div id="savedlist"></div>
@@ -1541,6 +1556,10 @@ details.card[open] > summary{margin-bottom:2px}
      section is shown. Moving the node keeps every listener bound, so these
      controls have exactly one definition and one set of handlers. -->
 <div id="look-controls" hidden>
+  <div class="chips" id="look-sync">
+    <button class="chip" id="look-local" aria-pressed="false" type="button">
+      <i class="dotm"></i>This device only</button>
+  </div>
   <div class="field">
     <label class="fhead">Theme</label>
     <div class="seg" id="theme-seg">
@@ -1583,7 +1602,7 @@ details.card[open] > summary{margin-bottom:2px}
       <div><label class="sub">Dim</label>
         <input id="bgscrim" type="range" min="0" max="95" value="50"></div>
     </div>
-    <div class="hint">Stored on this device only, and resized to keep it small.</div>
+    <div class="hint">Resized to keep it small before it is kept.</div>
   </div>
 </div>
 
@@ -1677,6 +1696,36 @@ function chanStyle(name){
 }
 const nickColor = n => `hsl(${hue(n)} 58% ${isDark()?'68%':'38%'})`;
 const avatarBg = n => `hsl(${hue(n)} 52% 46%)`;
+/* Profile pictures. /api/meta hands members a nick -> owner map; anonymous
+   readers get nothing, so their feed keeps the plain initials. */
+let AVATARS={};
+function avatarUrl(username,v){
+  return `/api/avatar?u=${encodeURIComponent(username)}&v=${v||0}`;
+}
+function avatarFor(nick){
+  const e=nick&&AVATARS[String(nick).toLowerCase()];
+  return e?avatarUrl(e.u,e.v):null;
+}
+/* One circle for everyone: a picture if the nick belongs to an account that
+   set one, the coloured initial otherwise. */
+function avHTML(name,extra=''){
+  const src=avatarFor(name);
+  return src
+    ? `<span class="av pic ${extra}"><img src="${src}" alt="" loading="lazy"></span>`
+    : `<span class="av ${extra}" style="background:${avatarBg(name)}">${esc((name||'?')[0]||'?')}</span>`;
+}
+/* Rows already on screen keep their old face until something redraws them;
+   called when the map changes so a new picture lands everywhere at once. */
+function repaintAvatars(){
+  $$('.av').forEach(el=>{
+    const row=el.closest('.msg,.person,.row');
+    const n=(row&&(row.dataset.rownick||row.dataset.avname))||null;
+    if(!n)return;
+    const wrap=document.createElement('span');
+    wrap.innerHTML=avHTML(n,el.classList.contains('big')?'big':'');
+    el.replaceWith(wrap.firstElementChild);
+  });
+}
 
 /* Matches the CSS breakpoint where the sidebar stops being a sheet */
 const sidebarPinned = () => matchMedia('(min-width:1000px)').matches;
@@ -1876,8 +1925,7 @@ function completeToken(sigil,token){
   if(sigil==='@'){
     hits=META.nicks.filter(n=>!chosen.nicks.has(n.name)&&
       (!frag||n.name.toLowerCase().includes(frag))).slice(0,8)
-      .map(n=>({v:n.name,label:n.name,count:n.count,
-                av:`<span class="av" style="background:${avatarBg(n.name)}">${esc(n.name[0]||'?')}</span>`}));
+      .map(n=>({v:n.name,label:n.name,count:n.count,av:avHTML(n.name)}));
   }else if(sigil==='#'){
     hits=META.channels.filter(c=>!chosen.chans.has(c.name)&&
       (!frag||c.name.toLowerCase().includes(frag))).slice(0,8)
@@ -2279,7 +2327,7 @@ function msgNode(m, opts={}){
   el.innerHTML =
     `<div class="gutter">${grouped
         ? `<span class="time">${hhmmTight(m.ts)}</span>`
-        : `<span class="av" style="background:${avatarBg(m.nick)}">${esc(m.nick[0]||'?')}</span>`}</div>`+
+        : avHTML(m.nick)}</div>`+
     `<div class="body">`+
       (grouped?'':
        `<div class="meta">`+
@@ -2660,7 +2708,8 @@ function drawNicks(){
     for(const n of shown){
       const row=document.createElement('div');
       row.className='person'+(state.nicks.has(n.name)?' on':'');
-      row.innerHTML=`<span class="av" style="background:${avatarBg(n.name)}">${esc(n.name[0]||'?')}</span>`+
+      row.dataset.avname=n.name;
+      row.innerHTML=avHTML(n.name)+
         `<span class="nm">${esc(n.name)}</span><span class="ct">${fmtN(n.count)}</span>`;
       row.onclick=()=>{toggleNick(n.name);if(!sidebarPinned())closeAll()};
       frag.appendChild(row);
@@ -2878,7 +2927,7 @@ const ROWACTS=[
   {kind:'tr', menu:()=>'Translate', hint:()=>'Translate this message',
    icon:`<path d="M3 6h10M8 4v2c0 5-2 8-5 9.5"/><path d="M5 11c0 3 3.5 5.2 8 5.8"/>`+
         `<path d="M12.5 21 17 10l4.5 11"/><path d="M14.4 17.5h5.2"/>`},
-  {kind:'tag', menu:()=>'Tag…', hint:()=>'Tag this message',
+  {kind:'tag', auth:true, menu:()=>'Tag…', hint:()=>'Tag this message',
    icon:`<path d="M20.6 13.4 12 22l-9-9V4h9l8.6 8.6a2 2 0 0 1 0 2.8Z"/>`+
         `<circle cx="7.5" cy="7.5" r="1.4"/>`},
   {kind:'ctx', menu:()=>'See in context', hint:()=>'See in context',
@@ -2893,7 +2942,9 @@ const ROWACTS=[
 ];
 
 function rowActionStrip(m){
-  return `<div class="rowact">`+ROWACTS.filter(a=>!a.nick||m.nick).map(a=>
+  // Tagging is an account act, so an anonymous reader never sees the button
+  return `<div class="rowact">`+ROWACTS.filter(a=>(!a.nick||m.nick)
+      &&(!a.auth||SESSION.signedIn)).map(a=>
     `<button data-rowact="${a.kind}" data-rowid="${m.id}"`+
     ` data-tip="${esc(a.hint(m.nick))}" aria-label="${esc(a.hint(m.nick))}">`+
     `<svg viewBox="0 0 24 24">${a.icon}</svg></button>`).join('')+`</div>`;
@@ -2921,7 +2972,7 @@ function openRowMenu(id,anchorEl){
   const row=$(`#log .msg[data-id="${id}"]`);
   const nick=row?row.dataset.rownick:'';
   box.innerHTML=`<div class="hd">Message</div>`+
-    ROWACTS.filter(a=>!a.nick||nick).map(a=>
+    ROWACTS.filter(a=>(!a.nick||nick)&&(!a.auth||SESSION.signedIn)).map(a=>
       `<div class="tagrow" data-act="${a.kind}">`+
       `<svg class="ic" viewBox="0 0 24 24">${a.icon}</svg>`+
       `<span class="nm">${esc(a.menu(nick))}</span></div>`).join('');
@@ -3583,6 +3634,7 @@ $('#log').addEventListener('touchcancel',cancelPress,{passive:true});
    there is no point still showing the fields that got you here - so the
    second factor replaces them rather than appearing underneath. */
 const LOGIN={stage:'creds',username:'',password:'',error:''};
+let RESET='';           // a #reset= token captured from the URL at boot
 
 function liveStatusHTML(){
   const l=SESSION.live||{};
@@ -3609,6 +3661,19 @@ function liveHTML(){
   const status=liveStatusHTML();
 
   if(!SESSION.signedIn){
+    if(LOGIN.stage==='reset'){
+      return `<div class="note">This link lets you set a new password for your
+           account. The old one stops working everywhere the moment it is set.</div>
+         <div class="field"><label class="fhead">New password</label>
+           <input id="rs-pw1" type="password" autocomplete="new-password"
+                  placeholder="At least 8 characters"></div>
+         <div class="field"><label class="fhead">Repeat password</label>
+           <input id="rs-pw2" type="password" autocomplete="new-password"
+                  enterkeyhint="go"></div>
+         <div id="in-err"></div>
+         <button class="btn" id="do-reset">Set password and sign in</button>
+         <button class="btn ghost" id="do-back">Never mind</button>`;
+    }
     if(LOGIN.stage==='totp'){
       return status+
         `<div class="note">Two-factor is on for <b>${esc(LOGIN.username)}</b>.
@@ -3637,11 +3702,12 @@ function liveHTML(){
 
   const u=SESSION.user||{};
   return `<div class="row">
-      <span class="av" style="background:${avatarBg(u.name||'?')}">${esc((u.name||'?')[0])}</span>
+      ${u.avatar
+        ?`<span class="av pic"><img src="${avatarUrl(u.name,u.avatar)}" alt=""></span>`
+        :`<span class="av" style="background:${avatarBg(u.name||'?')}">${esc((u.name||'?')[0])}</span>`}
       <span class="rmain"><span class="nm">${esc(u.name||'?')}</span>
-        <span class="sub2">${esc(u.role||'user')} · posting as
+        <span class="sub2">${u.owner?'owner':esc(u.role||'user')} · posting as
           ${esc(u.nick||'?')}</span></span>
-      ${u.totp?'<span class="pill ok">2FA</span>':''}
     </div>`+status+
     `<div class="btnrow">
        <button class="btn" id="open-settings">Settings</button>
@@ -3654,16 +3720,24 @@ function adoptSession(r){
   SESSION={...SESSION,signedIn:true,user:r.user,nick:r.nick,
            live:r.live||SESSION.live,setupNeeded:false};
   CSRF=r.csrf||'';
-  INVITE='';
+  INVITE='';RESET='';
   LOGIN.stage='creds';LOGIN.username='';LOGIN.password='';
-  history.replaceState(null,'',location.pathname+location.hash.replace(/[#&]invite=[^&]*/,''));
+  history.replaceState(null,'',location.pathname+location.hash.replace(/[#&](invite|reset)=[^&]*/,''));
   applyLook();drawLive();syncComposer();drawTagList();
   refreshSaved();refreshHistory().then(syncSearchTools);
+  // Tags and avatars exist for this reader now; the feed should show them -
+  // on the rows already drawn too, so the visible page reloads unless the
+  // reader is parked on a permalink.
+  refreshMeta().catch(()=>{});
+  if(!state.anchor)refresh();
+  pullLook().catch(()=>{});
+  maybeSecureFlow({login:true});
 }
 
 function drawLive(){
   $('#live-title').textContent=SESSION.signedIn?'Account'
-    :LOGIN.stage==='totp'?'Two-factor':'Sign in';
+    :LOGIN.stage==='totp'?'Two-factor'
+    :LOGIN.stage==='reset'?'Reset password':'Sign in';
   $('#live-content').innerHTML=liveHTML();
   const err=m=>{const e=$('#in-err');if(e)e.innerHTML=`<div class="note err">${esc(m)}</div>`};
 
@@ -3712,6 +3786,29 @@ function drawLive(){
     }
   }
 
+  const reset=$('#do-reset');
+  if(reset){
+    const go=async()=>{
+      const p1=$('#rs-pw1').value,p2=$('#rs-pw2').value;
+      if(p1.length<8)return err('Passwords are at least 8 characters.');
+      if(p1!==p2)return err("Those two passwords don't match.");
+      reset.disabled=true;
+      try{
+        const r=await post('/api/reset/complete',{token:RESET,password:p1});
+        if(r.error)return err(r.error);
+        adoptSession(r);toast('Password set — signed in');
+      }finally{ reset.disabled=false }
+    };
+    reset.onclick=go;
+    $('#rs-pw2').onkeydown=e=>{if(e.key==='Enter'){e.preventDefault();go()}};
+    $('#do-back').onclick=()=>{
+      RESET='';LOGIN.stage='creds';
+      history.replaceState(null,'',location.pathname+
+        location.hash.replace(/[#&]reset=[^&]*/,''));
+      drawLive();
+    };
+  }
+
   const verify=$('#do-verify');
   if(verify){
     const go=async()=>{
@@ -3737,7 +3834,12 @@ function drawLive(){
     await post('/api/signout');
     SESSION.signedIn=false;SESSION.user=null;SESSION.nick=null;CSRF='';
     HISTORY=[];SAVED=[];lastCommitted='';
+    // Tags and avatars are member annotations: they leave with the session,
+    // from the rows already on screen too, not just from future loads.
+    AVATARS={};refreshMeta.avKey=undefined;
+    if(state.tags.size){state.tags=new Set();applyStateToBox()}
     applyLook();drawLive();syncComposer();drawSaved();syncSearchTools();
+    refreshMeta().catch(()=>{});refresh();
     toast('Signed out');
   };
 }
@@ -3799,12 +3901,29 @@ async function refreshSession(){
     SESSION={...SESSION,...s};
     CSRF=s.csrf||'';
     syncComposer();
-    if(wasIn!==SESSION.signedIn)applyLook();   // anonymous is pinned to Noir
+    if(wasIn!==SESSION.signedIn){
+      applyLook();   // anonymous is pinned to Noir
+      // A change mid-session (an expiry, a revocation) changes what may be on
+      // screen: tags, avatars and saved searches leave with the session, from
+      // rows already drawn too. At boot there is nothing to scrub - every
+      // fetch so far already carried the same cookie the session check did.
+      if(refreshSession.booted){
+        if(!SESSION.signedIn){AVATARS={};refreshMeta.avKey=undefined}
+        refreshMeta().catch(()=>{});refreshSaved();refresh();
+      }
+    }
+    refreshSession.booted=true;
+    // Appearance set on another device: the session carries a version stamp,
+    // so a newer one there means pull, without ever polling the blob itself.
+    if(SESSION.signedIn&&SESSION.user&&!LOOK_LOCAL
+       &&SESSION.user.prefsAt>LOOK_SYNCED_AT)
+      pullLook().catch(()=>{});
+    maybeSecureFlow();
     // Only repaint the panels when nobody is mid-way through a field, and
     // never in the middle of a two-factor prompt - the pending credentials
     // live in that draw, so a background refresh would drop them.
     if($('#live-sheet').classList.contains('on')&&!busyTyping($('#live-content'))
-       &&LOGIN.stage!=='totp')
+       &&LOGIN.stage!=='totp'&&LOGIN.stage!=='reset')
       drawLive();
   }catch(e){}
 }
@@ -3865,6 +3984,12 @@ async function refreshMeta(){
   const m=await api('/api/meta');
   if(!m||!m.total)return;
   META=m;
+  const avKey=JSON.stringify(m.avatars||{});
+  if(avKey!==refreshMeta.avKey){
+    refreshMeta.avKey=avKey;
+    AVATARS=m.avatars||{};
+    repaintAvatars();
+  }
   if(m.appName){APPNAME=m.appName;applyAppName()}
   buildNickSet();
   $('#subtitle').textContent=fmtN(META.total)+' messages';
@@ -4247,6 +4372,7 @@ const ICONS={
   pause:`<path d="M9 5v14M15 5v14"/>`,
   play:`<path d="M7 4.5 19 12 7 19.5Z"/>`,
   plug:`<path d="M9 3v6M15 3v6"/><path d="M6 9h12v3a6 6 0 0 1-12 0Z"/><path d="M12 18v3"/>`,
+  key:`<circle cx="8" cy="15" r="4"/><path d="m11 12 8.5-8.5"/><path d="M16 7l2.5 2.5M13 10l2 2"/>`,
 };
 let INVITE='';
 
@@ -4356,6 +4482,27 @@ function setAccount(u){
       one signs you in, the other is the name your messages go out under.</p>
 
     <div class="field">
+      <label class="fhead">Profile picture</label>
+      <div class="row" data-avname="">
+        ${u.avatar
+          ?`<span class="av pic big" id="st-av"><img src="${avatarUrl(u.name,u.avatar)}" alt=""></span>`
+          :`<span class="av big" id="st-av" style="background:${avatarBg(u.name||'?')}">${esc((u.name||'?')[0])}</span>`}
+        <span class="rmain"><span class="nm">${esc(u.name||'')}</span>
+          <span class="sub2">Shown beside your messages, for signed-in
+            members.</span></span>
+      </div>
+      <div class="formrow">
+        <label class="btn ghost fill" for="st-av-file">Choose picture…</label>
+        <input id="st-av-file" type="file" accept="image/*" hidden>
+        ${u.avatar?'<button class="btn ghost" id="st-av-clear">Remove</button>':''}
+      </div>
+      <div class="hint">Cropped square and kept small — it stays on this
+        server.</div>
+    </div>
+
+    <div class="hr"></div>
+
+    <div class="field">
       <label class="fhead">Username</label>
       <div class="formrow">
         <input id="st-user" value="${esc(u.name||'')}" autocomplete="username">
@@ -4371,8 +4518,15 @@ function setAccount(u){
       <div class="hint">Messages you send go out under this name, over a
         connection of your own — never the archivist's.</div>
     </div>
+  </div>`;
+}
 
-    <div class="hr"></div>
+/* ------------------------------------------------------------ security */
+function setSecurity(u){
+  return `<div class="sect">
+    <h4>Security</h4>
+    <p class="lede">Your password and second factor, the devices that are
+      signed in, and the read-only tokens agents use.</p>
 
     <div class="field">
       <label class="fhead">Change password</label>
@@ -4385,15 +4539,8 @@ function setAccount(u){
       </div>
       <div class="hint">Every other signed-in device is signed out when it changes.</div>
     </div>
-  </div>`;
-}
 
-/* ------------------------------------------------------------ security */
-function setSecurity(u){
-  return `<div class="sect">
-    <h4>Security</h4>
-    <p class="lede">A second factor, the devices that are signed in, and the
-      read-only tokens agents use.</p>
+    <div class="hr"></div>
 
     <div class="field">
       <label class="fhead">Two-factor</label>
@@ -4405,11 +4552,9 @@ function setSecurity(u){
     <div class="field">
       <label class="fhead">Passkeys</label>
       <div id="st-keys" class="stack"></div>
-      <div class="formrow">
-        <input id="pk-label" placeholder="Name this device" maxlength="40">
-        <button class="btn" id="pk-add">Add a passkey</button></div>
+      <button class="btn" id="pk-add">Add a passkey</button>
       <div class="hint" id="pk-hint">Sign in with Face ID, Touch ID, Windows Hello
-        or a security key instead of a password.</div>
+        or a security key instead of a password. Your device names it for you.</div>
     </div>
 
     <div class="hr"></div>
@@ -4449,7 +4594,7 @@ function setSecurity(u){
 function setAppearance(){
   return `<div class="sect">
     <h4>Appearance</h4>
-    <p class="lede">Kept on this device.</p>
+    <p class="lede">Follows your account to every device you sign in on.</p>
     <div id="look-slot"></div>
   </div>`;
 }
@@ -4628,7 +4773,9 @@ function setPeople(u){
       <div class="stack">
         ${users.map(x=>`
           <div class="row">
-            <span class="av" style="background:${avatarBg(x.name)}">${esc(x.name[0]||'?')}</span>
+            ${x.avatar
+              ?`<span class="av pic"><img src="${avatarUrl(x.name,x.avatar)}" alt="" loading="lazy"></span>`
+              :`<span class="av" style="background:${avatarBg(x.name)}">${esc(x.name[0]||'?')}</span>`}
             <span class="rmain">
               <span class="nm">${esc(x.name)}${x.name===u.name?' · you':''}</span>
               <span class="sub2">${x.owner?'owner':esc(x.role)}${
@@ -4636,6 +4783,10 @@ function setPeople(u){
             <span class="act">
               <button class="iconact" data-detail="${esc(x.name)}"
                 data-tip="Where this account came from" aria-label="Details">${IC(ICONS.info,15)}</button>
+              ${(x.name===u.name||(x.owner&&!u.owner))?'':`
+                <button class="iconact" data-reset="${esc(x.name)}"
+                  data-tip="Make a password reset link"
+                  aria-label="Password reset link">${IC(ICONS.key,15)}</button>`}
               ${(x.owner||x.name===u.name)?'':`
                 <button class="iconact" data-role="${esc(x.name)}"
                   data-to="${x.role==='admin'?'user':'admin'}"
@@ -4787,12 +4938,16 @@ async function drawTotp(){
   const box=$('#st-totp');
   if(!box)return;
   const on=SESSION.user&&SESSION.user.totp;
+  const admin=SESSION.user&&SESSION.user.role==='admin';
   box.innerHTML=on
     ? `<div class="row"><span class="rmain">
          <span class="nm">Two-factor is on</span>
          <span class="sub2">A code from your authenticator is asked for after
-           your password.</span></span><span class="pill ok">on</span></div>
-       <button class="btn ghost" id="totp-off">Turn off</button>`
+           your password.</span></span><span class="pill ok">on</span></div>`+
+      (admin
+        ? `<div class="hint">Admin accounts keep two-factor on — it cannot be
+             turned off while you hold the role.</div>`
+        : `<button class="btn ghost" id="totp-off">Turn off</button>`)
     : `<div class="row"><span class="rmain">
          <span class="nm">Two-factor is off</span>
          <span class="sub2">Add a six-digit code from an authenticator app.</span>
@@ -5124,9 +5279,30 @@ function wireSettings(box){
     ok('Password changed');
   };
   if(S('pk-add'))S('pk-add').onclick=async()=>{
-    try{ await pkRegister(S('pk-label').value.trim()||'Passkey');
-         S('pk-label').value=''; await drawPasskeys(); toast('Passkey added') }
+    // Named after the device it lives on; nobody has to invent a label
+    try{ await pkRegister(prettyAgent(navigator.userAgent)||'Passkey');
+         await drawPasskeys(); toast('Passkey added') }
     catch(e){ err(e.name==='NotAllowedError'?'Cancelled':e.message) }
+  };
+  if(S('st-av-file'))S('st-av-file').onchange=async e=>{
+    const f=e.target.files&&e.target.files[0];
+    if(!f)return;
+    try{
+      const data=await shrinkAvatar(f);
+      const r=await post('/api/me/avatar',{image:data});
+      if(r.error)return err(r.error);
+      if(SESSION.user)SESSION.user.avatar=r.avatar;
+      refreshMeta().catch(()=>{});
+      ok('Picture set');
+    }catch(ex){ err(ex.message) }
+    finally{ e.target.value='' }
+  };
+  if(S('st-av-clear'))S('st-av-clear').onclick=async()=>{
+    const r=await post('/api/me/avatar',{clear:true});
+    if(r.error)return err(r.error);
+    if(SESSION.user)SESSION.user.avatar=0;
+    refreshMeta().catch(()=>{});
+    ok('Picture removed');
   };
   if(S('tk-add'))S('tk-add').onclick=async()=>{
     const r=await post('/api/tokens',
@@ -5223,6 +5399,26 @@ function wireSettings(box){
       return copyText(d.copy);
     }
     if(d.detail)return showUserDetail(d.detail);
+    if(d.reset){
+      if(!confirm(`Make a password reset link for ${d.reset}?\n\n`+
+                  `Anyone holding the link can set that account's password, `+
+                  `so hand it to them directly. Their current password keeps `+
+                  `working until the link is used.`))return;
+      const r=await post('/api/users/reset',{username:d.reset});
+      if(r.error)return err(r.error);
+      const link=location.origin+location.pathname+'#reset='+r.token;
+      openDialog(`Reset link for ${r.username}`,
+        `<div class="note">Single use, valid ${r.expiresHours} hours. Making
+           another link for this account replaces this one.</div>
+         <div class="copyfield"><code>${esc(link)}</code>
+           <button class="btn ghost" data-copy="${esc(link)}" type="button">Copy</button></div>`);
+      $('#dlg-body').onclick=ev=>{
+        const b=ev.target.closest('[data-copy]');
+        if(b)copyText(b.dataset.copy,'Reset link copied');
+      };
+      copyText(link,'Reset link copied');
+      return;
+    }
     if(d.invwho)return showInviteJoiners(d.invwho);
     if(d.invcopy!==undefined){
       return copyText(inviteLink(d.invcopy),'Invite link copied');
@@ -5364,10 +5560,12 @@ const WIZ={
 const WIZ_FLOWS={
   setup:['welcome','server','account','members','network','done'],
   invite:['welcome','account','done'],
+  secure:['secure'],
 };
 const WIZ_TITLES={
   welcome:'Welcome', server:'Server setup', account:'Account creation',
   members:'Member creation', network:'IRC network setup', done:'Finalisation',
+  secure:'Secure your account',
 };
 
 const wizSteps = () => WIZ_FLOWS[WIZ.flow];
@@ -5379,17 +5577,20 @@ function startWizard(flow,opts={}){
   WIZ.data={appName:APPNAME,username:'',nick:'',created:false,invite:null,
             manual:[],membersSkipped:false,network:null,networkSkipped:false,
             secured:[]};
-  WIZ.open=true;
+  // openPanel closes everything else first, and that sweep would flip a
+  // dismissable wizard's own open flag back off - so raise the flag after.
   openPanel('#wizard');
+  WIZ.open=true;
   drawWizard();
 }
 
 function drawWizard(){
   const keys=wizSteps(),key=wizKey();
   $('#wiz-title').textContent=WIZ_TITLES[key]||'Setup';
-  $('#wiz-step').textContent=`Step ${WIZ.step+1} of ${keys.length}`;
-  $('#wiz-steps').innerHTML=keys.map((k,i)=>
-    `<i class="${i<WIZ.step?'done':i===WIZ.step?'now':''}"></i>`).join('');
+  // A one-step flow needs no odometer
+  $('#wiz-step').textContent=keys.length>1?`Step ${WIZ.step+1} of ${keys.length}`:'';
+  $('#wiz-steps').innerHTML=keys.length>1?keys.map((k,i)=>
+    `<i class="${i<WIZ.step?'done':i===WIZ.step?'now':''}"></i>`).join(''):'';
   $('#wiz-content').innerHTML=WIZ_RENDER[key]();
   $('#wiz-content').scrollTop=0;
 
@@ -5412,6 +5613,14 @@ function drawWizard(){
   }
   if(key==='account'&&WIZ.data.created&&WIZ.sub==='secure'){
     alt.hidden=false;alt.textContent='Skip for now';
+  }
+  if(key==='secure'){
+    const u=SESSION.user||{};
+    const required=u.role==='admin'&&!u.owner;
+    next.textContent='Finish';
+    // A non-owner admin does not leave this screen without a second factor
+    next.disabled=required&&!u.totp;
+    if(!required&&!u.totp){alt.hidden=false;alt.textContent='Not now'}
   }
   WIZ_WIRE[key]&&WIZ_WIRE[key]();
 }
@@ -5515,11 +5724,10 @@ account(){
     <div class="field">
       <label class="fhead">Passkey</label>
       <div id="wz-pk" class="stack"></div>
-      <div class="formrow">
-        <input id="wz-pk-label" maxlength="40" placeholder="Name this device">
-        <button class="btn" id="wz-pk-add" type="button">Add a passkey</button></div>
+      <button class="btn" id="wz-pk-add" type="button">Add a passkey</button>
       <div class="hint" id="wz-pk-hint">Face ID, Touch ID, Windows Hello or a
-        security key, instead of typing a password.</div>
+        security key, instead of typing a password. Your device names it for
+        you.</div>
     </div>
 
     <div class="hr"></div>
@@ -5527,6 +5735,37 @@ account(){
     <div class="field">
       <label class="fhead">Two-factor</label>
       <div id="wz-totp" class="stack"></div>
+    </div>
+    <div id="wiz-err"></div>
+  </div>`;
+},
+
+secure(){
+  const u=SESSION.user||{},required=u.role==='admin'&&!u.owner;
+  return `<div class="sect">
+    ${wizMark(`<path d="M12 3l7 3v6c0 4.4-3 8-7 9-4-1-7-4.6-7-9V6l7-3Z"/><path d="m9 12 2 2 4-4"/>`)}
+    <h4>${required?'Two-factor is required for admins':'Protect your account'}</h4>
+    <p class="lede">${required
+      ? `Signed in as <b>${esc(u.name||'')}</b>. Admin accounts can manage
+         people, networks and invitations, so a password alone is not enough:
+         add a six-digit code from an authenticator app before continuing.`
+      : `Signed in as <b>${esc(u.name||'')}</b>. A second factor keeps the
+         account yours even if the password leaks. It is optional — <b>Not
+         now</b> skips it, and Settings → Security always has it later.`}</p>
+
+    <div class="field">
+      <label class="fhead">Two-factor</label>
+      <div id="sc-totp" class="stack"></div>
+    </div>
+
+    <div class="hr"></div>
+
+    <div class="field">
+      <label class="fhead">Passkey <span class="opt">Optional</span></label>
+      <div id="sc-pk" class="stack"></div>
+      <button class="btn ghost" id="sc-pk-add" type="button">Add a passkey</button>
+      <div class="hint" id="sc-pk-hint">Face ID, Touch ID, Windows Hello or a
+        security key. Your device names it for you.</div>
     </div>
     <div id="wiz-err"></div>
   </div>`;
@@ -5745,9 +5984,8 @@ const WIZ_WIRE={
       }
       add.onclick=async()=>{
         try{
-          await pkRegister($('#wz-pk-label').value.trim()||'Passkey');
+          await pkRegister(prettyAgent(navigator.userAgent)||'Passkey');
           if(!WIZ.data.secured.includes('passkey'))WIZ.data.secured.push('passkey');
-          $('#wz-pk-label').value='';
           await drawWizPasskeys();toast('Passkey added');
         }catch(e){ wizErr(e.name==='NotAllowedError'?'Cancelled':e.message) }
       };
@@ -5767,6 +6005,42 @@ const WIZ_WIRE={
           WIZ_WIRE.account();
         });
       }
+    }
+  },
+
+  secure(){
+    const t=$('#sc-totp');
+    if(t){
+      if(SESSION.user&&SESSION.user.totp){
+        t.innerHTML=`<div class="row"><span class="rmain">
+          <span class="nm">Two-factor is on</span>
+          <span class="sub2">A code will be asked for after your password.</span>
+          </span><span class="pill ok">on</span></div>`;
+      }else{
+        t.innerHTML=`<button class="btn" id="sc-totp-on" type="button">
+          Set up two-factor</button><div id="sc-totp-slot" class="stack"></div>`;
+        $('#sc-totp-on').onclick=()=>beginTotp('#sc-totp-slot',()=>drawWizard());
+      }
+    }
+    const add=$('#sc-pk-add');
+    if(add){
+      if(!pkUsable()){
+        add.disabled=true;
+        $('#sc-pk-hint').innerHTML=pkSupported()
+          ? `Passkeys need HTTPS, or <code>localhost</code>. This page is on
+             <code>${esc(location.origin)}</code>, so the browser hides them.`
+          : 'This browser does not support passkeys.';
+      }
+      add.onclick=async()=>{
+        try{
+          const keys=await pkRegister(prettyAgent(navigator.userAgent)||'Passkey');
+          $('#sc-pk').innerHTML=(keys||[]).map(k=>
+            `<div class="row"><span class="rmain"><span class="nm">${esc(k.label||'Passkey')}</span>
+              <span class="sub2">added just now</span></span>
+              <span class="pill ok">added</span></div>`).join('');
+          toast('Passkey added');
+        }catch(e){ wizErr(e.name==='NotAllowedError'?'Cancelled':e.message) }
+      };
     }
   },
 
@@ -5916,6 +6190,13 @@ const WIZ_ADVANCE={
     return false;                          // stay on this step, second phase
   },
 
+  async secure(){
+    WIZ.open=false;
+    closeAll({force:true});
+    drawLive();
+    return false;
+  },
+
   async members(){ return true },
 
   async network(){
@@ -5956,6 +6237,29 @@ const WIZ_ADVANCE={
   },
 };
 
+/* The follow-on to signing in: an admin without two-factor is walked into
+   enrolment and cannot wave it away; a user is offered it once and may say
+   "Not now", which is remembered on the account. Both are offered a passkey
+   in the same breath. At most once per page load — it is a prompt, not a
+   metronome. */
+let SECURE_SHOWN=false;
+function maybeSecureFlow(opts={}){
+  if(SECURE_SHOWN||WIZ.open)return;
+  if(!SESSION.signedIn||!SESSION.user||SESSION.setupNeeded)return;
+  const u=SESSION.user;
+  if(u.totp)return;
+  // A non-owner admin is walked into enrolment whenever they turn up without
+  // it - the server refuses them the management surface until it is on. The
+  // owner and ordinary users are offered it right after signing in, once.
+  if(u.role==='admin'&&!u.owner){
+    SECURE_SHOWN=true;
+    startWizard('secure');
+  }else if(opts.login&&!u.totpDeclined){
+    SECURE_SHOWN=true;
+    startWizard('secure',{dismissable:true});
+  }
+}
+
 $('#wiz-next').onclick=wizNext;
 $('#wiz-back').onclick=()=>{
   if(WIZ.step===0)return;
@@ -5967,6 +6271,18 @@ $('#wiz-back').onclick=()=>{
 };
 $('#wiz-alt').onclick=async()=>{
   const key=wizKey();
+  if(key==='secure'){
+    // "Not now": remembered on the account, so no device asks again. The
+    // owner cannot decline on the server (admins never can), so for them it
+    // simply closes and offers again next sign-in.
+    if(SESSION.user&&SESSION.user.role!=='admin'){
+      await post('/api/me/totp',{action:'decline'});
+      SESSION.user.totpDeclined=true;
+    }
+    WIZ.open=false;
+    closeAll({force:true});
+    return;
+  }
   if(key==='network'){
     if(!confirm('Skip the IRC connection for now?\n\n'+
                 'Nothing will be recorded until a network is added from '+
@@ -5982,6 +6298,39 @@ const ACCENTS=['#2563d8','#5b9dff','#7c5cff','#c2410c','#e11d48',
                '#0f9d58','#0d9488','#b45309','#6b7280'];
 const look={theme:'',accent:'',bg:'',strength:35,blur:0,scrim:50,images:true,clock:''};
 
+/* Appearance follows the account: what you set here is pushed to the server
+   and pulled wherever you sign in next. One small switch opts a device out,
+   freezing what it has and ignoring the account's copy. */
+let LOOK_LOCAL=false;
+try{ LOOK_LOCAL=localStorage.getItem('lookLocal')==='1' }catch(e){}
+let LOOK_SYNCED_AT=0, lookPushTimer=null;
+
+function pushLook(){
+  if(!SESSION.signedIn||LOOK_LOCAL)return;
+  clearTimeout(lookPushTimer);
+  lookPushTimer=setTimeout(async()=>{
+    try{
+      const r=await post('/api/prefs',{prefs:look});
+      if(r.at)LOOK_SYNCED_AT=r.at;
+      if(SESSION.user)SESSION.user.prefsAt=r.at||SESSION.user.prefsAt;
+      if(r.error)toast(r.error);
+    }catch(e){}
+  },800);
+}
+async function pullLook(){
+  if(!SESSION.signedIn||LOOK_LOCAL)return;
+  const r=await api('/api/prefs');
+  if(r.prefs){
+    Object.assign(look,r.prefs);
+    LOOK_SYNCED_AT=r.at||0;
+    try{localStorage.setItem('look',JSON.stringify(look))}catch(e){}
+    applyLook();repaintColours();
+  }else{
+    // Nothing stored yet: this device's look becomes the account's
+    pushLook();
+  }
+}
+
 function loadLook(){
   try{
     const raw=localStorage.getItem('look');
@@ -5993,6 +6342,7 @@ function loadLook(){
 function saveLook(){
   try{localStorage.setItem('look',JSON.stringify(look))}
   catch(e){toast('Could not save — the image may be too large')}
+  pushLook();
 }
 /* white or near-black text on the accent, whichever actually reads */
 function accentFg(hex){
@@ -6042,6 +6392,8 @@ function rgbToHex(v){
   return '#'+[r,g,b].map(x=>x.toString(16).padStart(2,'0')).join('');
 }
 function drawLook(){
+  const ll=$('#look-local');
+  if(ll)ll.setAttribute('aria-pressed',LOOK_LOCAL);
   $$('#theme-seg button').forEach(b=>
     b.setAttribute('aria-pressed',(b.dataset.th||'')===(look.theme||'')));
   const box=$('#accents');
@@ -6106,9 +6458,44 @@ function shrinkImage(file,maxW=1920,quality=0.82){
   });
 }
 
+/* A profile picture is a small square: crop to the middle and shrink hard,
+   so what crosses the wire is tens of kilobytes, not a phone photo. */
+function shrinkAvatar(file,size=256,quality=0.85){
+  return new Promise((resolve,reject)=>{
+    const fr=new FileReader();
+    fr.onerror=()=>reject(new Error('could not read that file'));
+    fr.onload=()=>{
+      const im=new Image();
+      im.onerror=()=>reject(new Error('that does not look like an image'));
+      im.onload=()=>{
+        const side=Math.min(im.width,im.height);
+        const sx=(im.width-side)/2,sy=(im.height-side)/2;
+        const cv=document.createElement('canvas');
+        cv.width=cv.height=Math.min(size,side||size);
+        cv.getContext('2d').drawImage(im,sx,sy,side,side,0,0,cv.width,cv.height);
+        resolve(cv.toDataURL('image/jpeg',quality));
+      };
+      im.src=fr.result;
+    };
+    fr.readAsDataURL(file);
+  });
+}
+
 /* Appearance is reached from the account sheet and Settings; the status-bar
    shortcut earned its keep back when it was the only door in. */
 { const t=$('#theme'); if(t)t.onclick=()=>openSettings('appearance'); }
+{ const ll=$('#look-local');
+  if(ll){
+    ll.setAttribute('aria-pressed',LOOK_LOCAL);
+    ll.onclick=()=>{
+      LOOK_LOCAL=!LOOK_LOCAL;
+      try{localStorage.setItem('lookLocal',LOOK_LOCAL?'1':'0')}catch(e){}
+      ll.setAttribute('aria-pressed',LOOK_LOCAL);
+      // Rejoining the account's look means taking the account's copy back
+      if(!LOOK_LOCAL)pullLook().catch(()=>{});
+    };
+  }
+}
 $$('#theme-seg button').forEach(b=>b.onclick=()=>{
   look.theme=b.dataset.th||'';saveLook();applyLook();repaintColours();
 });
@@ -6293,6 +6680,47 @@ function copyText(text,said){
   return Promise.resolve();
 }
 
+/* ---------------- help ----------------
+   One modal, two subjects: the keys, and how the search bar thinks. */
+function openHelp(){
+  const kv=(k,v)=>`<div class="kv"><span class="k">${k}</span><span class="v">${v}</span></div>`;
+  openDialog('Help',
+    `<div class="minihead">Keyboard</div>
+     <div class="summary">
+       ${kv('<code>/</code> or <code>S</code>','Jump to the search bar')}
+       ${kv('<code>F</code>','Filters')}
+       ${kv('<code>P</code>','People')}
+       ${kv('<code>L</code>','Account and live connection')}
+       ${kv('<code>G</code>','Jump to the newest message')}
+       ${kv('<code>Esc</code>','Close whatever is open')}
+       ${kv('<code>?</code>','This help')}
+     </div>
+     <div class="minihead">While a picture is open</div>
+     <div class="summary">
+       ${kv('<code>←</code> <code>→</code>','Previous and next picture')}
+       ${kv('<code>+</code> <code>−</code> <code>0</code>','Zoom in, out, and reset')}
+     </div>
+     ${SESSION.signedIn?`<div class="minihead">Writing</div>
+     <div class="summary">
+       ${kv('<code>Enter</code>','Send the message')}
+       ${kv('<code>Shift+Enter</code>','New line')}
+     </div>`:''}
+     <div class="minihead">Search</div>
+     <div class="summary">
+       ${kv('<code>hello world</code>','Messages containing those words')}
+       ${kv('<code>#general</code>','Only that channel')}
+       ${kv('<code>@dj</code>','Only that person')}
+       ${SESSION.signedIn?kv('<code>&amp;important</code>','Only that tag — or a colour, like <code>&amp;red</code>'):''}
+     </div>
+     <div class="hint">Mix them freely: <code>#general @dj release</code> means
+       that channel <i>and</i> that person <i>and</i> that word. Two of the same
+       kind widen instead: <code>@dj @sam</code> is either of them. Dates, sort
+       order and more live under Filters${SESSION.signedIn
+         ?', and the bookmark in the search bar keeps a search for later'
+         :''}.</div>`);
+}
+$('#help-btn').onclick=openHelp;
+
 function toast(msg){
   let el=$('#toast');
   if(!el){el=document.createElement('div');el.id='toast';document.body.appendChild(el)}
@@ -6443,6 +6871,7 @@ document.onkeydown=e=>{
   if($$('.panel.on').length||$('#dlg').classList.contains('on'))return;
   const k=e.key.toLowerCase();
   if(k==='/'||k==='s'){e.preventDefault();$('#q').focus();$('#q').select()}
+  else if(k==='?'){e.preventDefault();openHelp()}
   else if(k==='p'){e.preventDefault();$('#people-btn').click()}
   else if(k==='f'){e.preventDefault();$('#filter-btn').click()}
   else if(k==='l'){e.preventDefault();$('#live-btn').click()}
@@ -6473,12 +6902,18 @@ addEventListener('hashchange',()=>{
   // parsed as filters, and offer the join form.
   const inv=/[#&]invite=([^&]+)/.exec(location.hash);
   if(inv){INVITE=inv[1];location.hash=location.hash.replace(/[#&]invite=[^&]*/,'')}
+  // A password reset link lands the same way and opens straight onto the form
+  const rst=/[#&]reset=([^&]+)/.exec(location.hash);
+  if(rst){RESET=rst[1];LOGIN.stage='reset';
+          location.hash=location.hash.replace(/[#&]reset=[^&]*/,'')}
 
   loadLook();
   $('#desktop-aside').innerHTML=asideHTML();
   readHash();
 
   META=await api('/api/meta');
+  AVATARS=(META&&META.avatars)||{};
+  refreshMeta.avKey=JSON.stringify(AVATARS);
   if(META&&META.appName){APPNAME=META.appName;applyAppName()}
   // An empty archive is the *first-run* case, so it must not short-circuit
   // setup — otherwise a fresh install can never create its owner account.
@@ -6532,6 +6967,7 @@ addEventListener('hashchange',()=>{
 
   await refreshSession();
   applyLook();
+  if(SESSION.signedIn)pullLook().catch(()=>{});
   setTZHint();
   await refreshHistory();
   syncSearchTools();
@@ -6542,6 +6978,8 @@ addEventListener('hashchange',()=>{
   // than hide behind an icon nobody knows to press.
   if(SESSION.setupNeeded)startWizard('setup');
   else if(INVITE)startWizard('invite',{dismissable:true});
+  else if(RESET&&!SESSION.signedIn)$('#live-btn').click();
+  else maybeSecureFlow();
   setInterval(refreshSession,15000);
 
   // Live updates are pushed over SSE; the slow poll is only a safety net for

@@ -5,11 +5,15 @@ two front ends can never drift apart.
 
 Authorisation model (see ircarchive.auth for the mechanics):
 
-  * anonymous - read only, and that is the whole public product: browse,
-    search, filter, read tags. Every mutating endpoint is behind _need_auth.
+  * anonymous - read only, and only the record itself: browse, search and
+    filter the messages as IRC carried them. Tags, saved searches, avatars
+    and every other member annotation stay behind a sign-in, and every
+    mutating endpoint is behind _need_auth.
   * user - may send messages under their own IRC nick, and manage tags.
   * admin - the above, plus invites, user administration and the audit log.
-    The founding account is the owner, and no admin can demote or remove it.
+    Admins must have two-factor on to reach the management surface. The
+    founding account is the owner, no admin can demote or remove it, and it
+    alone is exempt from the two-factor gate so it can never be locked out.
 
 Accounts exist only by invitation; there is no public signup route. Sessions
 live in the database, carry a CSRF token that state-changing requests must
@@ -21,7 +25,8 @@ opens a send-only connection for that identity. The archivist connection is
 the only receiver, so the message returns through it and is recorded once.
 
 Endpoints:
-  GET  /api/meta|messages|context|locate|activity|tags|searches|events|stream
+  GET  /api/meta|messages|context|locate|activity|events|stream    (public)
+  GET  /api/tags|searches|avatar|prefs           (tags/searches empty for anon)
   GET  /api/session          sign-in state, role, CSRF token, live status
   GET  /api/users|invites|authlog                     (owner)
   GET  /api/sessions         this user's active sessions
@@ -30,7 +35,11 @@ Endpoints:
   POST /api/redeem           {token, username, password}
   POST /api/signout
   POST /api/me               {nick?, password?, current?}          (auth)
-  POST /api/me/totp          {action: begin|confirm|disable}       (auth)
+  POST /api/me/totp          {action: begin|confirm|disable|decline} (auth)
+  POST /api/me/avatar        {image: data URL} or {clear}          (auth)
+  POST /api/prefs            {prefs: {...}} synced appearance      (auth)
+  POST /api/users/reset      {username} mint a password reset link (owner)
+  POST /api/reset/complete   {token, password}                 (anonymous)
   POST /api/sessions/revoke  {id?|all}                             (auth)
   POST /api/send             {channel, text}                       (auth)
   POST /api/tags|tags/update|tags/delete|message/tag               (auth)
@@ -47,7 +56,10 @@ Endpoints:
   GET  /api/history          recent searches for this account       (auth)
 """
 
+import base64
+import binascii
 import json
+import re
 import secrets
 import sqlite3
 import threading
@@ -66,6 +78,9 @@ MAX_SEND = 450
 LIVE_STALE = 45
 MAX_BODY = 64 * 1024        # no API call needs more; refuse the rest unread
 MAX_IMPORT_BODY = 16 * 1024 * 1024   # except an uploaded log, which is the payload
+MAX_MEDIA_BODY = 1024 * 1024   # a profile picture or a background in the prefs
+AVATAR_MAX_BYTES = 300 * 1024  # decoded; the client sends a 256px crop anyway
+PREFS_MAX_LEN = 800_000        # serialized prefs, background image included
 MAX_IMAGE_BYTES = 25 * 1024 * 1024
 # Served back from our own origin, so the list is what a browser will render
 # as a picture and nothing else. SVG is a document with script in it and is
@@ -296,6 +311,21 @@ class Handler(SimpleHTTPRequestHandler):
         if s["role"] != "admin":
             self._json({"error": "admins only"}, 403)
             return None
+        # Admin power is what a stolen password must not be enough to reach:
+        # an admin without two-factor is locked out of the management surface
+        # until they enrol. The founding owner is exempt from the hard gate -
+        # the same rule that stops anyone demoting root stops this check from
+        # ever locking the founder out of their own server - but the sign-in
+        # flow still walks every admin, root included, through enrolment.
+        con = _con(self.dbpath)
+        if not A.is_root(con, s["user_id"]):
+            row = con.execute("SELECT totp_enabled FROM users WHERE id = ?",
+                              (s["user_id"],)).fetchone()
+            if not (row and row["totp_enabled"]):
+                self._json({"error": "admins need two-factor on — "
+                                     "set it up to continue",
+                            "totpSetup": True}, 403)
+                return None
         return s
 
     def _ip(self):
@@ -348,33 +378,98 @@ class Handler(SimpleHTTPRequestHandler):
         p = parse_qs(url.query)
         con = _con(self.dbpath)
         try:
+            # Tags are members' annotations on the archive, not part of the
+            # public record: an anonymous reader gets the messages exactly as
+            # IRC carried them, and nothing a signed-in member layered on top.
+            # One session lookup up front decides that for every read below.
+            authed = self._session()
+
+            def public_filters():
+                f = _filters(p)
+                if not authed:
+                    f["tags"] = []      # a tag filter must not leak by count
+                return f
+
+            def public_msgs(res):
+                if not authed:
+                    for m in res.get("messages", []):
+                        m["tags"] = []
+                return res
+
             if url.path == "/api/meta":
-                return self._json(cached_meta(con))
+                m = dict(cached_meta(con))
+                if authed:
+                    # Who has a face: nick -> avatar version, so the feed can
+                    # show profile pictures on the messages of people who set
+                    # one. Members only, like everything else personal.
+                    m["avatars"] = {
+                        r["irc_nick"].lower(): {"u": r["username"],
+                                                "v": r["avatar_at"] or 0}
+                        for r in con.execute(
+                            "SELECT username, irc_nick, avatar_at FROM users "
+                            "WHERE avatar IS NOT NULL AND irc_nick IS NOT NULL")}
+                else:
+                    m["tags"] = []
+                return self._json(m)
             if url.path == "/api/messages":
-                return self._json(Q.search(
-                    con, **_filters(p),
+                return self._json(public_msgs(Q.search(
+                    con, **public_filters(),
                     limit=int(p.get("limit", ["200"])[0]),
                     offset=min(int(p.get("offset", ["0"])[0]), MAX_OFFSET),
-                    order=p.get("order", ["asc"])[0]))
+                    order=p.get("order", ["asc"])[0])))
             if url.path == "/api/context":
-                return self._json(Q.context(
-                    con, int(p["id"][0]), int(p.get("span", ["25"])[0])))
+                return self._json(public_msgs(Q.context(
+                    con, int(p["id"][0]), int(p.get("span", ["25"])[0]))))
             if url.path == "/api/locate":
                 return self._json(Q.locate(
-                    con, int(p["id"][0]), **_filters(p),
+                    con, int(p["id"][0]), **public_filters(),
                     order=p.get("order", ["asc"])[0],
                     in_channel=p.get("in_channel", ["0"])[0] == "1"))
             if url.path == "/api/activity":
-                res = Q.activity(con, **_filters(p),
+                res = Q.activity(con, **public_filters(),
                                  bucket=p.get("bucket", ["month"])[0])
                 return self._json({"months": [
                     {"month": b["bucket"], "count": b["count"]} for b in res["buckets"]]})
             if url.path == "/api/tags":
-                return self._json({"tags": Q.tags(con)})
+                return self._json({"tags": Q.tags(con) if authed else []})
             if url.path == "/api/searches":
+                if not authed:
+                    return self._json({"searches": []})
                 return self._json({"searches": [dict(r) for r in con.execute(
                     "SELECT name, query, extra, created, used FROM saved_searches "
                     "ORDER BY used DESC, name")]})
+            if url.path == "/api/avatar":
+                # The picture itself. Members only; the URL carries a version
+                # so the browser can cache hard and still update on change.
+                if not authed:
+                    return self._json({"error": "sign in first"}, 401)
+                row = con.execute(
+                    "SELECT avatar, avatar_type, avatar_at FROM users "
+                    "WHERE username = ? COLLATE NOCASE",
+                    (p.get("u", [""])[0],)).fetchone()
+                if not row or not row["avatar"]:
+                    return self._json({"error": "no picture"}, 404)
+                self.send_response(200)
+                self.send_header("Content-Type", row["avatar_type"] or "image/jpeg")
+                self.send_header("Content-Length", str(len(row["avatar"])))
+                self.send_header("Cache-Control", "private, max-age=86400")
+                self.end_headers()
+                self.wfile.write(row["avatar"])
+                return
+            if url.path == "/api/prefs":
+                s = self._need_auth(csrf=False)
+                if not s:
+                    return
+                row = con.execute("SELECT prefs, prefs_at FROM users WHERE id = ?",
+                                  (s["user_id"],)).fetchone()
+                prefs = None
+                if row and row["prefs"]:
+                    try:
+                        prefs = json.loads(row["prefs"])
+                    except ValueError:
+                        prefs = None
+                return self._json({"prefs": prefs,
+                                   "at": (row["prefs_at"] or 0) if row else 0})
             if url.path == "/api/events":
                 # Fetched for a visible window, not paged, so message offsets
                 # (and jump-to-message) stay exact.
@@ -410,14 +505,21 @@ class Handler(SimpleHTTPRequestHandler):
 
             if url.path == "/api/session":
                 s = self._session()
+                user = None
+                if s:
+                    u = con.execute(
+                        "SELECT totp_enabled, totp_declined, avatar_at, prefs_at "
+                        "FROM users WHERE id = ?", (s["user_id"],)).fetchone()
+                    user = {"name": s["username"], "role": s["role"],
+                            "nick": s["irc_nick"],
+                            "totp": bool(u["totp_enabled"]),
+                            "totpDeclined": bool(u["totp_declined"]),
+                            "owner": A.is_root(con, s["user_id"]),
+                            "avatar": u["avatar_at"] or 0,
+                            "prefsAt": u["prefs_at"] or 0}
                 return self._json({
                     "signedIn": bool(s),
-                    "user": ({"name": s["username"], "role": s["role"],
-                              "nick": s["irc_nick"],
-                              "totp": bool(con.execute(
-                                  "SELECT totp_enabled FROM users WHERE id=?",
-                                  (s["user_id"],)).fetchone()["totp_enabled"])}
-                             if s else None),
+                    "user": user,
                     "nick": s["irc_nick"] if s else None,
                     "csrf": s["csrf"] if s else None,
                     "setupNeeded": not A.any_users(con),
@@ -430,7 +532,7 @@ class Handler(SimpleHTTPRequestHandler):
                 return self._json({"users": [
                     {"name": r["username"], "role": r["role"], "nick": r["irc_nick"],
                      "totp": bool(r["totp_enabled"]), "disabled": bool(r["disabled"]),
-                     "owner": r["id"] == root,
+                     "owner": r["id"] == root, "avatar": r["avatar_at"] or 0,
                      "joinMethod": r["join_method"] or A.JOIN_MANUAL,
                      "created": r["created"], "lastSeen": r["last_seen"]}
                     for r in con.execute("SELECT * FROM users ORDER BY role, username")]})
@@ -631,6 +733,9 @@ class Handler(SimpleHTTPRequestHandler):
         since = p.get("since", [""])[0]
         last = int(since) if str(since).isdigit() else con.execute(
             "SELECT COALESCE(MAX(id), 0) FROM messages").fetchone()[0]
+        # Decided once at connect time: tags ride along for members only,
+        # matching every other read.
+        authed = bool(A.session(con, self._sid()))
 
         deadline = time.time() + STREAM_SECONDS
         idle = 0
@@ -644,7 +749,9 @@ class Handler(SimpleHTTPRequestHandler):
                     (last,)).fetchall()
                 if rows:
                     last = rows[-1]["id"]
-                    msgs = Q.attach_tags(con, [dict(r) for r in rows])
+                    msgs = [dict(r) for r in rows]
+                    if authed:
+                        msgs = Q.attach_tags(con, msgs)
                     body = json.dumps(msgs, ensure_ascii=False)
                     self.wfile.write(f"event: messages\ndata: {body}\n\n".encode("utf-8"))
                     self.wfile.flush()
@@ -735,8 +842,15 @@ class Handler(SimpleHTTPRequestHandler):
         importing = url.path.startswith("/api/import")
         if importing and not self._need_owner():
             return
+        # A profile picture or a synced background is an image payload, so
+        # these two get a bigger allowance - after proving who is sending it,
+        # for the same reason imports do.
+        bulky = url.path in ("/api/me/avatar", "/api/prefs")
+        if bulky and not self._need_auth():
+            return
         try:
-            body = self._body(MAX_IMPORT_BODY if importing else MAX_BODY)
+            body = self._body(MAX_IMPORT_BODY if importing
+                              else MAX_MEDIA_BODY if bulky else MAX_BODY)
         except ValueError:
             return          # _body already answered 413
         try:
@@ -753,10 +867,18 @@ class Handler(SimpleHTTPRequestHandler):
                     con, uid, ip=ip, agent=self.headers.get("User-Agent"))
                 A.log(con, "login_ok", username=username, ip=ip)
                 s = A.session(con, sid)
+                u = con.execute(
+                    "SELECT totp_enabled, totp_declined, avatar_at, prefs_at "
+                    "FROM users WHERE id = ?", (uid,)).fetchone()
                 return self._json(
                     {"signedIn": True, "csrf": csrf,
                      "user": {"name": s["username"], "role": s["role"],
-                              "nick": s["irc_nick"]},
+                              "nick": s["irc_nick"],
+                              "totp": bool(u["totp_enabled"]),
+                              "totpDeclined": bool(u["totp_declined"]),
+                              "owner": A.is_root(con, uid),
+                              "avatar": u["avatar_at"] or 0,
+                              "prefsAt": u["prefs_at"] or 0},
                      "nick": s["irc_nick"], "live": live_status(con)},
                     cookie=(f"sid={sid}; Path=/; SameSite=Strict; HttpOnly; "
                             f"{self._secure_flag()}"
@@ -808,6 +930,25 @@ class Handler(SimpleHTTPRequestHandler):
                 A.throttle_clear(con, ip)
                 # New sid on every login, so a leaked pre-login id is worthless
                 return start_session(u["id"], u["username"])
+
+            if url.path == "/api/reset/complete":
+                # Anonymous by nature: the person clicking a reset link is the
+                # person who lost their password. Throttled like login, since
+                # the token is all that stands between a guess and an account.
+                wait = A.throttle_check(con, ip)
+                if wait:
+                    return self._json(
+                        {"error": f"too many attempts, wait {wait}s"}, 429)
+                try:
+                    uid, username = A.use_reset(con, str(body.get("token", "")),
+                                                str(body.get("password", "")))
+                except ValueError as exc:
+                    A.throttle_fail(con, ip)
+                    A.log(con, "reset_fail", ip=ip, detail=str(exc))
+                    return self._json({"error": str(exc)}, 400)
+                A.throttle_clear(con, ip)
+                A.log(con, "reset_ok", username=username, ip=ip)
+                return start_session(uid, username)
 
             if url.path == "/api/redeem":
                 try:
@@ -870,6 +1011,60 @@ class Handler(SimpleHTTPRequestHandler):
                     "name": cur["username"], "nick": cur["irc_nick"],
                     "role": cur["role"]}})
 
+            if url.path == "/api/me/avatar":
+                s = self._need_auth()
+                if not s:
+                    return
+                if body.get("clear"):
+                    con.execute("UPDATE users SET avatar = NULL, avatar_type = NULL, "
+                                "avatar_at = NULL WHERE id = ?", (s["user_id"],))
+                    return self._json({"ok": True, "avatar": 0})
+                # The client sends a small square crop as a data URL. Trust
+                # none of it: the declared type must match what the bytes
+                # actually are, and the decoded size is capped.
+                m = re.match(r"data:image/(jpeg|png|webp);base64,([A-Za-z0-9+/=\s]+)$",
+                             str(body.get("image", "")))
+                if not m:
+                    return self._json({"error": "send a JPEG, PNG or WebP"}, 400)
+                try:
+                    raw = base64.b64decode(m.group(2), validate=False)
+                except (ValueError, binascii.Error):
+                    return self._json({"error": "that image did not decode"}, 400)
+                if not raw or len(raw) > AVATAR_MAX_BYTES:
+                    return self._json({"error": "pictures are capped at "
+                                       f"{AVATAR_MAX_BYTES // 1024}KB"}, 400)
+                kind = m.group(1)
+                genuine = (
+                    (kind == "jpeg" and raw[:3] == b"\xff\xd8\xff") or
+                    (kind == "png" and raw[:8] == b"\x89PNG\r\n\x1a\n") or
+                    (kind == "webp" and raw[:4] == b"RIFF" and raw[8:12] == b"WEBP"))
+                if not genuine:
+                    return self._json({"error": "that is not the image type "
+                                                "it claims to be"}, 400)
+                now = int(time.time())
+                con.execute("UPDATE users SET avatar = ?, avatar_type = ?, "
+                            "avatar_at = ? WHERE id = ?",
+                            (raw, f"image/{kind}", now, s["user_id"]))
+                A.log(con, "avatar_set", username=s["username"], ip=ip)
+                return self._json({"ok": True, "avatar": now})
+
+            if url.path == "/api/prefs":
+                s = self._need_auth()
+                if not s:
+                    return
+                prefs = body.get("prefs")
+                if not isinstance(prefs, dict):
+                    return self._json({"error": "prefs must be an object"}, 400)
+                blob = json.dumps(prefs, ensure_ascii=False)
+                if len(blob) > PREFS_MAX_LEN:
+                    return self._json({"error": "those settings are too large "
+                                                "to sync — a smaller background "
+                                                "image should fix it"}, 400)
+                now = int(time.time())
+                con.execute("UPDATE users SET prefs = ?, prefs_at = ? WHERE id = ?",
+                            (blob, now, s["user_id"]))
+                return self._json({"ok": True, "at": now})
+
             if url.path == "/api/me/totp":
                 s = self._need_auth()
                 if not s:
@@ -886,15 +1081,27 @@ class Handler(SimpleHTTPRequestHandler):
                                       (s["user_id"],)).fetchone()
                     if not A.totp_check(row["totp_secret"], body.get("code")):
                         return self._json({"error": "that code did not match"}, 400)
-                    con.execute("UPDATE users SET totp_enabled = 1 WHERE id = ?",
-                                (s["user_id"],))
+                    con.execute("UPDATE users SET totp_enabled = 1, "
+                                "totp_declined = 0 WHERE id = ?", (s["user_id"],))
                     A.log(con, "totp_on", username=s["username"], ip=ip)
                     return self._json({"enabled": True})
                 if act == "disable":
+                    if s["role"] == "admin":
+                        return self._json(
+                            {"error": "admins must keep two-factor on"}, 403)
                     con.execute("UPDATE users SET totp_enabled = 0, totp_secret = NULL "
                                 "WHERE id = ?", (s["user_id"],))
                     A.log(con, "totp_off", username=s["username"], ip=ip)
                     return self._json({"enabled": False})
+                if act == "decline":
+                    # "Not now" from the sign-in flow. Users may say it once
+                    # and not be nagged again; admins do not get the choice.
+                    if s["role"] == "admin":
+                        return self._json(
+                            {"error": "admins need two-factor on"}, 403)
+                    con.execute("UPDATE users SET totp_declined = 1 WHERE id = ?",
+                                (s["user_id"],))
+                    return self._json({"declined": True})
                 return self._json({"error": "unknown action"}, 400)
 
             if url.path == "/api/me/passkey":
@@ -1028,6 +1235,26 @@ class Handler(SimpleHTTPRequestHandler):
                                    "role": role, "uses": int(uses or 1),
                                    "expiresHours": A.INVITE_HOURS,
                                    "invites": A.invites(con, include_dead=True)})
+
+            if url.path == "/api/users/reset":
+                s = self._need_owner()
+                if not s:
+                    return
+                target = A.user_by_name(con, body.get("username"))
+                if not target:
+                    return self._json({"error": "no such user"}, 404)
+                # A reset link is a takeover of the account it opens, so the
+                # founder's account only ever resets by the founder's own hand.
+                if A.is_root(con, target["id"]) and not A.is_root(con, s["user_id"]):
+                    return self._json(
+                        {"error": "only the owner can reset the owner"}, 403)
+                token = A.create_reset(con, target["id"], by_uid=s["user_id"])
+                A.log(con, "reset_created", username=s["username"], ip=ip,
+                      detail=f"for {target['username']}")
+                return self._json({"token": token,
+                                   "url": f"/#reset={token}",
+                                   "username": target["username"],
+                                   "expiresHours": A.RESET_HOURS})
 
             if url.path == "/api/invites/revoke":
                 s = self._need_owner()

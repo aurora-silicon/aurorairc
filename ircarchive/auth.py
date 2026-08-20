@@ -139,6 +139,20 @@ CREATE TABLE IF NOT EXISTS login_throttle (
     last          INTEGER NOT NULL,
     blocked_until INTEGER NOT NULL DEFAULT 0
 );
+
+-- Password reset links an admin hands to someone locked out. Only a hash of
+-- the token is stored, single use, short lived - the same posture as the API
+-- tokens above.
+CREATE TABLE IF NOT EXISTS password_resets (
+    id         INTEGER PRIMARY KEY,
+    user_id    INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    hash       TEXT NOT NULL UNIQUE,
+    created_by INTEGER REFERENCES users(id),
+    created    INTEGER NOT NULL,
+    expires    INTEGER NOT NULL,
+    used_at    INTEGER
+);
+CREATE INDEX IF NOT EXISTS idx_resets_user ON password_resets(user_id);
 """
 
 PBKDF_ROUNDS = 240_000
@@ -217,6 +231,18 @@ def _migrate(con):
     con.execute("UPDATE users SET role = 'user' WHERE role = 'member'")
     con.execute("UPDATE invites SET role = 'admin' WHERE role = 'owner'")
     con.execute("UPDATE invites SET role = 'user' WHERE role = 'member'")
+
+    # A user may decline two-factor once and not be asked again on every
+    # sign-in. Admins cannot decline; the column simply never applies to them.
+    add_column(con, "users", "totp_declined", "INTEGER NOT NULL DEFAULT 0")
+    # Profile pictures, held on the server so every device shows the same face.
+    add_column(con, "users", "avatar", "BLOB")
+    add_column(con, "users", "avatar_type", "TEXT")
+    add_column(con, "users", "avatar_at", "INTEGER")
+    # Appearance preferences follow the account between devices, unless a
+    # device opts out and keeps its own.
+    add_column(con, "users", "prefs", "TEXT")
+    add_column(con, "users", "prefs_at", "INTEGER")
 
 
 # ------------------------------------------------------------------ passwords
@@ -486,6 +512,53 @@ def user_detail(con, username):
         "invitedBy": inviter,
         "invite": inv,
     }
+
+
+# -------------------------------------------------------- password resets
+
+RESET_HOURS = 24
+
+
+def create_reset(con, uid, by_uid=None, hours=RESET_HOURS):
+    """Mint a single-use password reset link for an account.
+
+    Any older unused links for the same account die with it, so there is only
+    ever one live way in and revoking it is as simple as minting a fresh one.
+    """
+    con.execute("DELETE FROM password_resets WHERE user_id = ? AND used_at IS NULL",
+                (uid,))
+    token = secrets.token_urlsafe(24)
+    now = int(time.time())
+    con.execute(
+        "INSERT INTO password_resets(user_id, hash, created_by, created, expires) "
+        "VALUES (?,?,?,?,?)",
+        (uid, _token_hash(token), by_uid, now, now + int(hours) * 3600))
+    return token
+
+
+def reset_ok(con, token):
+    row = con.execute(
+        "SELECT r.*, u.username, u.disabled FROM password_resets r "
+        "JOIN users u ON u.id = r.user_id WHERE r.hash = ?",
+        (_token_hash(token),)).fetchone()
+    if not row or row["used_at"] or row["disabled"]:
+        return None
+    if row["expires"] <= int(time.time()):
+        return None
+    return row
+
+
+def use_reset(con, token, password):
+    """Set a new password on the account a live reset link belongs to."""
+    row = reset_ok(con, token)
+    if not row:
+        raise ValueError("that reset link is invalid, used or has expired")
+    set_password(con, row["user_id"], password)
+    con.execute("UPDATE password_resets SET used_at = ? WHERE id = ?",
+                (int(time.time()), row["id"]))
+    # Whoever held the old password holds nothing now
+    drop_user_sessions(con, row["user_id"])
+    return row["user_id"], row["username"]
 
 
 # --------------------------------------------------------------- history

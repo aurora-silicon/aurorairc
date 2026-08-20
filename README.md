@@ -67,7 +67,12 @@ consequence is that logging never stops, whatever anyone else is doing.
   every picture on screen, and reply, save, open where it lives, copy the
   picture, copy its address, or read what it actually is. No leaving the
   archive to look at a screenshot.
-- **Tags** — Finder-style coloured flags for marking messages worth finding again.
+- **Tags** — Finder-style coloured flags for marking messages worth finding
+  again. Members-only, like every annotation: an anonymous reader sees the
+  record exactly as IRC carried it.
+- **Profile pictures** — set one under Settings → Account and it shows beside
+  your messages for signed-in members, on every device.
+- **Help** — press `?` for the keybinds and the search grammar.
 - **Jump to context** — land on any message in its surrounding conversation, with
   a linkable URL.
 - **Live** — new messages arrive over server-sent events, typically within a
@@ -90,14 +95,24 @@ consequence is that logging never stops, whatever anyone else is doing.
 | Admin | yes | yes | yes | yes |
 
 Anonymous read-only access is the public product; every write sits behind a
-session. The **first account created is the owner** and cannot be demoted,
-disabled or removed by anyone, including other admins.
+session — and so does everything members layer on top of the record: tags,
+saved searches, profile pictures and synced appearance are never shown to an
+anonymous reader. The **first account created is the owner** and cannot be
+demoted, disabled or removed by anyone, including other admins.
 
 Sign in with a password, optionally with TOTP two-factor, or with a **passkey**.
 The second factor is asked for as its own step, once the password has actually
 been accepted — the fields that got you there are put away rather than left on
-screen. Sessions live in the database, carry a CSRF token, and can be revoked
-per device from Settings.
+screen. **Admins are required to have two-factor on**: one without it is walked
+into enrolment at sign-in and refused the management surface until it is done
+(the owner is exempt from the hard gate, so the founder can never be locked out
+of their own server). Users are offered the same enrolment once and may say
+"Not now". Sessions live in the database, carry a CSRF token, and can be
+revoked per device from Settings.
+
+**Password resets.** An admin can mint a single-use reset link for an account
+from Settings → People — it lives 24 hours, replaces any earlier link for the
+same account, and only the owner can mint one for the owner.
 
 **Invitations and passes.** An admin mints a link. A plain link seats one
 person; a **pass** seats several — five people joining a room from one link —
