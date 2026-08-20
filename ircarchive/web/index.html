@@ -155,7 +155,10 @@ button{border:0;background:none;cursor:pointer}
 
 /* search */
 .searchwrap{position:relative;display:flex;align-items:center;padding-bottom:8px}
-.searchwrap svg{position:absolute;left:11px;width:17px;height:17px;color:var(--fg-3);
+/* The magnifier only. As `.searchwrap svg` this rule absolutely positioned
+   every icon inside the wrap - the bookmark and clear buttons piled up on one
+   spot, and each icon in the dropdown sat on top of its own row's text. */
+.searchwrap > svg{position:absolute;left:11px;width:17px;height:17px;color:var(--fg-3);
   stroke:currentColor;fill:none;stroke-width:2;pointer-events:none}
 #q{
   width:100%;height:38px;padding:0 34px 0 34px;border-radius:10px;
@@ -163,10 +166,7 @@ button{border:0;background:none;cursor:pointer}
 }
 #q::placeholder{color:var(--fg-3)}
 #q:focus{outline:none;border-color:var(--accent);background:var(--surface)}
-#qclear{position:absolute;right:4px;width:30px;height:30px;border-radius:8px;
-  display:none;place-items:center;color:var(--fg-3)}
-#qclear.on{display:grid}
-#qclear:hover{background:var(--raised);color:var(--fg)}
+#qsave:hover,#qclear:hover{background:var(--raised);color:var(--fg)}
 
 /* @nick autocomplete */
 #suggest{
@@ -285,9 +285,18 @@ aside{
 .msg{display:grid;grid-template-columns:34px 1fr;gap:10px;padding:1px 12px;position:relative}
 .msg.head{margin-top:9px}
 .msg:hover{background:var(--line-soft)}
-.msg .gutter{grid-column:1;display:flex;justify-content:center;padding-top:3px}
-.msg .gutter .time{display:none;font:11px/1.6 var(--mono);color:var(--fg-3)}
-.msg:not(.head):hover .gutter .time{display:block}
+.msg .gutter{grid-column:1;display:flex;justify-content:center;padding-top:3px;
+  position:relative}
+/* Out of the layout entirely: shown by opacity, absolutely positioned, and
+   never wrapping. As an in-flow element the 12-hour form ("4:26 pm") was
+   wider than the gutter, wrapped onto a second line, and grew the row - so
+   the whole conversation jumped underneath the pointer. */
+.msg .gutter .time{
+  position:absolute;top:5px;right:2px;opacity:0;pointer-events:none;
+  font:10px/1.4 var(--mono);color:var(--fg-3);white-space:nowrap;
+  font-variant-numeric:tabular-nums;
+}
+.msg:not(.head):hover .gutter .time{opacity:1}
 .msg .body{grid-column:2;min-width:0}
 .msg .meta{display:flex;align-items:baseline;gap:8px;margin-bottom:1px;flex-wrap:wrap}
 .msg .who{font-weight:640;font-size:14.5px;cursor:pointer;letter-spacing:-.01em}
@@ -647,9 +656,12 @@ input[type=color]{flex:1;height:42px;padding:3px;border-radius:10px;
   box-shadow:0 0 0 2px color-mix(in srgb,var(--tg-dot) 25%,transparent)}
 .tagrow .nm{flex:1;font-size:14px;font-weight:520}
 .tagrow .ct{font-size:12px;color:var(--fg-3);font-variant-numeric:tabular-nums}
-.tagrow .del{width:26px;height:26px;border-radius:7px;display:none;place-items:center;
-  color:var(--fg-3);font-size:16px;line-height:1}
-.tagrow:hover .del{display:grid}
+/* Always in the layout, revealed by opacity: appearing via display: it
+   shoved the count sideways every time the pointer crossed the row. */
+.tagrow .del{width:26px;height:26px;border-radius:7px;display:grid;place-items:center;
+  color:var(--fg-3);font-size:16px;line-height:1;opacity:0;pointer-events:none}
+.tagrow:hover .del,.tagrow .del:focus-visible{opacity:1;pointer-events:auto}
+@media (hover:none){.tagrow .del{opacity:.7;pointer-events:auto}}
 .tagrow .del:hover{background:var(--raised);color:var(--danger)}
 
 #toast{
@@ -806,11 +818,12 @@ input[type=color]{flex:1;height:42px;padding:3px;border-radius:10px;
   transition:background .12s,color .12s,border-color .12s;
 }
 .chips .chip:hover,.presets .chip:hover{color:var(--fg);border-color:var(--line)}
-.chips .chip[aria-pressed="true"],.presets .chip[aria-pressed="true"]{
+.chips .chip[aria-pressed="true"],.presets .chip[aria-pressed="true"],
+.endcell .chip[aria-pressed="true"]{
   background:var(--accent);border-color:transparent;color:var(--accent-fg)
 }
-.chips .chip .dotm{width:8px;height:8px;border-radius:50%;background:currentColor;opacity:.5}
-.chips .chip[aria-pressed="true"] .dotm{opacity:1}
+.chip .dotm{width:8px;height:8px;border-radius:50%;background:currentColor;opacity:.5}
+.chip[aria-pressed="true"] .dotm{opacity:1}
 
 /* ---- segmented control ---- */
 .seg{display:flex;background:var(--sunken);border-radius:11px;padding:3px;gap:3px;
@@ -1036,13 +1049,19 @@ label.btn{cursor:pointer}
    Search bar: history and saved searches live in the bar itself
    ===================================================================== */
 .searchwrap .tools{
-  position:absolute;right:4px;display:flex;align-items:center;gap:2px;
+  /* Anchored to the input's own box (top 4px of its 38px), not the wrap's
+     centre - on a phone the wrap carries bottom padding, which pushed a
+     centred toolbar off the field's midline. */
+  position:absolute;right:4px;top:4px;display:flex;align-items:center;gap:2px;
 }
 #qsave,#qclear{
   position:static;width:30px;height:30px;border-radius:8px;
-  display:none;place-items:center;color:var(--fg-3);flex:none;
+  display:grid;place-items:center;color:var(--fg-3);flex:none;
+  /* Hidden buttons keep their seat, so the bookmark does not hop sideways
+     the moment typing makes the clear button appear. */
+  visibility:hidden;pointer-events:none;
 }
-#qsave.on,#qclear.on{display:grid}
+#qsave.on,#qclear.on{visibility:visible;pointer-events:auto}
 #qsave:hover,#qclear:hover{background:var(--raised);color:var(--fg)}
 #qsave.saved{color:var(--accent)}
 #q{padding-right:70px}
@@ -1208,6 +1227,68 @@ label.btn{cursor:pointer}
 /* Inline pictures now open in place, so say so on the way past */
 .imgw{cursor:zoom-in}
 .imgw.broken{cursor:pointer}
+/* ---- cards: a network in Server settings is one bounded thing ---- */
+.card{
+  background:var(--raised);border:1px solid var(--line-soft);border-radius:14px;
+  padding:14px;display:flex;flex-direction:column;gap:12px;
+}
+.card .row{background:var(--surface)}
+.card .row .iconact:hover{background:var(--raised)}
+.card .empty-row{background:var(--surface)}
+.card + .card{margin-top:2px}
+/* Collapsible: the summary line carries enough - name, address, status -
+   that a card only needs opening to change something. */
+details.card > summary{list-style:none;cursor:pointer;border-radius:10px}
+details.card > summary::-webkit-details-marker{display:none}
+details.card > summary:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.cardhead .chev{
+  width:26px;height:26px;border-radius:8px;display:grid;place-items:center;
+  color:var(--fg-3);flex:none;transition:transform .16s;
+}
+.cardhead .chev svg{width:15px;height:15px;stroke:currentColor;fill:none;
+  stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
+details.card[open] > summary .chev{transform:rotate(90deg)}
+details.card > summary:hover .chev{color:var(--fg)}
+.cardhead{display:flex;align-items:center;gap:10px;min-width:0}
+.cardhead .rmain{flex:1;min-width:0;display:flex;flex-direction:column;gap:2px}
+.cardhead .rmain .nm{font-size:15px;font-weight:640;letter-spacing:-.01em;
+  overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.cardhead .rmain .sub2{font-size:12px;color:var(--fg-3);
+  overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.cardhead .linkbtn{flex:none}
+.card .hrsoft{height:1px;background:var(--line-soft);margin:2px 0}
+/* Message slots that hold nothing must not spend a flex gap on it */
+[data-nettestout]:empty,#nn-out:empty,#im-out:empty,#wz-nn-out:empty,
+#st-inv-out:empty,#st-inv-warn:empty,#wz-inv-warn:empty,#tk-out:empty,
+#st-err:empty,#tags-err:empty,#in-err:empty,#wiz-err:empty,
+#totp-err:empty{display:none}
+.minihead{
+  font-size:11px;font-weight:660;color:var(--fg-3);
+  text-transform:uppercase;letter-spacing:.06em;
+}
+
+/* A named input: the label rides on the field, so a card of four inputs does
+   not read as four anonymous boxes with placeholder text for names. */
+.labelled{display:flex;flex-direction:column;gap:5px;flex:1 1 150px;min-width:120px}
+.labelled.narrow{flex:0 0 92px;min-width:92px}
+.labelled > span{font-size:11px;font-weight:620;color:var(--fg-3);
+  text-transform:uppercase;letter-spacing:.05em}
+.labelled input{
+  /* flex:0 0 auto and min-width:0 both matter: .formrow input carries
+     flex-basis:170px and min-width:150px. In this column the basis became the
+     height (170px-tall boxes), and the min-width made the 92px port field
+     overflow its wrapper and run underneath the nick field beside it. */
+  width:100%;height:40px;flex:0 0 auto;min-width:0;padding:0 12px;
+  border-radius:10px;font-size:15px;background:var(--sunken);
+  border:1px solid var(--line);
+}
+.card .labelled input{background:var(--surface)}
+.labelled input:focus{outline:none;border-color:var(--accent);
+  box-shadow:0 0 0 3px color-mix(in srgb,var(--accent) 18%,transparent)}
+/* Controls sharing a row with labelled inputs sit on the input line */
+.formrow .endcell{display:flex;align-items:flex-end;gap:8px;flex:0 0 auto}
+.endcell .chip{height:40px}
+.endcell .btn{height:40px}
 </style>
 </head>
 <body>
@@ -1605,6 +1686,9 @@ function hhmm(ts){
   const h=d.getHours();
   return (h%12||12)+':'+pad(d.getMinutes())+(h<12?' am':' pm');
 }
+/* The gutter beside a grouped message is ~46px with its padding; "12:26 pm"
+   does not fit, "12:26pm" just does. Only the hover clock uses this. */
+const hhmmTight = ts => hhmm(ts).replace(' ','');
 /* The full, unambiguous form, with the zone named so nobody has to guess. */
 function stamp(ts){
   const d=new Date(ts*1000);
@@ -2169,7 +2253,7 @@ function msgNode(m, opts={}){
 
   el.innerHTML =
     `<div class="gutter">${grouped
-        ? `<span class="time">${hhmm(m.ts)}</span>`
+        ? `<span class="time">${hhmmTight(m.ts)}</span>`
         : `<span class="av" style="background:${avatarBg(m.nick)}">${esc(m.nick[0]||'?')}</span>`}</div>`+
     `<div class="body">`+
       (grouped?'':
@@ -4209,7 +4293,12 @@ async function drawSettings(force){
     if(slot&&look){look.removeAttribute('hidden');slot.appendChild(look);drawLook()}
   }
   if(setTab==='security'){drawTotp();drawPasskeys();drawTokens()}
-  if(setTab==='server')wireImporter();
+  if(setTab==='server'){
+    wireImporter();
+    $$('#set-content details.card').forEach(d=>d.addEventListener('toggle',()=>{
+      d.open?OPEN_CARDS.add(d.dataset.card):OPEN_CARDS.delete(d.dataset.card);
+    }));
+  }
   wireSettings(box);
 }
 
@@ -4321,89 +4410,138 @@ function setAppearance(){
 }
 
 /* -------------------------------------------------------------- server */
+function netStatus(id){
+  const nets=(SESSION.live&&SESSION.live.networks)||[];
+  const hit=nets.find(n=>n.id===id);
+  return hit&&hit.connected?{cls:'ok',word:'recording'}:{cls:'',word:'not connected'};
+}
+
+const CHEV=`<span class="chev"><svg viewBox="0 0 24 24"><path d="m9 6 6 6-6 6"/></svg></span>`;
+/* Which cards are open survives the redraw a Save triggers. */
+const OPEN_CARDS=new Set();
+
+function netCard(n){
+  const st=netStatus(n.id);
+  const chans=(n.channels||[]),paused=(n.paused||[]);
+  const key=`net-${n.id}`;
+  return `
+    <details class="card" data-card="${key}"${OPEN_CARDS.has(key)?' open':''}>
+      <summary class="cardhead">
+        ${CHEV}
+        <span class="rmain"><span class="nm">${esc(n.label||n.name)}</span>
+          <span class="sub2">${esc(n.host)}:${n.port} · ${n.tls?'TLS':'plain'} ·
+            archivist ${esc(n.archivist_nick)} ·
+            ${chans.length} channel${chans.length===1?'':'s'}</span></span>
+        <span class="pill ${st.cls}">${st.word}</span>
+        <button class="linkbtn" data-netdel="${n.id}">Remove</button>
+      </summary>
+
+      <div class="formrow">
+        <label class="labelled"><span>Host</span>
+          <input data-nethost="${n.id}" value="${esc(n.host)}" spellcheck="false"></label>
+        <label class="labelled narrow"><span>Port</span>
+          <input data-netport="${n.id}" value="${n.port}" inputmode="numeric"></label>
+        <label class="labelled"><span>Archivist nick</span>
+          <input data-netnick="${n.id}" value="${esc(n.archivist_nick)}"></label>
+        <div class="endcell">
+          <button class="chip" data-nettls="${n.id}"
+            aria-pressed="${n.tls?'true':'false'}"><i class="dotm"></i>TLS</button>
+          <button class="btn ghost" data-nettest="${n.id}">Test</button>
+          <button class="btn" data-netsave="${n.id}">Save</button>
+        </div>
+      </div>
+      <div data-nettestout="${n.id}"></div>
+
+      <div class="hrsoft"></div>
+      <div class="minihead">Channels</div>
+      <div class="stack">
+        ${chans.map(c=>`
+          <div class="row"><span class="rmain"><span class="nm">#${esc(c)}</span>
+            <span class="sub2">archiving</span></span>
+            <span class="act">
+              <button class="iconact" data-chpause="${esc(c)}" data-net="${n.id}"
+                data-tip="Stop archiving" aria-label="Pause">${IC(ICONS.pause,15)}</button>
+              <button class="iconact danger" data-chdel="${esc(c)}" data-net="${n.id}"
+                data-tip="Remove entirely" aria-label="Remove">${BIN}</button></span></div>`).join('')}
+        ${paused.map(c=>`
+          <div class="row muted"><span class="rmain"><span class="nm">#${esc(c)}</span>
+            <span class="sub2">paused</span></span>
+            <span class="act">
+              <button class="iconact" data-chresume="${esc(c)}" data-net="${n.id}"
+                data-tip="Resume archiving" aria-label="Resume">${IC(ICONS.play,15)}</button>
+              <button class="iconact danger" data-chdel="${esc(c)}" data-net="${n.id}"
+                data-tip="Remove entirely" aria-label="Remove">${BIN}</button></span></div>`).join('')}
+        ${(!chans.length&&!paused.length)
+          ? '<div class="empty-row">No channels yet — add one below</div>':''}
+      </div>
+      <div class="formrow">
+        <input data-chadd="${n.id}" placeholder="Add a channel, e.g. mychannel">
+        <button class="btn" data-chgo="${n.id}">Add</button></div>
+    </details>`;
+}
+
 function setServer(){
   const nets=SETDATA.networks;
   return `<div class="sect">
     <h4>Server</h4>
-    <p class="lede">What this instance is called, and which IRC networks and
-      channels it records.</p>
+    <p class="lede">What this instance is called, which IRC networks it records,
+      and a way to bring existing history in.</p>
 
     <div class="field">
       <label class="fhead">Server name</label>
       <div class="formrow">
         <input id="st-appname" value="${esc(APPNAME)}" maxlength="48" placeholder="AuroraIRC">
         <button class="btn" id="st-appname-save">Save</button></div>
-      <div class="hint">Shown in the header and the browser tab.</div>
+      <div class="hint">Shown in the header, the browser tab and on invitations.</div>
     </div>
 
     <div class="hr"></div>
-
-    ${nets.map(n=>`
-      <div class="field">
-        <label class="fhead plain">${esc(n.label||n.name)}
-          <button class="linkbtn" data-nettest="${n.id}">Test connection</button>
-          <button class="linkbtn" data-netdel="${n.id}">Remove</button></label>
-        <div class="formrow">
-          <input data-nethost="${n.id}" value="${esc(n.host)}" placeholder="Host">
-          <input data-netport="${n.id}" class="narrow" value="${n.port}" aria-label="Port">
-        </div>
-        <div class="formrow">
-          <input data-netnick="${n.id}" value="${esc(n.archivist_nick)}"
-                 placeholder="Archivist nick">
-          <button class="btn" data-netsave="${n.id}">Save</button>
-        </div>
-        <div class="chips">
-          <button class="chip" data-nettls="${n.id}"
-            aria-pressed="${n.tls?'true':'false'}"><i class="dotm"></i>Use TLS</button>
-        </div>
-        <div data-nettestout="${n.id}"></div>
-        <div class="stack">
-          ${(n.channels||[]).map(c=>`
-            <div class="row"><span class="rmain"><span class="nm">#${esc(c)}</span>
-              <span class="sub2">archiving</span></span>
-              <span class="act">
-                <button class="iconact" data-chpause="${esc(c)}" data-net="${n.id}"
-                  data-tip="Stop archiving" aria-label="Pause">${IC(ICONS.pause,15)}</button>
-                <button class="iconact danger" data-chdel="${esc(c)}" data-net="${n.id}"
-                  data-tip="Remove entirely" aria-label="Remove">${BIN}</button></span></div>`).join('')}
-          ${(n.paused||[]).map(c=>`
-            <div class="row muted"><span class="rmain">
-              <span class="nm">#${esc(c)}</span><span class="sub2">paused</span></span>
-              <span class="act">
-                <button class="iconact" data-chresume="${esc(c)}" data-net="${n.id}"
-                  data-tip="Resume archiving" aria-label="Resume">${IC(ICONS.play,15)}</button>
-                <button class="iconact danger" data-chdel="${esc(c)}" data-net="${n.id}"
-                  data-tip="Remove entirely" aria-label="Remove">${BIN}</button></span></div>`).join('')}
-          ${(!(n.channels||[]).length&&!(n.paused||[]).length)
-            ? '<div class="empty-row">No channels yet</div>':''}
-        </div>
-        <div class="formrow">
-          <input data-chadd="${n.id}" placeholder="Add a channel">
-          <button class="btn" data-chgo="${n.id}">Add</button></div>
-      </div>
-      <div class="hr"></div>`).join('')}
 
     <div class="field">
-      <label class="fhead">Add a network</label>
-      <div class="formrow">
-        <input id="nn-name" placeholder="Short name, e.g. libera">
-        <input id="nn-host" placeholder="irc.libera.chat"></div>
-      <div class="formrow">
-        <input id="nn-port" class="narrow" value="6697" aria-label="Port">
-        <input id="nn-nick" placeholder="Archivist nick" value="aurora">
-        <button class="btn ghost" id="nn-test">Test</button>
-        <button class="btn" id="nn-go">Create</button></div>
-      <div class="chips">
-        <button class="chip" id="nn-tls" aria-pressed="true"><i class="dotm"></i>Use TLS</button>
-      </div>
-      <div id="nn-out"></div>
-      <div class="hint">The archivist only ever listens. Port 6697 is TLS;
-        6667 is plain — test before you save either way.</div>
+      <label class="fhead">Networks</label>
+      ${nets.map(netCard).join('')
+        ||'<div class="empty-row">Nothing is being recorded yet — add a network below.</div>'}
+      <div class="hint">The archivist only ever listens: it joins, records, and
+        never sends a word, so recording never depends on who is signed in.</div>
     </div>
 
-    <div class="hr"></div>
+    <details class="card" data-card="add"${OPEN_CARDS.has('add')||!nets.length?' open':''}>
+      <summary class="cardhead">
+        ${CHEV}
+        <span class="rmain"><span class="nm">Add a network</span>
+          <span class="sub2">Test the connection first — Create is what saves it.</span></span>
+      </summary>
+      <div class="formrow">
+        <label class="labelled"><span>Short name</span>
+          <input id="nn-name" placeholder="libera" spellcheck="false"></label>
+        <label class="labelled"><span>Host</span>
+          <input id="nn-host" placeholder="irc.libera.chat" spellcheck="false"></label>
+        <label class="labelled narrow"><span>Port</span>
+          <input id="nn-port" value="6697" inputmode="numeric"></label>
+      </div>
+      <div class="formrow">
+        <label class="labelled"><span>Archivist nick</span>
+          <input id="nn-nick" value="aurora"></label>
+        <div class="endcell">
+          <button class="chip" id="nn-tls" aria-pressed="true"><i class="dotm"></i>TLS</button>
+          <button class="btn ghost" id="nn-test">Test</button>
+          <button class="btn" id="nn-go">Create</button>
+        </div>
+      </div>
+      <div id="nn-out"></div>
+      <div class="hint">Port 6697 is TLS; 6667 is plain. The TLS chip moves the
+        port with it when you toggle.</div>
+    </details>
 
-    ${importerHTML()}
+    <details class="card" data-card="import"${OPEN_CARDS.has('import')?' open':''}>
+      <summary class="cardhead">
+        ${CHEV}
+        <span class="rmain"><span class="nm">Import history</span>
+          <span class="sub2">From a web address or a file — checked before
+            anything is stored, and never stored twice.</span></span>
+      </summary>
+      ${importerHTML()}
+    </details>
   </div>`;
 }
 
@@ -4680,7 +4818,6 @@ function importerHTML(){
   const fmts=IMPORT.formats||[{key:'auto',label:'Detect automatically'}];
   return `
     <div class="field">
-      <label class="fhead">Import history</label>
       <div class="seg" id="im-seg">
         <button data-im="url" aria-pressed="true">From a web address</button>
         <button data-im="file" aria-pressed="false">From a file</button>
@@ -5038,6 +5175,8 @@ function wireSettings(box){
   box.onclick=async e=>{
     const t=e.target.closest('button');
     if(!t)return;
+    // A button on the summary line acts; it must not also fold the card
+    if(t.closest('summary'))e.preventDefault();
     const d=t.dataset;
     if(d.copy!==undefined){
       return copyText(d.copy);
@@ -6152,7 +6291,12 @@ function sendStatus(msg,{busy=false,error=false}={}){
 $('#composer').onsubmit=async e=>{
   e.preventDefault();
   const text=ta.value.trim(),channel=$('#sendchan').value;
-  if(!text)return;
+  if(!text){
+    // Shift+Enter a few times then Enter used to leave an invisible stack of
+    // newlines holding the box tall. Nothing to send means reset, not ignore.
+    ta.value='';ta.style.height='auto';syncComposer();measureComposer();
+    return;
+  }
   ta.value='';ta.style.height='auto';syncComposer();sendStatus('');
 
   // Sending means joining the current conversation, so make sure we're looking

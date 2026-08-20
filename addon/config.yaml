@@ -1,5 +1,5 @@
 name: AuroraIRC
-version: "1.1.0"
+version: "1.1.1"
 slug: aurorairc
 description: IRC client and searchable archive, with a read-only MCP endpoint for agents
 url: https://github.com/aurora-silicon/aurorairc

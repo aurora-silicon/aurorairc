@@ -1,5 +1,38 @@
 # Changelog
 
+## 1.1.1
+
+Graphical fixes, from a sweep after watching it run on a real screen:
+
+- Hovering a grouped message no longer makes the conversation jump. The
+  timestamp that appears in the gutter took part in layout, and in 12-hour
+  mode "4:26 pm" was wider than the gutter — it wrapped and grew the row
+  under the pointer. It is out of the layout entirely now, and shown in a
+  compact form that fits.
+- The search bar's icons untangled. A rule meant for the magnifier matched
+  every icon inside the search area, absolutely positioning the bookmark and
+  clear buttons on top of each other and stacking each dropdown row's icon on
+  its own text. The bookmark also keeps its seat now when the clear button
+  appears, instead of hopping sideways.
+- Enter on a whitespace-only message resets the composer. A few Shift+Enters
+  followed by Enter used to leave an invisible stack of newlines holding the
+  box tall.
+- Hovering a tag row no longer shoves the count sideways; the delete control
+  keeps its seat and fades in.
+- Empty message slots (test results, errors) no longer spend layout space
+  waiting for something to say.
+
+And the Server settings flow is redesigned:
+
+- Each network is a collapsible card. Folded, one line tells you what it is:
+  address, TLS or plain, the archivist's nick, how many channels, and a live
+  recording/not-connected pill. Open, every field is named on the field —
+  Host, Port, Archivist nick — with TLS, Test and Save on one action row, and
+  the channels beneath.
+- "Add a network" and "Import history" are cards of the same shape, folded
+  until wanted; the add card opens itself when no network exists yet. Which
+  cards are open survives a save.
+
 ## 1.1.0
 
 Bug fixes:

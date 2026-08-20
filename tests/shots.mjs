@@ -82,6 +82,13 @@ await page.fill('#sendtext', 'jules: nice one, i will test the patch tonight');
 await page.click('#sendbtn');
 await sleep(4000);
 await shot(page, 'feed');
+/* a grouped row under the pointer, showing the gutter time */
+{
+  const rows = await page.locator('#log .msg:not(.head)').all();
+  if (rows.length) { await rows[rows.length - 1].hover(); await sleep(300); }
+}
+await shot(page, 'feed-hover-grouped');
+await page.mouse.move(30, 300);
 
 await page.click('#filter-btn'); await sleep(450);
 await shot(page, 'filters');
@@ -102,6 +109,8 @@ await sleep(400);
 await page.click('#live-btn'); await page.click('#open-settings');
 await page.waitForSelector('#setpanel.on');
 await page.click('#set-nav button[data-tab="server"]');
+await page.waitForSelector('details[data-card="import"]');
+await page.click('details[data-card="import"] summary');
 await page.waitForSelector('#im-seg');
 await page.fill('#im-url', web + '/logs/');
 await page.click('#im-follow');
@@ -141,6 +150,11 @@ await shot(page, 'settings-account');
 for (const tab of ['security', 'appearance', 'server', 'people']) {
   await page.click(`#set-nav button[data-tab="${tab}"]`);
   await sleep(700);
+  if (tab === 'server') {
+    await shot(page, 'settings-server-folded');
+    await page.click('details[data-card^="net"] summary');
+    await sleep(400);
+  }
   await shot(page, 'settings-' + tab);
 }
 await page.click('[data-detail="ryan"]'); await page.waitForSelector('#dlg.on'); await sleep(300);

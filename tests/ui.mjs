@@ -438,6 +438,51 @@ const run = async () => {
 
     await page.click('#set-nav button[data-tab="server"]');
     await page.waitForSelector('#st-appname');
+    check('each network is a bounded card', await page.evaluate(() =>
+      document.querySelectorAll('#set-content .card').length >= 2));
+    check('cards start folded, summary telling you enough',
+      await page.evaluate(() => {
+        const d = document.querySelector('details[data-card^="net"]');
+        return d && !d.open && /channel/.test(d.querySelector('.sub2').textContent);
+      }));
+    await page.click('details[data-card^="net"] summary');
+    check('and open on a click', await page.evaluate(() =>
+      document.querySelector('details[data-card^="net"]').open));
+    check('with a live status pill on the summary line', await page.evaluate(() => {
+      const pill = document.querySelector('details[data-card^="net"] summary .pill');
+      return pill && /recording|not connected/.test(pill.textContent);
+    }));
+    check('a Save keeps the card open', await (async () => {
+      await page.click('[data-netsave]');
+      // Save redraws the whole section; wait for the rebuilt card body, not
+      // for the stale one that is about to be thrown away.
+      await waitFor(() => page.evaluate(() =>
+        document.querySelector('details[data-card^="net"] [data-chadd]') &&
+        !document.querySelector('#set-content .loading')), { timeout: 10000 });
+      return page.evaluate(() =>
+        document.querySelector('details[data-card^="net"]').open);
+    })());
+    check('no field overflows its wrapper or runs under a neighbour',
+      await page.evaluate(() => {
+        const card = document.querySelector('#set-content .card');
+        const boxes = [...card.querySelectorAll('.labelled')].map(w => {
+          const inp = w.querySelector('input');
+          return { w: w.getBoundingClientRect(), i: inp.getBoundingClientRect() };
+        });
+        // every input inside its own wrapper, and no two inputs intersecting
+        const inside = boxes.every(b => b.i.right <= b.w.right + 1);
+        const apart = boxes.every((a, n) => boxes.every((b, m) => n === m ||
+          a.i.right <= b.i.left + 1 || b.i.right <= a.i.left + 1 ||
+          a.i.bottom <= b.i.top + 1 || b.i.bottom <= a.i.top + 1));
+        return inside && apart;
+      }));
+    check('and every input named on the field, not just a placeholder',
+      await page.evaluate(() => {
+        const card = document.querySelector('#set-content .card');
+        return [...card.querySelectorAll('.labelled')].length >= 3 &&
+          [...card.querySelectorAll('.labelled > span')]
+            .every(sp => sp.textContent.trim().length > 0);
+      }));
     check('Server settings show the network',
       await page.inputValue('[data-nethost]') === '127.0.0.1');
     check('and whether it is TLS',
@@ -512,6 +557,115 @@ const run = async () => {
       await invited.isVisible('.composer.on') || true);
     await invited.close();
 
+    // ----------------------------------------------- nothing may jump
+    head('Nothing moves under the pointer');
+    // Grouped rows: hovering shows the time in the gutter; it must not
+    // change the row's height (12-hour "4:26 pm" used to wrap and grow it).
+    await page.click('#live-btn');
+    await page.waitForSelector('#live-sheet.on');
+    await page.click('#open-settings');
+    await page.waitForSelector('#setpanel.on');
+    await page.click('#set-nav button[data-tab="appearance"]');
+    await page.waitForSelector('#clock-seg');
+    await page.click('#clock-seg button[data-clock="12"]');
+    await page.click('#set-close');
+    const grouped = page.locator('#log .msg:not(.head)').last();
+    const before12 = await grouped.boundingBox();
+    await grouped.hover();
+    await sleep(150);
+    const after12 = await grouped.boundingBox();
+    check('hovering a grouped message does not change its height',
+      Math.abs(after12.height - before12.height) < 0.5,
+      `${before12.height} -> ${after12.height} (12-hour mode)`);
+    check('the hover time is visible while there',
+      await page.evaluate(() => {
+        const rows = [...document.querySelectorAll('#log .msg:not(.head)')];
+        const t = rows[rows.length - 1].querySelector('.gutter .time');
+        return t && getComputedStyle(t).opacity === '1';
+      }));
+    check('and never wraps', await page.evaluate(() => {
+      const rows = [...document.querySelectorAll('#log .msg:not(.head)')];
+      const t = rows[rows.length - 1].querySelector('.gutter .time');
+      const r = t.getBoundingClientRect();
+      return r.height < 16;
+    }));
+    await page.click('#live-btn'); await page.click('#open-settings');
+    await page.waitForSelector('#clock-seg');
+    await page.click('#clock-seg button[data-clock="24"]');
+    await page.click('#set-close');
+
+    // The magnifier rule must never leak onto other icons in the search wrap
+    check('the search bar tools are two separate, in-place icons',
+      await page.evaluate(() => {
+        const svgs = [...document.querySelectorAll('.searchwrap .tools svg')];
+        return svgs.length === 2 && svgs.every(v =>
+          getComputedStyle(v).position === 'static');
+      }));
+    await page.fill('#q', 'x');
+    const savedBox1 = await page.evaluate(() =>
+      document.querySelector('#qsave').getBoundingClientRect().x);
+    await page.fill('#q', '');
+    const savedBox2 = await page.evaluate(() =>
+      document.querySelector('#qsave').getBoundingClientRect().x);
+    check('the bookmark keeps its seat when the clear button comes and goes',
+      savedBox1 === savedBox2, `${savedBox1} vs ${savedBox2}`);
+
+    // History rows: the icon lives in the row's flow, not on top of the text
+    await page.click('#q');
+    await waitFor(() => page.isVisible('#suggest.on'), { timeout: 4000 });
+    check('dropdown icons sit beside the text, not on top of it',
+      await page.evaluate(() => {
+        const b = document.querySelector('#suggest button[role="option"]');
+        if (!b) return false;
+        const ic = b.querySelector('svg'), nm = b.querySelector('.nm');
+        if (!ic) return true;
+        const a = ic.getBoundingClientRect(), t = nm.getBoundingClientRect();
+        return getComputedStyle(ic).position === 'static' && a.right <= t.left + 1;
+      }));
+    check('the Clear control sits at the right edge of its heading',
+      await page.evaluate(() => {
+        const hd = document.querySelector('#suggest .grouphd');
+        const btn = hd && hd.querySelector('.linkbtn');
+        if (!btn) return true;
+        const h = hd.getBoundingClientRect(), b = btn.getBoundingClientRect();
+        return h.right - b.right < 20;
+      }));
+    await page.keyboard.press('Escape');
+
+    // Whitespace-only Enter must reset the composer, not leave it tall
+    await page.click('#sendtext');
+    await page.keyboard.down('Shift');
+    for (let i = 0; i < 4; i++) await page.keyboard.press('Enter');
+    await page.keyboard.up('Shift');
+    await sleep(200);
+    const tall = await page.evaluate(() =>
+      document.querySelector('#composer').getBoundingClientRect().height);
+    await page.keyboard.press('Enter');
+    await sleep(250);
+    const reset = await page.evaluate(() => ({
+      h: document.querySelector('#composer').getBoundingClientRect().height,
+      v: document.querySelector('#sendtext').value,
+    }));
+    check('Enter on a whitespace-only message resets the composer',
+      reset.h < tall - 20 && reset.v === '', `${tall} -> ${reset.h}, ${JSON.stringify(reset.v)}`);
+
+    // Tag rows in Filters: the hover delete must not shove the count sideways
+    await page.click('#filter-btn');
+    await page.waitForSelector('#filter-sheet.on');
+    const tagRow = page.locator('#filter-sheet .tagrow').first();
+    const ctBefore = await page.evaluate(() => {
+      const r = document.querySelector('#filter-sheet .tagrow .ct');
+      return r ? r.getBoundingClientRect().x : null;
+    });
+    await tagRow.hover(); await sleep(120);
+    const ctAfter = await page.evaluate(() => {
+      const r = document.querySelector('#filter-sheet .tagrow .ct');
+      return r ? r.getBoundingClientRect().x : null;
+    });
+    check('hovering a tag row does not shove the count sideways',
+      ctBefore !== null && ctBefore === ctAfter, `${ctBefore} -> ${ctAfter}`);
+    await page.click('#scrim');
+
     // ---------------------------------------------------------- tags
     head('Tag manager');
     await page.click('#filter-btn');
@@ -546,6 +700,11 @@ const run = async () => {
     await page.click('#open-settings');
     await page.waitForSelector('#setpanel.on');
     await page.click('#set-nav button[data-tab="server"]');
+    await page.waitForSelector('details[data-card="import"]');
+    check('the importer is a collapsed card until it is wanted',
+      await page.evaluate(() =>
+        !document.querySelector('details[data-card="import"]').open));
+    await page.click('details[data-card="import"] summary');
     await page.waitForSelector('#im-seg');
     check('Server settings offer an importer', await page.isVisible('#im-url'));
     check('Import is held back until it has been checked',
