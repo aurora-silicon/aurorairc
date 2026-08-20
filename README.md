@@ -86,12 +86,12 @@ consequence is that logging never stops, whatever anyone else is doing.
 | | Read | Send | Tag | Manage |
 | --- | --- | --- | --- | --- |
 | Anonymous | yes | no | no | no |
-| Member | yes | yes | yes | no |
-| Owner | yes | yes | yes | yes |
+| User | yes | yes | yes | no |
+| Admin | yes | yes | yes | yes |
 
 Anonymous read-only access is the public product; every write sits behind a
-session. The **first account created is root** and cannot be demoted, disabled
-or removed by anyone, including other owners.
+session. The **first account created is the owner** and cannot be demoted,
+disabled or removed by anyone, including other admins.
 
 Sign in with a password, optionally with TOTP two-factor, or with a **passkey**.
 The second factor is asked for as its own step, once the password has actually
@@ -99,10 +99,10 @@ been accepted — the fields that got you there are put away rather than left on
 screen. Sessions live in the database, carry a CSRF token, and can be revoked
 per device from Settings.
 
-**Invitations and passes.** An owner mints a link. A plain link seats one
+**Invitations and passes.** An admin mints a link. A plain link seats one
 person; a **pass** seats several — five people joining a room from one link —
 and either can be revoked at any moment without disturbing the accounts already
-created on it. An owner-level link warns before it is minted, because whoever
+created on it. An admin-level link warns before it is minted, because whoever
 uses it gets the server. Every redemption is recorded, so **View details** on
 any account answers where it came from: by whose link, which link, and when.
 

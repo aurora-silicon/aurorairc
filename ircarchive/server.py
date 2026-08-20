@@ -7,8 +7,9 @@ Authorisation model (see ircarchive.auth for the mechanics):
 
   * anonymous - read only, and that is the whole public product: browse,
     search, filter, read tags. Every mutating endpoint is behind _need_auth.
-  * member - may send messages under their own IRC nick, and manage tags.
-  * owner - the above, plus invites, user administration and the audit log.
+  * user - may send messages under their own IRC nick, and manage tags.
+  * admin - the above, plus invites, user administration and the audit log.
+    The founding account is the owner, and no admin can demote or remove it.
 
 Accounts exist only by invitation; there is no public signup route. Sessions
 live in the database, carry a CSRF token that state-changing requests must
@@ -292,8 +293,8 @@ class Handler(SimpleHTTPRequestHandler):
         s = self._need_auth(csrf=csrf)
         if not s:
             return None
-        if s["role"] != "owner":
-            self._json({"error": "owners only"}, 403)
+        if s["role"] != "admin":
+            self._json({"error": "admins only"}, 403)
             return None
         return s
 
@@ -429,7 +430,7 @@ class Handler(SimpleHTTPRequestHandler):
                 return self._json({"users": [
                     {"name": r["username"], "role": r["role"], "nick": r["irc_nick"],
                      "totp": bool(r["totp_enabled"]), "disabled": bool(r["disabled"]),
-                     "root": r["id"] == root,
+                     "owner": r["id"] == root,
                      "joinMethod": r["join_method"] or A.JOIN_MANUAL,
                      "created": r["created"], "lastSeen": r["last_seen"]}
                     for r in con.execute("SELECT * FROM users ORDER BY role, username")]})
@@ -768,7 +769,7 @@ class Handler(SimpleHTTPRequestHandler):
                     return self._json({"error": "already set up"}, 409)
                 try:
                     uid = A.create_user(con, body.get("username"),
-                                        str(body.get("password", "")), role="owner",
+                                        str(body.get("password", "")), role="admin",
                                         irc_nick=body.get("nick"),
                                         join_method=A.JOIN_SETUP)
                 except ValueError as exc:
@@ -1012,7 +1013,7 @@ class Handler(SimpleHTTPRequestHandler):
                 s = self._need_owner()
                 if not s:
                     return
-                role = str(body.get("role", "member"))
+                role = str(body.get("role", "user"))
                 uses = body.get("uses", 1)
                 try:
                     token = A.create_invite(con, s["user_id"], role=role,
@@ -1151,7 +1152,7 @@ class Handler(SimpleHTTPRequestHandler):
                 try:
                     uid = A.create_user(con, body.get("username"),
                                         str(body.get("password", "")),
-                                        role=str(body.get("role", "member")),
+                                        role=str(body.get("role", "user")),
                                         irc_nick=body.get("nick"),
                                         join_method=A.JOIN_MANUAL,
                                         invited_by=s["user_id"])
@@ -1209,13 +1210,13 @@ class Handler(SimpleHTTPRequestHandler):
                 # to demote, disable or delete the person whose server this is.
                 if A.is_root(con, target["id"]) and (
                         body.get("delete") or body.get("disabled")
-                        or body.get("role") == "member"):
+                        or body.get("role") == "user"):
                     return self._json(
                         {"error": "the owner account cannot be changed by anyone"}, 403)
                 if target["id"] == s["user_id"] and (
-                        body.get("role") == "member" or body.get("disabled")):
+                        body.get("role") == "user" or body.get("disabled")):
                     return self._json({"error": "you cannot demote or disable yourself"}, 400)
-                if "role" in body and body["role"] in ("owner", "member"):
+                if "role" in body and body["role"] in ("admin", "user"):
                     con.execute("UPDATE users SET role = ? WHERE id = ?",
                                 (body["role"], target["id"]))
                 if "disabled" in body:
@@ -1452,8 +1453,8 @@ def serve(dbpath, host="127.0.0.1", port=8420, behind_proxy=False,
     if set_up:
         print("Sign in to send messages, tag, or manage users.")
     else:
-        print("No owner account yet - the app will offer to create one,")
-        print("or run:  ./archive.py adduser --owner")
+        print("No accounts yet - the app will offer to create the owner,")
+        print("or run:  ./archive.py adduser --admin")
     print("\nPress Ctrl+C to stop.")
     try:
         httpd.serve_forever()

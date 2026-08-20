@@ -80,8 +80,11 @@ CENSUS = {
     "events": "SELECT c.name, n.name, e.ts, e.kind, e.detail FROM events e "
               "JOIN channels c ON c.id=e.channel_id JOIN nicks n ON n.id=e.nick_id "
               "ORDER BY e.ts, e.id",
-    "users": "SELECT username, password, role, irc_nick, totp_secret, totp_enabled, "
-             "disabled, created FROM users ORDER BY username",
+    # role is normalised: 1.1.2 renamed owner->admin and member->user in
+    # place, and that deliberate rewrite must not read as data loss.
+    "users": "SELECT username, password, CASE role WHEN 'owner' THEN 'admin' "
+             "WHEN 'member' THEN 'user' ELSE role END, irc_nick, totp_secret, "
+             "totp_enabled, disabled, created FROM users ORDER BY username",
     "sessions": "SELECT id, user_id, csrf, expires FROM sessions ORDER BY id",
     "credentials": "SELECT cred_id, public_key, sign_count, label FROM credentials "
                    "ORDER BY cred_id",
@@ -96,7 +99,9 @@ CENSUS = {
     "settings": "SELECT key, value FROM settings WHERE key NOT LIKE 'live_%' "
                 "AND key NOT LIKE 'prewarm:%' ORDER BY key",
     "outbox": "SELECT channel, text, nick, sent_at, error FROM outbox ORDER BY id",
-    "invites": "SELECT token, role, created_by, expires FROM invites ORDER BY token",
+    "invites": "SELECT token, CASE role WHEN 'owner' THEN 'admin' "
+               "WHEN 'member' THEN 'user' ELSE role END, created_by, expires "
+               "FROM invites ORDER BY token",
     "ingests": "SELECT path, seen, inserted FROM ingests ORDER BY id",
 }
 
@@ -130,11 +135,24 @@ sys.path.insert(0, OLD)
 from ircarchive import db, auth as A
 path = sys.argv[1]
 con = db.connect(path)
-owner = A.create_user(con, 'ryan', 'live server password', role='owner', irc_nick='ryan_')
+# This script runs against a PREVIOUS release, which may predate the role
+# rename - so ask in the old dialect first and fall back to the new one.
+def mk_user(name, pw, role, **kw):
+    try:
+        return A.create_user(con, name, pw, role=role, **kw)
+    except ValueError:
+        alt = {'owner': 'admin', 'member': 'user'}[role]
+        return A.create_user(con, name, pw, role=alt, **kw)
+def mk_invite(by, role):
+    try:
+        return A.create_invite(con, by, role=role)
+    except ValueError:
+        return A.create_invite(con, by, role={'owner': 'admin', 'member': 'user'}[role])
+owner = mk_user('ryan', 'live server password', 'owner', irc_nick='ryan_')
 db.setting(con, 'root_user_id', owner)
-alice = A.create_user(con, 'alice', 'alice long password', role='member')
-A.create_user(con, 'bob', 'bob long password', role='owner', irc_nick='bobby')
-carol = A.create_user(con, 'carol', 'carol long password', role='member')
+alice = mk_user('alice', 'alice long password', 'member')
+mk_user('bob', 'bob long password', 'owner', irc_nick='bobby')
+carol = mk_user('carol', 'carol long password', 'member')
 con.execute("UPDATE users SET disabled = 1 WHERE id = ?", (carol,))
 sec = A.totp_secret()
 con.execute("UPDATE users SET totp_secret = ?, totp_enabled = 1 WHERE id = ?", (sec, alice))
@@ -143,8 +161,8 @@ con.execute("INSERT INTO credentials(user_id, cred_id, public_key, sign_count, l
 tok = A.mint_token(con, owner, 'agent-laptop')
 sid, csrf = A.new_session(con, owner, ip='10.0.0.5', agent='Mozilla/5.0 test')
 A.new_session(con, alice, ip='10.0.0.6', agent='phone')
-inv_open = A.create_invite(con, owner, role='member')
-inv_used = A.create_invite(con, owner, role='member')
+inv_open = mk_invite(owner, 'member')
+inv_used = mk_invite(owner, 'member')
 A.redeem_invite(con, inv_used, 'dave', 'dave long password')
 nid = con.execute("INSERT INTO networks(name,label,host,port,tls,archivist_nick,created) "
                   "VALUES ('libera','LIBERA','irc.libera.chat',6697,1,'aurora',?)",
@@ -315,7 +333,7 @@ def main():
         check("a browser already signed in stays signed in", sess.get("signedIn") is True)
         check("as the same person, role and nick",
               sess.get("user", {}).get("name") == "ryan"
-              and sess["user"]["role"] == "owner" and sess["user"]["nick"] == "ryan_",
+              and sess["user"]["role"] == "admin" and sess["user"]["nick"] == "ryan_",
               str(sess.get("user")))
 
         ryan = Client(base)
@@ -356,8 +374,8 @@ def main():
         d = ryan.get("/api/users/detail", username="dave")
         check("an old redemption becomes proper provenance",
               d.get("joinMethod") == "invite" and d.get("invitedBy") == "ryan", str(d))
-        check("and the founder is still root",
-              ryan.get("/api/users/detail", username="ryan").get("root") is True)
+        check("and the founder is still the owner",
+              ryan.get("/api/users/detail", username="ryan").get("owner") is True)
 
         head("And it is still a working server")
         check("new writes work",

@@ -152,7 +152,7 @@ def main():
             page = r.read().decode()
         check("index.html is served", "<title>AuroraIRC</title>" in page)
         for needed in ("id=\"wizard\"", "id=\"setpanel\"", "id=\"tip\"",
-                       "id=\"qsave\"", "id=\"look-controls\"", "id=\"show-events\""):
+                       "id=\"qsave\"", "id=\"look-controls\"", "id=\"img-toggle\""):
             check(f"page carries {needed}", needed in page)
 
         # ----------------------------------------------------------- setup
@@ -206,15 +206,15 @@ def main():
 
         # ---------------------------------------------------------- invites
         head("Invites and passes")
-        r = c.post("/api/invites", {"role": "member", "uses": 3, "label": "launch crew"})
+        r = c.post("/api/invites", {"role": "user", "uses": 3, "label": "launch crew"})
         token = r.get("token")
         check("a pass for three is minted", r.get("uses") == 3 and bool(token), str(r))
         check("the invite carries no username field", "username" not in r)
 
-        single = c.post("/api/invites", {"role": "member"}).get("token")
+        single = c.post("/api/invites", {"role": "user"}).get("token")
         check("a single invite is minted too", bool(single))
 
-        bad = c.post("/api/invites", {"role": "member", "uses": 9999})
+        bad = c.post("/api/invites", {"role": "user", "uses": 9999})
         check("an absurd pass size is refused", "error" in bad)
 
         joiner = Client(base)
@@ -239,7 +239,7 @@ def main():
         check("and when she joined", bool(d.get("joinedAt")))
         d = c.get("/api/users/detail", username="ryan")
         check("the founder is marked as such", d.get("joinMethod") == "setup", str(d))
-        check("and is root", d.get("root") is True)
+        check("and is the owner", d.get("owner") is True)
 
         r = c.post("/api/invites/revoke", {"token": token})
         check("the pass can be revoked", "error" not in r, str(r))
@@ -253,7 +253,7 @@ def main():
 
         r = c.post("/api/users/create", {"username": "dave",
                                          "password": "another good one",
-                                         "role": "member"})
+                                         "role": "user"})
         check("an account can be created directly", bool(r.get("id")), str(r))
         d = c.get("/api/users/detail", username="dave")
         check("and is recorded as created by hand", d.get("joinMethod") == "manual")
@@ -270,7 +270,7 @@ def main():
         r = again.post("/api/login", {"username": "ryan", "password": "correct horse 9",
                                       "totp": A.totp_codes(secret)[1]})
         check("the right code signs in", r.get("signedIn") is True, str(r))
-        check("the role comes back", (r.get("user") or {}).get("role") == "owner")
+        check("the role comes back", (r.get("user") or {}).get("role") == "admin")
 
         # ---------------------------------------------- history and searches
         head("Search history and saved searches")
@@ -498,7 +498,7 @@ def main():
         check("a name that does not resolve fails cleanly", "error" in r, str(r))
         r = joiner.post("/api/import/preview",
                         {"source": "url", "url": web.base + "/logs/mychannel-chat.txt"})
-        check("a member cannot import", "error" in r, str(r))
+        check("a user cannot import", "error" in r, str(r))
 
         # ------------------------------------------------- image quick-look
         head("Image quick-look")
@@ -544,28 +544,28 @@ def main():
         # ------------------------------------------------------ permissions
         head("Permissions")
         r = joiner.get("/api/users")
-        check("a member cannot list users", "error" in r, str(r))
-        r = joiner.post("/api/invites", {"role": "member"})
-        check("a member cannot mint invites", "error" in r)
+        check("a user cannot list users", "error" in r, str(r))
+        r = joiner.post("/api/invites", {"role": "user"})
+        check("a user cannot mint invites", "error" in r)
         r = joiner.get("/api/users/detail", username="ryan")
-        check("a member cannot read provenance", "error" in r)
+        check("a user cannot read provenance", "error" in r)
         r = joiner.post("/api/networks/test", {"host": "127.0.0.1", "port": ircd.port})
-        check("a member cannot probe networks", "error" in r)
+        check("a user cannot probe networks", "error" in r)
         r = joiner.post("/api/send", {"channel": "#mychannel", "text": "member speaking"})
-        check("but a member can send", bool(r.get("queued")), str(r))
+        check("but a user can send", bool(r.get("queued")), str(r))
         noc = Client(base)
         noc.jar = joiner.jar                      # same cookie, no CSRF token
         r = noc.post("/api/send", {"channel": "#mychannel", "text": "csrf?"})
         check("a cookie without the CSRF token is refused", "error" in r, str(r))
 
         # ------------------------------------------------------ root safety
-        head("Root account")
-        alice_owner = c.post("/api/users/update", {"username": "alice", "role": "owner"})
+        head("The owner account")
+        alice_owner = c.post("/api/users/update", {"username": "alice", "role": "admin"})
         check("alice can be promoted", "error" not in alice_owner)
-        r = joiner.post("/api/users/update", {"username": "ryan", "role": "member"})
-        check("another owner cannot demote root", "error" in r, str(r))
+        r = joiner.post("/api/users/update", {"username": "ryan", "role": "user"})
+        check("another admin cannot demote the owner", "error" in r, str(r))
         r = joiner.post("/api/users/update", {"username": "ryan", "delete": True})
-        check("nor delete root", "error" in r)
+        check("nor delete the owner", "error" in r)
 
     finally:
         for proc in (live, serve):

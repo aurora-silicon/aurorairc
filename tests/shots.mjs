@@ -100,9 +100,9 @@ await page.click('#q'); await page.fill('#q', 'firmware'); await page.press('#q'
 await sleep(700); await page.click('#q'); await page.fill('#q', ''); await page.click('#q');
 await sleep(400);
 await shot(page, 'search-history');
-await page.fill('#q', '#mychannel firmware'); await page.click('#qsave'); await sleep(300);
+await page.fill('#q', '#mychannel firmware'); await page.click('#qsave'); await sleep(400);
 await shot(page, 'search-save');
-await page.press('#sv-name', 'Escape'); await page.fill('#q', ''); await page.press('#q', 'Enter');
+await page.fill('#q', ''); await page.press('#q', 'Enter');
 await sleep(400);
 
 /* the importer, and a picture opened in place */
@@ -175,6 +175,11 @@ await sleep(900); await page.click('#live-close');
 await page.click('#live-btn'); await page.click('#open-settings');
 await page.waitForSelector('#setpanel.on');
 await page.click('#set-nav button[data-tab="appearance"]');
+await page.waitForSelector('#theme-seg');
+await page.click('#theme-seg button[data-th="borealis"]'); await sleep(400);
+await page.click('#set-close'); await sleep(300);
+await shot(page, 'feed-borealis');
+await page.click('#live-btn'); await page.click('#open-settings');
 await page.waitForSelector('#theme-seg');
 await page.click('#theme-seg button[data-th="light"]'); await sleep(400);
 await shot(page, 'settings-appearance-light');

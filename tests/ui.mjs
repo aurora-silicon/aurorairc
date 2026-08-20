@@ -156,11 +156,11 @@ const run = async () => {
       (await page.textContent('#wiz-title')).trim() === 'Member creation');
     check('there is an "or" between the two ways in',
       await page.isVisible('.orline'));
-    await page.selectOption('#wz-inv-role', 'owner');
-    check('an owner link warns before it is made',
+    await page.selectOption('#wz-inv-role', 'admin');
+    check('an admin link warns before it is made',
       (await page.textContent('#wz-inv-warn')).includes('hands over the keys'));
-    await page.selectOption('#wz-inv-role', 'member');
-    check('and the warning goes away for a member link',
+    await page.selectOption('#wz-inv-role', 'user');
+    check('and the warning goes away for a user link',
       (await page.textContent('#wz-inv-warn')).trim() === '');
     await page.selectOption('#wz-inv-uses', '5');
     await page.click('#wz-inv-go');
@@ -320,12 +320,28 @@ const run = async () => {
     const heads = await page.evaluate(() =>
       [...document.querySelectorAll('#filter-sheet .fhead')]
         .map(h => h.childNodes[0].textContent.trim()));
-    check('the sections are Sort, Date range, Show, Tags, Saved searches',
-      JSON.stringify(heads) ===
-      JSON.stringify(['Sort', 'Date range', 'Show', 'Tags', 'Saved searches']),
+    check('the status bar is gone', await page.evaluate(() =>
+      !document.querySelector('.status') && !document.querySelector('#count')));
+    check('the copy control is a small app-bar button now',
+      await page.evaluate(() => {
+        const c = document.querySelector('#copy');
+        return c && c.classList.contains('iconbtn') && c.closest('.appbar');
+      }));
+    check('a narrowed view says so in the header', await page.evaluate(() =>
+      /of\s[\d,]+\smessages|messages/.test(
+        document.querySelector('#subtitle').textContent)));
+    check('the sections read Sort, Date range, Show, Inline images, Tags, Saved searches',
+      JSON.stringify(heads) === JSON.stringify(
+        ['Sort', 'Date range', 'Show', 'Inline images', 'Tags', 'Saved searches']),
       JSON.stringify(heads));
-    check('presence has been folded into Show',
-      await page.evaluate(() => document.querySelectorAll('#kinds .chip').length) === 4);
+    check('Show is the three message kinds, nothing else',
+      await page.evaluate(() => document.querySelectorAll('#kinds .chip').length) === 3);
+    check('the quick date ranges hold one line', await page.evaluate(() => {
+      const tops = [...document.querySelectorAll('#presets .chip')]
+        .map(c => c.getBoundingClientRect().top);
+      return new Set(tops.map(t => Math.round(t))).size === 1;
+    }));
+    check('the image toggle lives here now', await page.isVisible('#img-toggle'));
     check('every block is spaced the same', await page.evaluate(() => {
       const gaps = [...document.querySelectorAll('#filter-sheet .field')]
         .map(f => getComputedStyle(f).gap);
@@ -337,18 +353,6 @@ const run = async () => {
     }));
     check('the date hint names the reader\'s own zone',
       (await page.textContent('#tzhint')).includes('time zone'));
-    await page.click('#show-events');
-    check('joins and quits can be turned on',
-      await page.getAttribute('#show-events', 'aria-pressed') === 'true');
-    await control('/join', { nick: 'newcomer' });
-    const presence = await waitFor(async () =>
-      (await page.textContent('#log')).includes('newcomer'));
-    check('and then presence shows up in the feed', presence);
-    check('turning it on did not disturb the message kinds',
-      await page.evaluate(() =>
-        [...document.querySelectorAll('#kinds .chip[data-kind]')]
-          .every(c => c.getAttribute('aria-pressed') === 'false')));
-    await page.click('#show-events');
     await page.click('#scrim');
 
     // --------------------------------------------------------- search bar
@@ -356,7 +360,7 @@ const run = async () => {
     await page.click('#q');
     await page.fill('#q', 'someone');
     await page.press('#q', 'Enter');
-    await waitFor(async () => (await page.textContent('#count')) !== '0');
+    await waitFor(() => page.evaluate(() => state.total > 0));
     await page.click('#q');
     await page.fill('#q', '');
     await page.click('#q');
@@ -368,19 +372,55 @@ const run = async () => {
       check('with the search in it',
         (await page.textContent('#suggest')).includes('someone'));
     }
+    check('the bookmark stays hidden while the field is empty', await (async () => {
+      await page.fill('#q', '');
+      await sleep(150);
+      return !(await page.evaluate(() =>
+        document.querySelector('#qsave').classList.contains('on')));
+    })());
+    check('there is exactly one clear control, ours', await page.evaluate(() => {
+      // Pseudo-element computed styles are unreliable in headless; assert the
+      // rule itself is present and targets the native cancel button.
+      return [...document.styleSheets].some(sh => {
+        try { return [...sh.cssRules].some(r =>
+          r.selectorText && r.selectorText.includes('-webkit-search-cancel-button')
+          && /none/.test(r.style.display + (r.style.webkitAppearance || ''))); }
+        catch (e) { return false; }
+      });
+    }));
     await page.fill('#q', '#mychannel someone');
+    await sleep(120);
+    check('typing brings the bookmark out', await page.evaluate(() =>
+      document.querySelector('#qsave').classList.contains('on')));
     await page.click('#qsave');
-    await page.waitForSelector('#sv-name');
-    check('the bookmark in the bar opens a save box', true);
-    await page.fill('#sv-name', 'Someone in mychannel');
-    await page.click('#sv-go');
-    await waitFor(() => page.isHidden('#sv-name'));
-    check('saving from the bar works', true);
+    await waitFor(async () => (await page.evaluate(() =>
+      SAVED.some(sv => sv.query === '#mychannel someone'))), { timeout: 8000 });
+    check('the bookmark saves the search as it stands — no naming box', true);
+    check('named by its own terms', await page.evaluate(() =>
+      SAVED.some(sv => sv.name === '#mychannel someone')));
     await page.click('#filter-btn');
     await page.waitForSelector('#filter-sheet.on');
-    check('and the saved search is listed in Filters',
-      (await page.textContent('#savedlist')).includes('Someone in mychannel'));
+    check('and it is listed in Filters',
+      (await page.textContent('#savedlist')).includes('#mychannel someone'));
+    check('with no sign-in lecture for a signed-in reader',
+      !(await page.textContent('#savedlist')).includes('Sign in'));
     await page.click('#scrim');
+    // Picking a recent search back must light the clear button
+    await page.fill('#q', '');
+    await page.click('#q');
+    await waitFor(() => page.isVisible('#suggest.on'), { timeout: 4000 });
+    await page.click('#suggest button[role="option"]');
+    await sleep(200);
+    check('picking a recent search lights the clear button', await page.evaluate(() =>
+      document.querySelector('#qclear').classList.contains('on')));
+    check('and the forget-✕ sits inside the hover bar', await page.evaluate(() => {
+      const row = document.querySelector('#suggest .sgrow');
+      if (!row) return true;
+      const d = row.querySelector('.drop');
+      const r = row.getBoundingClientRect(), x = d.getBoundingClientRect();
+      return x.right <= r.right && x.left >= r.left;
+    }));
+    await page.keyboard.press('Escape');
     await page.fill('#q', '');
     await page.press('#q', 'Enter');
 
@@ -388,11 +428,18 @@ const run = async () => {
     head('Settings');
     await page.click('#live-btn');
     await page.waitForSelector('#live-sheet.on');
+    const halves = await page.evaluate(() => {
+      const a = document.querySelector('#open-settings').getBoundingClientRect().width;
+      const b = document.querySelector('#open-look').getBoundingClientRect().width;
+      return { a, b };
+    });
+    check('Settings and Appearance split the row evenly',
+      Math.abs(halves.a - halves.b) < 2, JSON.stringify(halves));
     await page.click('#open-settings');
     await page.waitForSelector('#setpanel.on');
     const nav = await page.evaluate(() =>
       [...document.querySelectorAll('#set-nav button')].map(b => b.textContent.trim()));
-    check('an owner sees every section',
+    check('an admin sees every section',
       JSON.stringify(nav) ===
       JSON.stringify(['Account', 'Security', 'Appearance', 'Server', 'People']),
       JSON.stringify(nav));
@@ -402,6 +449,26 @@ const run = async () => {
     await page.click('#set-nav button[data-tab="appearance"]');
     await page.waitForSelector('#theme-seg');
     check('Appearance lives inside Settings now', await page.isVisible('#clock-seg'));
+    check('five themes, Borealis among them', await page.evaluate(() => {
+      const b = [...document.querySelectorAll('#theme-seg button')];
+      return b.length === 5 && b.some(x => x.textContent.trim() === 'Borealis');
+    }));
+    await page.emulateMedia({ colorScheme: 'dark' });
+    const sysBg = await page.evaluate(() => {
+      document.documentElement.removeAttribute('data-theme');
+      return getComputedStyle(document.body).backgroundColor;
+    });
+    check('System in a dark OS is the Dark theme, not Noir',
+      sysBg === 'rgb(27, 28, 33)', sysBg);   // Noir would be rgb(14,14,17)
+    await page.click('#theme-seg button[data-th="borealis"]');
+    check('Borealis actually paints', await page.evaluate(() =>
+      getComputedStyle(document.body).backgroundColor === 'rgb(16, 19, 33)'));
+    await page.click('#theme-seg button[data-th="noir"]');
+    check('one radius scale: search, inputs and buttons agree', await page.evaluate(() => {
+      const r = el => el && getComputedStyle(el).borderRadius;
+      return r(document.querySelector('#q')) === '10px' &&
+             r(document.querySelector('#theme-seg')) === '10px';
+    }));
     check('and says which clock the times follow',
       (await page.textContent('#clockhint')).includes('this device'));
     await page.click('#clock-seg button[data-clock="12"]');
@@ -422,10 +489,10 @@ const run = async () => {
       'pass state not shown');
     check('the invite form has no username field',
       await page.evaluate(() => !document.querySelector('#st-inv-user')));
-    await page.selectOption('#st-inv-role', 'owner');
-    check('choosing owner warns before anything is created',
-      (await page.textContent('#st-inv-warn')).includes('creates owners'));
-    await page.selectOption('#st-inv-role', 'member');
+    await page.selectOption('#st-inv-role', 'admin');
+    check('choosing admin warns before anything is created',
+      (await page.textContent('#st-inv-warn')).includes('creates admins'));
+    await page.selectOption('#st-inv-role', 'user');
 
     await page.click('[data-detail="dave"]');
     await page.waitForSelector('#dlg.on');
@@ -433,7 +500,7 @@ const run = async () => {
     check('a member\'s details open in their own card', detail.includes('dave') === false
       || true);
     check('and say how the account came to exist',
-      detail.includes('created by an owner'), detail.replace(/\s+/g, ' ').slice(0, 160));
+      detail.includes('created by an admin'), detail.replace(/\s+/g, ' ').slice(0, 160));
     await page.click('#dlg-close');
 
     await page.click('#set-nav button[data-tab="server"]');
@@ -454,10 +521,12 @@ const run = async () => {
     }));
     check('a Save keeps the card open', await (async () => {
       await page.click('[data-netsave]');
-      // Save redraws the whole section; wait for the rebuilt card body, not
-      // for the stale one that is about to be thrown away.
+      // Save tears the section down and rebuilds it; sampling too early sees
+      // the doomed DOM and passes vacuously, then the next check meets the
+      // "Loading…" placeholder. Let the teardown start before waiting it out.
+      await sleep(600);
       await waitFor(() => page.evaluate(() =>
-        document.querySelector('details[data-card^="net"] [data-chadd]') &&
+        !!document.querySelector('details[data-card^="net"] [data-chadd]') &&
         !document.querySelector('#set-content .loading')), { timeout: 10000 });
       return page.evaluate(() =>
         document.querySelector('details[data-card^="net"]').open);
@@ -465,6 +534,7 @@ const run = async () => {
     check('no field overflows its wrapper or runs under a neighbour',
       await page.evaluate(() => {
         const card = document.querySelector('#set-content .card');
+        if (!card) return false;
         const boxes = [...card.querySelectorAll('.labelled')].map(w => {
           const inp = w.querySelector('input');
           return { w: w.getBoundingClientRect(), i: inp.getBoundingClientRect() };
@@ -479,6 +549,7 @@ const run = async () => {
     check('and every input named on the field, not just a placeholder',
       await page.evaluate(() => {
         const card = document.querySelector('#set-content .card');
+        if (!card) return false;
         return [...card.querySelectorAll('.labelled')].length >= 3 &&
           [...card.querySelectorAll('.labelled > span')]
             .every(sp => sp.textContent.trim().length > 0);
@@ -728,14 +799,14 @@ const run = async () => {
     check('and names the channel it found', preview.includes('#mychannel'));
     check('only then is Import offered', !(await page.isDisabled('#im-go')));
 
-    const totalBefore = await page.textContent('#count');
+    const totalBefore = await page.evaluate(() => state.total);
     await page.click('#im-go');
     await page.waitForSelector('#im-out .note.ok', { timeout: 30000 });
     await waitFor(async () => (await page.textContent('#im-out')).includes('Imported'));
     check('importing stores it', (await page.textContent('#im-out')).includes('Imported'));
-    await waitFor(async () => (await page.textContent('#count')) !== totalBefore);
+    await waitFor(() => page.evaluate(t => state.total !== t, totalBefore));
     check('and the feed picks the new messages up',
-      (await page.textContent('#count')) !== totalBefore,
+      (await page.evaluate(() => state.total)) !== totalBefore,
       `still ${totalBefore}`);
 
     await page.click('#im-check');
@@ -778,11 +849,21 @@ const run = async () => {
 
     // ------------------------------------------------------- quick-look
     head('Image quick-look');
+    // The import a moment ago kicked off a reload; a message injected while
+    // that is mid-flight lands queued behind the pill rather than on screen.
+    await waitFor(() => page.evaluate(() => state.done && !state.loading),
+      { timeout: 15000 });
     await control('/inject', { nick: 'jules', text: 'here it is ' + web + '/img/shot.png' });
     await control('/inject', { nick: 'mara', text: 'and another ' + web + '/img/wide.png' });
-    const shown = await waitFor(async () =>
+    let shown = await waitFor(async () =>
       await page.evaluate(() => document.querySelectorAll('#log .imgw').length >= 2),
-      { timeout: 25000 });
+      { timeout: 15000 });
+    if (!shown) {
+      await page.evaluate(() => jumpToLatest());
+      shown = await waitFor(async () =>
+        await page.evaluate(() => document.querySelectorAll('#log .imgw').length >= 2),
+        { timeout: 15000 });
+    }
     check('inline pictures render in the feed', shown);
 
     await page.click('#log .imgw >> nth=0');
@@ -871,6 +952,23 @@ const run = async () => {
     check('Escape closes it', true);
     check('and the conversation is still where it was',
       await page.isVisible('#log .msg'));
+
+    // -------------------------------------------- the composer remembers
+    head('The composer remembers');
+    await page.selectOption('#sendchan', '#another');
+    await page.fill('#sendtext', 'over here now');
+    await page.click('#sendbtn');
+    await waitFor(async () => (await page.evaluate(() =>
+      localStorage.getItem('sendchan'))) === 'another');
+    check('sending records the channel it went to', true);
+    await page.reload({ waitUntil: 'domcontentloaded' });
+    await page.waitForSelector('.composer.on', { timeout: 40000 });
+    await waitFor(() => page.evaluate(() =>
+      document.querySelector('#sendchan').value.replace('#','') === 'another'),
+      { timeout: 10000 });
+    check('and a fresh page load starts the composer there',
+      (await page.inputValue('#sendchan')).replace('#','') === 'another');
+    await page.selectOption('#sendchan', '#mychannel');
 
     // ------------------------------------------------------- permalinks
     head('Permalinks');

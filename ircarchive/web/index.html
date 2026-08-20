@@ -25,17 +25,19 @@
 :root[data-theme="noir"],:root[data-theme="dark"],
 :root:not([data-theme]) { color-scheme:light }
 
-/* --- noir: near black, the original look --- */
+/* --- System in a dark OS follows the Dark theme. Noir is the near-black
+       look, and stays an explicit choice rather than what "match my system"
+       quietly hands you. --- */
 @media (prefers-color-scheme:dark){:root:not([data-theme]){
   color-scheme:dark;
-  --bg:#0e0e11; --surface:#16161b; --raised:#1e1e25; --sunken:#232330;
-  --line:#2a2a33; --line-soft:#22222a;
-  --fg:#eaeaef; --fg-2:#a6a6b2; --fg-3:#70707e;
-  --accent:#5b9dff; --accent-fg:#0b1220;
-  --mark:#6d5400; --mark-fg:#ffe9a3;
-  --danger:#ff6b5e; --ok:#4ade80;
-  --shadow:0 1px 2px rgba(0,0,0,.4), 0 10px 30px rgba(0,0,0,.45);
-  --scroll:#3b3b47; --scroll-hover:#51515f;
+  --bg:#1b1c21; --surface:#23242a; --raised:#2c2d35; --sunken:#32333d;
+  --line:#3a3b45; --line-soft:#2e2f38;
+  --fg:#e9eaee; --fg-2:#adaeba; --fg-3:#7b7c8a;
+  --accent:#6ea8ff; --accent-fg:#0d1626;
+  --mark:#7a5f00; --mark-fg:#ffeeb0;
+  --danger:#ff7468; --ok:#57d98b;
+  --shadow:0 1px 2px rgba(0,0,0,.35), 0 12px 32px rgba(0,0,0,.4);
+  --scroll:#474854; --scroll-hover:#5c5d6b;
 }}
 :root[data-theme="noir"]{
   color-scheme:dark;
@@ -62,6 +64,21 @@
   --scroll:#474854; --scroll-hover:#5c5d6b;
 }
 
+/* --- borealis: the house theme. Deep indigo night for the sky, a soft
+       blurple accent - the sort of dark that Discord and VS Code taught
+       everyone to feel at home in, wearing aurora colours. --- */
+:root[data-theme="borealis"]{
+  color-scheme:dark;
+  --bg:#101321; --surface:#171b2e; --raised:#1f2440; --sunken:#262c4b;
+  --line:#2e3557; --line-soft:#252b49;
+  --fg:#e9ecfa; --fg-2:#a8afd3; --fg-3:#7079a4;
+  --accent:#8b9dff; --accent-fg:#0b0e1e;
+  --mark:#6b5a10; --mark-fg:#ffe9a3;
+  --danger:#ff7a8a; --ok:#4fd8a7;
+  --shadow:0 1px 2px rgba(4,6,18,.5), 0 12px 34px rgba(4,6,18,.5);
+  --scroll:#39406a; --scroll-hover:#4d5588;
+}
+
 /* Derived from --accent last, so setting a custom accent updates every tint
    without having to hand-pick a matching soft colour. */
 :root{--accent-soft:color-mix(in srgb, var(--accent) 16%, var(--surface))}
@@ -81,7 +98,7 @@ body.has-bg::after{
 }
 /* Let the image show through the reading area; panels stay solid for contrast */
 body.has-bg .feed,body.has-bg #log{background:transparent}
-body.has-bg .appbar,body.has-bg aside,body.has-bg .composer,body.has-bg .status,
+body.has-bg .appbar,body.has-bg aside,body.has-bg .composer,
 body.has-bg .strip{background:color-mix(in srgb,var(--surface) 88%,transparent)}
 
 /* Anonymous view: personalisation and management simply are not there. The
@@ -165,21 +182,29 @@ button{border:0;background:none;cursor:pointer}
   background:var(--sunken);border:1px solid transparent;font-size:16px;
 }
 #q::placeholder{color:var(--fg-3)}
+/* type=search grows a native clear button in WebKit - a second ✕ beside ours */
+#q::-webkit-search-cancel-button,#q::-webkit-search-decoration{
+  -webkit-appearance:none;appearance:none;display:none}
 #q:focus{outline:none;border-color:var(--accent);background:var(--surface)}
 #qsave:hover,#qclear:hover{background:var(--raised);color:var(--fg)}
 
 /* @nick autocomplete */
 #suggest{
   display:none;position:absolute;top:calc(100% - 2px);left:0;right:0;z-index:35;
-  background:var(--surface);border:1px solid var(--line);border-radius:12px;
+  background:var(--surface);border:1px solid var(--line);border-radius:14px;
   box-shadow:var(--shadow);overflow:hidden;max-height:280px;overflow-y:auto
 }
 #suggest.on{display:block}
-#suggest button{
+/* Only the option rows get row styling. A bare `#suggest button` also caught
+   the Clear control in the heading and stretched it into a full-width bar. */
+#suggest button[role="option"]{
   display:flex;align-items:center;gap:9px;width:100%;padding:8px 11px;text-align:left;
   min-height:44px
 }
-#suggest button:hover,#suggest button.sel{background:var(--accent-soft)}
+#suggest > button[role="option"]:hover,#suggest button.sel{background:var(--accent-soft)}
+/* History rows: the highlight lives on the whole row - forget-✕ included -
+   so the accent runs the full width instead of stopping short of the ✕. */
+#suggest .sgrow:hover,#suggest .sgrow:has(button.sel){background:var(--accent-soft)}
 #suggest .nm{flex:1;font-size:14px;font-weight:540}
 #suggest .ct{font-size:12px;color:var(--fg-3);font-variant-numeric:tabular-nums}
 
@@ -226,7 +251,7 @@ aside{
 /* These are classes, not ids: the panel is rendered twice (sidebar + sheet).
    As ids the overflow rule silently stopped applying and the list grew the
    whole page instead of scrolling inside itself. */
-.nickfilter{height:34px;padding:0 10px;border-radius:9px;background:var(--sunken);
+.nickfilter{height:34px;padding:0 10px;border-radius:8px;background:var(--sunken);
   border:1px solid transparent;font-size:16px;width:100%}
 .nickfilter:focus{outline:none;border-color:var(--accent);background:var(--surface)}
 .nicksort{height:30px;border:0;background:none;color:var(--accent);font-size:13px;
@@ -235,7 +260,7 @@ aside{
 .taglist{max-height:min(46vh,340px);overflow-y:auto}
 /* Inside a panel the list is a card, so its edge lines up with the heading
    above it rather than the rows floating in from an inset of their own. */
-.sheet .taglist,.panel .taglist{background:var(--raised);border-radius:12px;padding:4px}
+.sheet .taglist,.panel .taglist{background:var(--raised);border-radius:14px;padding:5px}
 .person{
   display:flex;align-items:center;gap:9px;padding:7px 9px;border-radius:10px;
   cursor:pointer;min-height:40px;
@@ -379,13 +404,6 @@ mark{background:var(--mark);color:var(--mark-fg);border-radius:3px;padding:0 2px
 .empty b{display:block;color:var(--fg-2);font-size:15px;margin-bottom:5px}
 .loading{padding:16px;text-align:center;color:var(--fg-3);font-size:13px}
 
-/* status line */
-.status{
-  display:flex;align-items:center;gap:10px;padding:5px 12px;font-size:12.5px;
-  color:var(--fg-3);background:var(--surface);border-bottom:1px solid var(--line)
-}
-.status b{color:var(--fg-2);font-variant-numeric:tabular-nums;font-weight:600}
-
 /* send feedback + jump-to-latest */
 .sendstatus{
   display:none;padding:6px 14px;font-size:12.5px;color:var(--fg-2);
@@ -421,7 +439,7 @@ mark{background:var(--mark);color:var(--mark-fg);border-radius:3px;padding:0 2px
   background:linear-gradient(to bottom,transparent,var(--bg));
 }
 .composer select{
-  height:42px;border-radius:12px;background:var(--sunken);
+  height:42px;border-radius:10px;background:var(--sunken);
   border:1px solid var(--line);padding:0 10px;font-size:14px;max-width:140px;flex:none
 }
 /* One rounded field holding the text and the send button, so they read as a
@@ -499,6 +517,10 @@ mark{background:var(--mark);color:var(--mark-fg);border-radius:3px;padding:0 2px
   text-underline-offset:3px}
 .dates{display:flex;gap:8px}
 .dates input{flex:1;min-width:0}
+/* The quick ranges are one row of equal chips. Left to wrap, "All" ended up
+   alone on a second line looking like a lost button. */
+#presets{flex-wrap:nowrap}
+#presets .chip{flex:1 1 0;min-width:0;padding:0 6px;justify-content:center}
 /* Mixed input+select+button rows. Without a real basis the text field
    collapses to zero width once the select and button take their space -
    it reads as an empty circle you cannot type into. */
@@ -514,7 +536,7 @@ mark{background:var(--mark);color:var(--mark-fg);border-radius:3px;padding:0 2px
 .seg button{flex:1;height:34px;border-radius:8px;font-size:13.5px;font-weight:540;color:var(--fg-2)}
 .seg button[aria-pressed="true"]{background:var(--surface);color:var(--fg);box-shadow:0 1px 3px rgba(0,0,0,.1)}
 .btn{
-  height:44px;border-radius:11px;background:var(--accent);color:var(--accent-fg);
+  height:44px;border-radius:10px;background:var(--accent);color:var(--accent-fg);
   font-weight:620;font-size:15px;width:100%;display:grid;place-items:center
 }
 .btn.ghost{background:var(--raised);color:var(--fg)}
@@ -630,7 +652,6 @@ input[type=color]{flex:1;height:42px;padding:3px;border-radius:10px;
   /* Only the reading column is capped. The composer, its fade and the status
      bar span the full width - inset, they read as a cut-off panel. */
   #log .msg,#log .daysep{max-width:var(--feed-max);margin-inline:auto}
-  .status>*:first-child{padding-left:max(0px,calc((100% - var(--feed-max))/2))}
   .strip{padding-inline:max(12px,calc((100% - var(--feed-max))/2))}
   /* keep the field itself aligned with the text column, without boxing the bar */
   .composer{padding-inline:max(12px,calc((100% - var(--feed-max))/2))}
@@ -658,7 +679,7 @@ input[type=color]{flex:1;height:42px;padding:3px;border-radius:10px;
 .tagrow .ct{font-size:12px;color:var(--fg-3);font-variant-numeric:tabular-nums}
 /* Always in the layout, revealed by opacity: appearing via display: it
    shoved the count sideways every time the pointer crossed the row. */
-.tagrow .del{width:26px;height:26px;border-radius:7px;display:grid;place-items:center;
+.tagrow .del{width:26px;height:26px;border-radius:8px;display:grid;place-items:center;
   color:var(--fg-3);font-size:16px;line-height:1;opacity:0;pointer-events:none}
 .tagrow:hover .del,.tagrow .del:focus-visible{opacity:1;pointer-events:auto}
 @media (hover:none){.tagrow .del{opacity:.7;pointer-events:auto}}
@@ -683,7 +704,7 @@ input[type=color]{flex:1;height:42px;padding:3px;border-radius:10px;
 .row input.inline:hover{background:var(--sunken)}
 .row input.inline:focus{outline:none;background:var(--surface);border-color:var(--accent)}
 .row select.tagcolor{
-  flex:none;height:32px;max-width:104px;padding:0 8px;border-radius:9px;
+  flex:none;height:32px;max-width:104px;padding:0 8px;border-radius:8px;
   background:var(--sunken);border:1px solid var(--line);font-size:13px;
 }
 .row select.tagcolor:focus{outline:none;border-color:var(--accent)}
@@ -694,7 +715,7 @@ input[type=color]{flex:1;height:42px;padding:3px;border-radius:10px;
 /* tag picker popover */
 #picker{
   position:fixed;z-index:60;width:250px;max-height:340px;overflow-y:auto;
-  background:var(--surface);border:1px solid var(--line);border-radius:13px;
+  background:var(--surface);border:1px solid var(--line);border-radius:14px;
   box-shadow:var(--shadow);padding:6px;display:none
 }
 #picker.on{display:block}
@@ -722,12 +743,12 @@ input[type=color]{flex:1;height:42px;padding:3px;border-radius:10px;
 @media (hover:hover) and (pointer:fine){
   .rowact{
     position:absolute;top:-13px;right:14px;display:none;gap:2px;padding:2px;
-    background:var(--surface);border:1px solid var(--line);border-radius:9px;
+    background:var(--surface);border:1px solid var(--line);border-radius:10px;
     box-shadow:var(--shadow);z-index:3
   }
   .msg:hover .rowact{display:flex}
   .rowact button{
-    width:28px;height:28px;border-radius:7px;display:grid;place-items:center;color:var(--fg-2)
+    width:28px;height:28px;border-radius:8px;display:grid;place-items:center;color:var(--fg-2)
   }
   .rowact button:hover{background:var(--raised);color:var(--fg)}
   .rowact svg{width:15px;height:15px;stroke:currentColor;fill:none;stroke-width:1.9;
@@ -774,7 +795,7 @@ input[type=color]{flex:1;height:42px;padding:3px;border-radius:10px;
 .fhead.plain .linkbtn{font-size:13px}
 .field .hint{font-size:12.5px;color:var(--fg-3);line-height:1.5;margin:0}
 .field input,.field select,.field textarea{
-  height:var(--ctl);padding:0 13px;border-radius:11px;background:var(--sunken);
+  height:var(--ctl);padding:0 13px;border-radius:10px;background:var(--sunken);
   border:1px solid var(--line);font-size:16px;width:100%
 }
 .field input:focus,.field select:focus,.field textarea:focus{
@@ -794,7 +815,7 @@ input[type=color]{flex:1;height:42px;padding:3px;border-radius:10px;
 .formrow{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
 .formrow input,.formrow select{
   flex:1 1 170px;min-width:140px;height:var(--ctl);padding:0 13px;
-  border-radius:11px;background:var(--sunken);border:1px solid var(--line);font-size:16px
+  border-radius:10px;background:var(--sunken);border:1px solid var(--line);font-size:16px
 }
 .formrow select{flex:1 1 130px;width:auto;min-width:120px;font-size:14px;
   padding-right:8px}
@@ -807,6 +828,10 @@ input[type=color]{flex:1;height:42px;padding:3px;border-radius:10px;
 
 .dates{display:flex;gap:8px}
 .dates input{flex:1;min-width:0}
+/* The quick ranges are one row of equal chips. Left to wrap, "All" ended up
+   alone on a second line looking like a lost button. */
+#presets{flex-wrap:nowrap}
+#presets .chip{flex:1 1 0;min-width:0;padding:0 6px;justify-content:center}
 
 /* ---- chips ---- */
 .chips{display:flex;gap:8px;flex-wrap:wrap}
@@ -826,8 +851,9 @@ input[type=color]{flex:1;height:42px;padding:3px;border-radius:10px;
 .chip[aria-pressed="true"] .dotm{opacity:1}
 
 /* ---- segmented control ---- */
-.seg{display:flex;background:var(--sunken);border-radius:11px;padding:3px;gap:3px;
-  border:1px solid var(--line-soft)}
+.seg{display:flex;flex-wrap:wrap;background:var(--sunken);border-radius:10px;
+  padding:3px;gap:3px;border:1px solid var(--line-soft)}
+.seg button{flex:1 1 auto;min-width:72px}
 .seg button{flex:1;height:34px;border-radius:8px;font-size:13.5px;font-weight:560;
   color:var(--fg-2);white-space:nowrap;padding:0 10px}
 .seg button:hover{color:var(--fg)}
@@ -836,16 +862,21 @@ input[type=color]{flex:1;height:42px;padding:3px;border-radius:10px;
 
 /* ---- buttons ---- */
 .btn{
-  height:var(--ctl);border-radius:12px;background:var(--accent);color:var(--accent-fg);
+  height:var(--ctl);border-radius:10px;background:var(--accent);color:var(--accent-fg);
   font-weight:620;font-size:15px;width:100%;display:inline-grid;place-items:center;
   padding:0 16px;transition:filter .12s,opacity .12s;
+  /* Every button carries the same 1px border, transparent when unwanted. In a
+     flex row with basis 0 the border is part of the starting size, so a ghost
+     next to a solid button was born 2px wider - the lopsided
+     Settings | Appearance split. */
+  border:1px solid transparent;
 }
 .btn:hover:not(:disabled){filter:brightness(1.06)}
 .btn.ghost{background:var(--raised);color:var(--fg);border:1px solid var(--line-soft)}
 .btn.ghost:hover:not(:disabled){background:var(--sunken)}
 .btn.danger{background:color-mix(in srgb,var(--danger) 15%,transparent);color:var(--danger);
   border:1px solid color-mix(in srgb,var(--danger) 30%,transparent)}
-.btn.sm{height:var(--ctl-sm);font-size:13.5px;border-radius:9px;padding:0 14px;width:auto}
+.btn.sm{height:var(--ctl-sm);font-size:13.5px;border-radius:8px;padding:0 14px;width:auto}
 .btn.auto{width:auto}
 .btn.fill{width:auto;flex:1 1 auto}
 label.btn{cursor:pointer}
@@ -856,11 +887,13 @@ label.btn{cursor:pointer}
   white-space:pre-wrap;overflow-wrap:anywhere}
 .btn:disabled{opacity:.45;cursor:default}
 .btnrow{display:flex;gap:8px;flex-wrap:wrap}
-.btnrow .btn{width:auto;flex:1 1 auto}
+/* flex-basis 0, not auto: with auto the longer caption claimed more width
+   and "Settings | Appearance" was visibly lopsided. */
+.btnrow .btn{width:auto;flex:1 1 0;min-width:0}
 
 /* ---- list rows: one shape for saved searches, people, keys, devices ---- */
 .row{
-  display:flex;align-items:center;gap:10px;padding:9px 11px;border-radius:11px;
+  display:flex;align-items:center;gap:10px;padding:9px 11px;border-radius:10px;
   background:var(--raised);min-height:46px;
 }
 .row + .row{margin-top:8px}
@@ -874,7 +907,7 @@ label.btn{cursor:pointer}
 .row .sub2 code{font-family:var(--mono);font-size:11.5px}
 .row .act{display:flex;gap:4px;flex:none}
 .row .iconact{
-  width:32px;height:32px;border-radius:9px;display:grid;place-items:center;
+  width:32px;height:32px;border-radius:8px;display:grid;place-items:center;
   color:var(--fg-3);flex:none;transition:background .12s,color .12s;
 }
 .row .iconact:hover{background:var(--surface);color:var(--fg)}
@@ -893,11 +926,11 @@ label.btn{cursor:pointer}
 .pill.accent{background:var(--accent-soft);color:var(--accent);
   border-color:color-mix(in srgb,var(--accent) 30%,transparent)}
 .empty-row{padding:14px 12px;text-align:center;color:var(--fg-3);font-size:13px;
-  background:var(--raised);border-radius:11px}
+  background:var(--raised);border-radius:10px}
 
 /* ---- notes ---- */
 .note{font-size:13.5px;color:var(--fg-2);background:var(--raised);padding:12px 14px;
-  border-radius:12px;line-height:1.55;border:1px solid var(--line-soft)}
+  border-radius:14px;line-height:1.55;border:1px solid var(--line-soft)}
 .note.err{background:color-mix(in srgb,var(--danger) 12%,transparent);color:var(--danger);
   border-color:color-mix(in srgb,var(--danger) 26%,transparent)}
 .note.ok{background:color-mix(in srgb,var(--ok) 12%,transparent);color:var(--ok);
@@ -1004,7 +1037,7 @@ label.btn{cursor:pointer}
   font-variant-numeric:tabular-nums}
 .wizhero{display:flex;flex-direction:column;gap:14px;align-items:flex-start}
 .wizmark{
-  width:52px;height:52px;border-radius:15px;display:grid;place-items:center;
+  width:52px;height:52px;border-radius:14px;display:grid;place-items:center;
   background:var(--accent-soft);color:var(--accent);flex:none;
 }
 .wizmark svg{width:26px;height:26px;stroke:currentColor;fill:none;stroke-width:1.8;
@@ -1013,7 +1046,7 @@ label.btn{cursor:pointer}
   font-weight:620;text-transform:uppercase;letter-spacing:.08em}
 .orline::before,.orline::after{content:'';flex:1;height:1px;background:var(--line-soft)}
 .summary{display:flex;flex-direction:column;gap:0;border:1px solid var(--line-soft);
-  border-radius:13px;overflow:hidden;background:var(--raised)}
+  border-radius:14px;overflow:hidden;background:var(--raised)}
 .summary .kv{display:flex;align-items:baseline;gap:12px;padding:11px 14px;font-size:14px}
 .summary .kv + .kv{border-top:1px solid var(--line-soft)}
 .summary .kv .k{flex:0 0 40%;max-width:190px;color:var(--fg-3);font-size:13px}
@@ -1024,7 +1057,7 @@ label.btn{cursor:pointer}
 .copyfield{display:flex;gap:8px;align-items:stretch}
 .copyfield code{
   flex:1;min-width:0;background:var(--sunken);border:1px solid var(--line);
-  border-radius:11px;padding:11px 13px;font:12.5px/1.4 var(--mono);
+  border-radius:10px;padding:11px 13px;font:12.5px/1.4 var(--mono);
   word-break:break-all;color:var(--fg);
 }
 .copyfield .btn{flex:0 0 auto;width:auto;padding:0 16px;height:auto}
@@ -1039,7 +1072,7 @@ label.btn{cursor:pointer}
   position:fixed;z-index:90;pointer-events:none;opacity:0;
   transform:translateY(3px);transition:opacity .1s,transform .1s;
   background:var(--fg);color:var(--bg);font-size:12px;font-weight:560;
-  padding:5px 9px;border-radius:7px;white-space:nowrap;max-width:80vw;
+  padding:5px 9px;border-radius:8px;white-space:nowrap;max-width:80vw;
   overflow:hidden;text-overflow:ellipsis;box-shadow:var(--shadow);
 }
 #tip.on{opacity:1;transform:translateY(0)}
@@ -1070,23 +1103,28 @@ label.btn{cursor:pointer}
   font-size:11px;font-weight:660;color:var(--fg-3);
   text-transform:uppercase;letter-spacing:.06em;
 }
-#suggest .grouphd .linkbtn{margin-left:auto;text-transform:none;letter-spacing:0}
+#suggest .grouphd .linkbtn{
+  margin-left:auto;text-transform:none;letter-spacing:0;
+  width:auto;min-height:0;display:inline-flex;align-items:center;
+  padding:4px 9px;border-radius:8px;
+}
+#suggest .grouphd .linkbtn:hover{background:var(--accent-soft)}
 #suggest button .sub2{font-size:11.5px;color:var(--fg-3)}
 #suggest .ic{width:16px;height:16px;flex:none;stroke:currentColor;fill:none;
   stroke-width:1.9;stroke-linecap:round;stroke-linejoin:round;color:var(--fg-3)}
 #suggest .drop{
-  width:26px;height:26px;border-radius:7px;display:grid;place-items:center;
-  color:var(--fg-3);font-size:15px;line-height:1;flex:none;opacity:.6
+  width:26px;height:26px;border-radius:8px;display:grid;place-items:center;
+  color:var(--fg-3);font-size:15px;line-height:1;flex:none;
 }
-#suggest button:hover .drop{opacity:1}
-#suggest .drop:hover{background:var(--sunken);color:var(--danger)}
+#suggest .drop:hover{background:color-mix(in srgb,var(--danger) 16%,transparent);
+  color:var(--danger)}
 
 /* =====================================================================
    Message hover actions: labelled, and no longer overlapping the row above
    ===================================================================== */
 @media (hover:hover) and (pointer:fine){
   .rowact{
-    top:-15px;padding:3px;border-radius:11px;gap:1px;
+    top:-15px;padding:3px;border-radius:10px;gap:1px;
   }
   .rowact button{width:30px;height:30px;border-radius:8px}
   .rowact button:hover{background:var(--accent-soft);color:var(--accent)}
@@ -1107,13 +1145,9 @@ label.btn{cursor:pointer}
 /* Search dropdown rows that carry their own delete control */
 .sgrow{display:flex;align-items:center;gap:2px}
 .sgrow > button[role="option"]{flex:1;min-width:0}
-.sgrow .drop{margin-right:6px}
-#suggest .newrow{display:flex;gap:8px;padding:8px 10px 10px;align-items:center}
-#suggest .newrow input{
-  flex:1;min-width:0;height:36px;padding:0 11px;border-radius:9px;
-  background:var(--sunken);border:1px solid var(--line);font-size:16px}
-#suggest .newrow input:focus{outline:none;border-color:var(--accent);background:var(--surface)}
-#suggest .newrow .btn{flex:none}
+.sgrow .drop{margin-right:8px;opacity:0}
+.sgrow:hover .drop,.sgrow .drop:focus-visible{opacity:1}
+@media (hover:none){.sgrow .drop{opacity:.7}}
 
 /* The appearance controls are one node that Settings borrows */
 #look-controls{display:flex;flex-direction:column;gap:var(--gap)}
@@ -1173,7 +1207,7 @@ label.btn{cursor:pointer}
   gap:6px;flex-wrap:wrap;padding:0 2px;
 }
 .lbbtn{
-  height:38px;min-width:38px;padding:0 10px;border-radius:11px;
+  height:38px;min-width:38px;padding:0 10px;border-radius:10px;
   display:inline-flex;align-items:center;justify-content:center;gap:7px;
   color:#ececf2;background:rgba(255,255,255,.09);font-size:13.5px;font-weight:560;
   transition:background .12s,color .12s,opacity .12s;
@@ -1189,7 +1223,7 @@ label.btn{cursor:pointer}
 
 #lightbox .lbnav{
   position:absolute;top:50%;transform:translateY(-50%);z-index:2;
-  width:44px;height:64px;border-radius:12px;display:none;place-items:center;
+  width:44px;height:64px;border-radius:10px;display:none;place-items:center;
   color:#ececf2;background:rgba(255,255,255,.09);
 }
 #lightbox .lbnav:hover{background:rgba(255,255,255,.2)}
@@ -1206,7 +1240,7 @@ label.btn{cursor:pointer}
 
 #lb-menu{
   position:fixed;z-index:66;min-width:230px;max-width:min(320px,92vw);
-  background:var(--surface);border:1px solid var(--line);border-radius:13px;
+  background:var(--surface);border:1px solid var(--line);border-radius:14px;
   box-shadow:var(--shadow);padding:6px;display:none;
 }
 #lb-menu.on{display:block}
@@ -1230,7 +1264,7 @@ label.btn{cursor:pointer}
 /* ---- cards: a network in Server settings is one bounded thing ---- */
 .card{
   background:var(--raised);border:1px solid var(--line-soft);border-radius:14px;
-  padding:14px;display:flex;flex-direction:column;gap:12px;
+  padding:16px;display:flex;flex-direction:column;gap:14px;
 }
 .card .row{background:var(--surface)}
 .card .row .iconact:hover{background:var(--raised)}
@@ -1256,7 +1290,9 @@ details.card > summary:hover .chev{color:var(--fg)}
 .cardhead .rmain .sub2{font-size:12px;color:var(--fg-3);
   overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .cardhead .linkbtn{flex:none}
-.card .hrsoft{height:1px;background:var(--line-soft);margin:2px 0}
+.card .hrsoft{height:1px;background:var(--line-soft);margin:4px 0 2px}
+details.card[open] > summary{margin-bottom:2px}
+.card .minihead{margin-top:2px}
 /* Message slots that hold nothing must not spend a flex gap on it */
 [data-nettestout]:empty,#nn-out:empty,#im-out:empty,#wz-nn-out:empty,
 #st-inv-out:empty,#st-inv-warn:empty,#wz-inv-warn:empty,#tk-out:empty,
@@ -1303,6 +1339,9 @@ details.card > summary:hover .chev{color:var(--fg)}
     <button class="iconbtn" id="filter-btn" data-tip="Filters (F)" aria-label="Filters">
       <svg viewBox="0 0 24 24"><path d="M3 5h18M6 12h12M10 19h4"/></svg>
     </button>
+    <button class="iconbtn" id="copy" data-tip="Copy what's on screen" aria-label="Copy the visible messages">
+      <svg viewBox="0 0 24 24"><rect x="9" y="9" width="11" height="11" rx="2"/><path d="M5 15V5a2 2 0 0 1 2-2h8"/></svg>
+    </button>
     <button class="iconbtn" id="live-btn" data-tip="Account and live connection (L)" aria-label="Account">
       <svg viewBox="0 0 24 24"><path d="M12 2a10 10 0 0 1 10 10"/><path d="M12 8a6 6 0 0 1 6 6"/><circle cx="8" cy="16" r="2.4"/></svg>
       <i class="badge"></i>
@@ -1329,12 +1368,6 @@ details.card > summary:hover .chev{color:var(--fg)}
   <aside class="desktop" id="desktop-aside"></aside>
 
   <section class="feed">
-    <div class="status">
-      <span><b id="count">0</b> messages</span>
-      <span class="grow"></span>
-      <button class="linkbtn" id="copy">Copy</button>
-      <button class="linkbtn" id="theme">Appearance</button>
-    </div>
     <div class="strip" id="strip"></div>
     <div id="log"><div class="loading">Loading…</div></div>
     <button class="newpill" id="newpill">↓ Jump to latest</button>
@@ -1396,11 +1429,17 @@ details.card > summary:hover .chev{color:var(--fg)}
         <button class="chip" data-kind="0" aria-pressed="false"><i class="dotm"></i>Messages</button>
         <button class="chip" data-kind="1" aria-pressed="false"><i class="dotm"></i>Actions</button>
         <button class="chip" data-kind="2" aria-pressed="false"><i class="dotm"></i>Topics</button>
-        <button class="chip" id="show-events" aria-pressed="false"><i class="dotm"></i>Joins &amp; quits</button>
       </div>
-      <div class="hint">With none of the first three on, every kind of message is
-        included. Joins and quits are drawn in alongside conversation — they are
-        never stored as messages, and agents never see them.</div>
+      <div class="hint">Leave all off to include everything.</div>
+    </div>
+
+    <div class="field">
+      <label class="fhead">Inline images</label>
+      <div class="chips">
+        <button class="chip" id="img-toggle" aria-pressed="true"><i class="dotm"></i>Show images</button>
+      </div>
+      <div class="hint">Fetching a picture tells whoever hosts it your IP address.
+        Turn this off to stop that.</div>
     </div>
 
     <div class="field">
@@ -1509,6 +1548,7 @@ details.card > summary:hover .chev{color:var(--fg)}
       <button data-th="light">Light</button>
       <button data-th="dark">Dark</button>
       <button data-th="noir">Noir</button>
+      <button data-th="borealis">Borealis</button>
     </div>
   </div>
   <div class="field">
@@ -1527,14 +1567,6 @@ details.card > summary:hover .chev{color:var(--fg)}
       <button data-clock="12">12-hour</button>
     </div>
     <div class="hint" id="clockhint"></div>
-  </div>
-  <div class="field">
-    <label class="fhead">Inline images</label>
-    <div class="chips">
-      <button class="chip" id="img-toggle" aria-pressed="true"><i class="dotm"></i>Show images</button>
-    </div>
-    <div class="hint">Fetching a picture tells whoever hosts it your IP address.
-      Turn this off to stop that.</div>
   </div>
   <div class="field">
     <label class="fhead">Background</label>
@@ -1602,6 +1634,19 @@ const state = {
   done:false, doneUp:true, loading:false,
 };
 let APPNAME='AuroraIRC';
+/* The status bar is gone; the header subtitle is where the count lives. When
+   a filter narrows the view it says so, rather than repeating the archive
+   total that the search placeholder already carries. */
+function setCount(n){
+  state.total=n;
+  const sub=$('#subtitle');
+  if(!sub||!META)return;
+  const filtered=state.q||state.channels.size||state.nicks.size||state.kinds.size
+    ||state.tags.size||state.from||state.to||state.anchor;
+  sub.textContent=(filtered&&n!==META.total)
+    ? `${fmtN(n)} of ${fmtN(META.total)} messages`
+    : fmtN(META.total)+' messages';
+}
 /* The product name is a setting, not a constant - nothing here is tied
    to any particular network or community. */
 function applyAppName(){
@@ -1619,19 +1664,18 @@ const fmtN = n => n.toLocaleString();
 
 function hue(s){let h=0;for(let i=0;i<s.length;i++)h=(h*31+s.charCodeAt(i))%360;return h}
 /* Evenly spaced hues per channel, so the badges stay distinguishable from each
-   other rather than landing wherever a string hash falls. */
+   other rather than landing wherever a string hash falls. Every generated
+   colour asks isDark() - three copies of the theme test had already drifted
+   apart, each with its own idea of which themes were dark. */
 function chanStyle(name){
   const i=META?META.channels.findIndex(c=>c.name===name):-1;
   const n=META?Math.max(META.channels.length,1):1;
   const h=i<0?hue(name):Math.round((i*360)/n+18);
-  const dark=document.documentElement.getAttribute('data-theme')==='dark'||
-    (matchMedia('(prefers-color-scheme: dark)').matches&&
-     document.documentElement.getAttribute('data-theme')!=='light');
+  const dark=isDark();
   return `--ch-fg:hsl(${h} ${dark?'70% 72%':'62% 34%'});`+
          `--ch-bg:hsl(${h} ${dark?'52% 18%':'70% 94%'})`;
 }
-const nickColor = n => `hsl(${hue(n)} 58% ${document.documentElement.getAttribute('data-theme')==='light'?'38%':
-  (matchMedia('(prefers-color-scheme: dark)').matches && document.documentElement.getAttribute('data-theme')!=='light' ? '68%':'38%')})`;
+const nickColor = n => `hsl(${hue(n)} 58% ${isDark()?'68%':'38%'})`;
 const avatarBg = n => `hsl(${hue(n)} 52% 46%)`;
 
 /* Matches the CSS breakpoint where the sidebar stops being a sheet */
@@ -1639,9 +1683,11 @@ const sidebarPinned = () => matchMedia('(min-width:1000px)').matches;
 
 /* Finder-ish flag palette. Hues chosen to stay legible in both themes. */
 const TAG_HUE={red:2,orange:28,yellow:45,green:145,blue:214,purple:272,pink:330,grey:220};
+const DARK_THEMES=new Set(['dark','noir','borealis']);
 function isDark(){
   const t=document.documentElement.getAttribute('data-theme');
-  return t==='dark'||(t!=='light'&&matchMedia('(prefers-color-scheme: dark)').matches);
+  if(t)return DARK_THEMES.has(t);
+  return matchMedia('(prefers-color-scheme: dark)').matches;
 }
 function tagStyle(color){
   const h=TAG_HUE[color]??TAG_HUE.grey;
@@ -1777,6 +1823,7 @@ function writeQueryBox(nicks,text,chans,tags){
   syncSearchTools();
 }
 function applyQueryBox(){
+  syncSearchTools();   // every path that fills the box lands here
   const {nicks,chans,tags,text}=parseQuery($('#q').value);
   state.nicks=nicks;state.channels=chans;state.tags=tags;state.q=text;
   state.anchor=null;
@@ -1802,12 +1849,10 @@ const ICON_CLOCK=`<svg class="ic" viewBox="0 0 24 24"><circle cx="12" cy="12" r=
 const ICON_STAR=`<svg class="ic" viewBox="0 0 24 24">`+
   `<path d="M6 4h12a1 1 0 0 1 1 1v15l-7-4-7 4V5a1 1 0 0 1 1-1Z"/></svg>`;
 
-let SUGGEST_MODE='';        // '', 'save'
 
 function closeSuggest(){
   const box=$('#suggest');
   box.classList.remove('on');box.innerHTML='';
-  SUGGEST_MODE='';
   $('#q').setAttribute('aria-expanded','false');
 }
 function openSuggest(html){
@@ -1818,7 +1863,6 @@ function openSuggest(html){
 }
 
 function updateSuggest(){
-  if(SUGGEST_MODE==='save')return;
   const {token}=caretToken();
   const sigil=token[0];
   if(META&&'@#&'.includes(sigil)&&token.length>=1)return completeToken(sigil,token);
@@ -1892,39 +1936,19 @@ function drawRecent(){
   openSuggest(html);
 }
 
-/* Saving lives in the bar because that is where the search you want to keep
-   already is. It used to be reachable only from inside the Filters sheet,
-   which meant leaving the thing you were naming to go and name it. */
-function openSaveSearch(){
+/* The bookmark saves the search as it stands, named by its own terms. The
+   old flow opened a naming box in the dropdown; nobody wants to christen a
+   query, they want it kept. */
+async function saveCurrentSearch(){
   if(!SESSION.signedIn)return toast('Sign in to save searches');
-  SUGGEST_MODE='save';
   const q=$('#q').value.trim();
-  const existing=SAVED.find(sv=>(sv.query||'')===q);
-  openSuggest(
-    `<div class="grouphd">${existing?'Update this saved search':'Save this search'}</div>`+
-    `<div class="newrow">
-       <input id="sv-name" maxlength="48" placeholder="Name it, e.g. release chatter"
-              value="${esc(existing?existing.name:'')}" autocomplete="off">
-       <button class="btn sm" id="sv-go" type="button">Save</button>
-     </div>
-     <div class="grouphd">${esc(q||'everything')}</div>`);
-  const name=$('#sv-name');
-  name.focus();name.select();
-  const go=async()=>{
-    const label=name.value.trim();
-    if(!label)return name.focus();
-    const r=await post('/api/searches',
-      {name:label,query:q,extra:currentSearchState()});
-    if(r.error)return toast(r.error);
-    SAVED=r.searches||[];drawSaved();closeSuggest();
-    $('#qsave').classList.add('saved');
-    toast('Saved');
-  };
-  $('#sv-go').onclick=go;
-  name.onkeydown=e=>{
-    if(e.key==='Enter'){e.preventDefault();go()}
-    if(e.key==='Escape'){e.preventDefault();closeSuggest();$('#q').focus()}
-  };
+  if(!q)return toast('Search for something first');
+  if(SAVED.some(sv=>(sv.query||'')===q))return toast('Already saved');
+  const r=await post('/api/searches',
+    {name:q.slice(0,48),query:q,extra:currentSearchState()});
+  if(r.error)return toast(r.error);
+  SAVED=r.searches||[];drawSaved();syncSearchTools();
+  toast('Saved');
 }
 
 function acceptSuggestion(value,sigil){
@@ -1964,10 +1988,11 @@ function syncSearchTools(){
   const q=$('#q').value;
   $('#qclear').classList.toggle('on',!!q);
   const save=$('#qsave');
-  save.classList.toggle('on',!!SESSION.signedIn);
+  // Nothing typed means nothing to save: the bookmark waits for a search
+  save.classList.toggle('on',!!SESSION.signedIn&&!!q.trim());
   const hit=SAVED.some(sv=>(sv.query||'')===q.trim());
   save.classList.toggle('saved',hit);
-  save.setAttribute('data-tip',hit?'Update this saved search':'Save this search');
+  save.setAttribute('data-tip',hit?'Saved':'Save this search');
 }
 
 /* Lowercased nick -> canonical, built once so mention detection is a set
@@ -2451,7 +2476,7 @@ async function loadForward(clearFirst){
   if(mine!==seq)return;          // superseded; the newer call owns state.loading
   const log=$('#log');
   if(clearFirst){log.innerHTML='';lastDay=null;lastMsg=null}
-  state.total=data.total; $('#count').textContent=fmtN(data.total);
+  setCount(data.total);
   if(data.messages.length){
     log.appendChild(buildFrag(data.messages).frag);
     state.tail+=data.messages.length;
@@ -2507,8 +2532,7 @@ async function reload(){
     $('#log').innerHTML='<div class="empty"><b>Could not load</b>The server may have stopped.</div>';
     return;
   }
-  state.total=total;
-  $('#count').textContent=fmtN(total);
+  setCount(total);
 
   // Descending puts newest at offset 0; ascending puts them on the last page
   // Whichever way round it reads, you start at the end you asked for and
@@ -2571,7 +2595,7 @@ async function jumpTo(id){
     state.channels.clear();state.channels.add(loc.channel);
     $$('#rail .chip').forEach(c=>c.setAttribute('aria-pressed',c.dataset.chan===loc.channel));
   }
-  state.total=loc.total; $('#count').textContent=fmtN(loc.total);
+  setCount(loc.total);
   const head=Math.max(0,loc.index-70);
   state.head=head;state.tail=head;state.done=false;state.doneUp=head===0;state.anchor=id;
   await loadForward(true);
@@ -2680,13 +2704,21 @@ function selectOnlyChannel(name){
   writeQueryBox(p.nicks,p.text,new Set([name]),p.tags);
   applyQueryBox();
 }
-/* The composer follows what you're looking at: a single selected channel wins,
-   otherwise the channel of the newest message on screen. */
+/* The composer follows what you're looking at: a single selected channel wins.
+   With nothing that specific on screen it goes back to wherever you last sent
+   a message - reopening the page should not silently retarget your typing. */
+let SEND_CHAN='';
+try{ SEND_CHAN=localStorage.getItem('sendchan')||'' }catch(e){}
+function rememberSendChannel(chan){
+  SEND_CHAN=String(chan||'').replace(/^#/,'');
+  try{ localStorage.setItem('sendchan',SEND_CHAN) }catch(e){}
+}
 function syncComposerChannel(){
   const sel=$('#sendchan');
   if(!sel||!sel.options.length)return;
   let want=null;
   if(state.channels.size===1)want=[...state.channels][0];
+  else if(SEND_CHAN)want=SEND_CHAN;
   else{
     const rows=$$('#log .msg .chan');
     if(rows.length)want=rows[rows.length-1].dataset.chan;
@@ -3607,7 +3639,7 @@ function liveHTML(){
   return `<div class="row">
       <span class="av" style="background:${avatarBg(u.name||'?')}">${esc((u.name||'?')[0])}</span>
       <span class="rmain"><span class="nm">${esc(u.name||'?')}</span>
-        <span class="sub2">${esc(u.role||'member')} · posting as
+        <span class="sub2">${esc(u.role||'user')} · posting as
           ${esc(u.nick||'?')}</span></span>
       ${u.totp?'<span class="pill ok">2FA</span>':''}
     </div>`+status+
@@ -3891,8 +3923,7 @@ function onLiveRows(rows){
     shown++;
   }
 
-  state.total+=rows.length;
-  $('#count').textContent=fmtN(state.total);
+  setCount(state.total+rows.length);
   if(shown&&!desc){
     const stick=log.scrollHeight-log.scrollTop-log.clientHeight<260;
     if(stick)log.scrollTop=log.scrollHeight;
@@ -3925,7 +3956,7 @@ async function tail(){
   if(!d||d.total===prev)return;
   if(atLiveEnd())return jumpToLatest();
   newCount+=Math.max(0,d.total-prev);
-  state.total=d.total;$('#count').textContent=fmtN(d.total);
+  setCount(d.total);
   updatePill();
 }
 
@@ -3937,10 +3968,10 @@ $('#q').oninput=()=>{
   clearTimeout(deb);
   deb=setTimeout(applyQueryBox,240);
 };
-$('#q').addEventListener('focus',()=>{ if(SUGGEST_MODE!=='save')updateSuggest() });
+$('#q').addEventListener('focus',()=>updateSuggest());
 $('#q').addEventListener('keydown',e=>{
   const box=$('#suggest');
-  if(!box.classList.contains('on')||SUGGEST_MODE==='save'){
+  if(!box.classList.contains('on')){
     // No list open: Enter is simply "run this search", and running one is what
     // makes it worth remembering.
     if(e.key==='Enter'){e.preventDefault();clearTimeout(deb);applyQueryBox();
@@ -3992,7 +4023,7 @@ $('#suggest').onclick=e=>{
 };
 $('#qclear').onclick=()=>{$('#q').value='';closeSuggest();
   syncSearchTools();applyQueryBox();$('#q').focus()};
-$('#qsave').onclick=e=>{e.preventDefault();openSaveSearch()};
+$('#qsave').onclick=e=>{e.preventDefault();saveCurrentSearch()};
 
 $('#people-btn').onclick=()=>{
   if(sidebarPinned()){
@@ -4037,12 +4068,16 @@ $$('#order-seg button').forEach(b=>b.onclick=()=>{
   $$('#order-seg button').forEach(x=>x.setAttribute('aria-pressed',x===b));
   refresh();
 });
-$('#show-events').onclick=()=>{
-  state.showEvents=!state.showEvents;
-  $('#show-events').setAttribute('aria-pressed',state.showEvents);
-  try{localStorage.setItem('events',state.showEvents?'1':'0')}catch(err){}
-  spliceEvents();
-};
+{ // The joins-and-quits toggle left the Filters sheet; the wiring stays so
+  // the stored preference (and any future home for the control) keeps working.
+  const ev=$('#show-events');
+  if(ev)ev.onclick=()=>{
+    state.showEvents=!state.showEvents;
+    ev.setAttribute('aria-pressed',state.showEvents);
+    try{localStorage.setItem('events',state.showEvents?'1':'0')}catch(err){}
+    spliceEvents();
+  };
+}
 $$('#kinds .chip[data-kind]').forEach(b=>b.onclick=()=>{
   const k=+b.dataset.kind;
   state.kinds.has(k)?state.kinds.delete(k):state.kinds.add(k);
@@ -4198,7 +4233,9 @@ const IC=(d,w=16)=>`<svg viewBox="0 0 24 24" width="${w}" height="${w}" fill="no
 const ICONS={
   account:`<circle cx="12" cy="8" r="3.4"/><path d="M5 20a7 7 0 0 1 14 0"/>`,
   security:`<path d="M12 3l7 3v6c0 4.4-3 8-7 9-4-1-7-4.6-7-9V6l7-3Z"/><path d="m9 12 2 2 4-4"/>`,
-  look:`<circle cx="12" cy="12" r="9"/><path d="M12 3v18"/><path d="M12 8h9M12 16h6"/>`,
+  look:`<path d="M12 3a9 9 0 0 0 0 18h1.6a2.2 2.2 0 0 0 1.7-3.6c-.9-1.1-.1-2.8 1.3-2.8H19a2 2 0 0 0 2-2.1A9.4 9.4 0 0 0 12 3Z"/>`+
+       `<circle cx="7.6" cy="11.5" r="1.15"/><circle cx="10.2" cy="7.6" r="1.15"/>`+
+       `<circle cx="14.8" cy="7.2" r="1.15"/>`,
   server:`<rect x="3" y="4" width="18" height="7" rx="2"/><rect x="3" y="13" width="18" height="7" rx="2"/><path d="M7 7.5h.01M7 16.5h.01"/>`,
   people:`<circle cx="9" cy="8" r="3.2"/><path d="M2.5 19a6.5 6.5 0 0 1 13 0"/><path d="M17 5.2a3.2 3.2 0 0 1 0 6"/><path d="M18 13.6A5.5 5.5 0 0 1 21.5 19"/>`,
   copy:`<rect x="9" y="9" width="11" height="11" rx="2"/><path d="M5 15V5a2 2 0 0 1 2-2h8"/>`,
@@ -4270,7 +4307,7 @@ async function drawSettings(force){
     return;
   }
   const u=SESSION.user||{};
-  const owner=u.role==='owner';
+  const owner=u.role==='admin';   // admins see the management sections
   const sections=SET_SECTIONS.filter(x=>!x.owner||owner);
   if(!sections.some(x=>x.key===setTab))setTab='account';
 
@@ -4412,8 +4449,7 @@ function setSecurity(u){
 function setAppearance(){
   return `<div class="sect">
     <h4>Appearance</h4>
-    <p class="lede">Kept on this device. Times always follow this device's own
-      clock and time zone, wherever the archive is hosted.</p>
+    <p class="lede">Kept on this device.</p>
     <div id="look-slot"></div>
   </div>`;
 }
@@ -4556,7 +4592,7 @@ function setServer(){
 
 /* -------------------------------------------------------------- people */
 const JOIN_WORD={setup:'founded this archive',invite:'joined by invitation',
-                 manual:'created by an owner'};
+                 manual:'created by an admin'};
 
 function inviteRow(inv){
   const left=Math.max(0,inv.maxUses-inv.uses);
@@ -4566,7 +4602,7 @@ function inviteRow(inv){
   return `<div class="row">
     <span class="rmain">
       <span class="nm">${esc(inv.label||(isPass?`Pass for ${inv.maxUses}`:'Single invite'))}
-        ${inv.role==='owner'?'<span class="pill warn">owner</span>':'<span class="pill">member</span>'}</span>
+        ${inv.role==='admin'?'<span class="pill warn">admin</span>':'<span class="pill">user</span>'}</span>
       <span class="sub2">${inv.creator?'made by '+esc(inv.creator)+' · ':''}${
         esc(relTime(inv.created))}${inv.uses?` · ${inv.uses} joined`:''}</span>
     </span>
@@ -4586,8 +4622,6 @@ function setPeople(u){
   const live=invites.filter(i=>i.live),dead=invites.filter(i=>!i.live);
   return `<div class="sect">
     <h4>People</h4>
-    <p class="lede">Accounts exist by invitation or by your hand — there is no
-      public signup to attack.</p>
 
     <div class="field">
       <label class="fhead">Members</label>
@@ -4597,16 +4631,16 @@ function setPeople(u){
             <span class="av" style="background:${avatarBg(x.name)}">${esc(x.name[0]||'?')}</span>
             <span class="rmain">
               <span class="nm">${esc(x.name)}${x.name===u.name?' · you':''}</span>
-              <span class="sub2">${x.root?'owner · root':esc(x.role)}${
+              <span class="sub2">${x.owner?'owner':esc(x.role)}${
                 x.totp?' · 2FA':''}${x.disabled?' · disabled':''}</span></span>
             <span class="act">
               <button class="iconact" data-detail="${esc(x.name)}"
                 data-tip="Where this account came from" aria-label="Details">${IC(ICONS.info,15)}</button>
-              ${(x.root||x.name===u.name)?'':`
+              ${(x.owner||x.name===u.name)?'':`
                 <button class="iconact" data-role="${esc(x.name)}"
-                  data-to="${x.role==='owner'?'member':'owner'}"
-                  data-tip="Make ${x.role==='owner'?'a member':'an owner'}"
-                  aria-label="Change role">${IC(x.role==='owner'?ICONS.down:ICONS.up,15)}</button>
+                  data-to="${x.role==='admin'?'user':'admin'}"
+                  data-tip="Make ${x.role==='admin'?'a user':'an admin'}"
+                  aria-label="Change role">${IC(x.role==='admin'?ICONS.down:ICONS.up,15)}</button>
                 <button class="iconact" data-toggle="${esc(x.name)}" data-on="${x.disabled?1:0}"
                   data-tip="${x.disabled?'Enable':'Disable'}"
                   aria-label="${x.disabled?'Enable':'Disable'}">${IC(x.disabled?ICONS.check:ICONS.ban,15)}</button>
@@ -4622,8 +4656,8 @@ function setPeople(u){
       <label class="fhead">Invite links and passes</label>
       <div class="formrow">
         <select id="st-inv-role" aria-label="Role">
-          <option value="member">Member</option>
-          <option value="owner">Owner</option></select>
+          <option value="user">User</option>
+          <option value="admin">Admin</option></select>
         <select id="st-inv-uses" aria-label="How many people">
           <option value="1">1 person</option>
           <option value="3">A pass for 3</option>
@@ -4654,11 +4688,9 @@ function setPeople(u){
         <input id="na-user" placeholder="Username" autocomplete="off">
         <input id="na-pass" type="password" placeholder="Password" autocomplete="new-password"></div>
       <div class="formrow">
-        <select id="na-role"><option value="member">Member</option>
-          <option value="owner">Owner</option></select>
+        <select id="na-role"><option value="user">User</option>
+          <option value="admin">Admin</option></select>
         <button class="btn" id="na-go">Create</button></div>
-      <div class="hint">For when handing someone a link is not practical. They
-        can change the password from their own Account settings afterwards.</div>
     </div>
   </div>`;
 }
@@ -4681,10 +4713,10 @@ async function showUserDetail(name){
   if(d.error)return toast(d.error);
   const inv=d.invite;
   const rows=[
-    ['Role',d.root?'owner · root, cannot be changed':d.role],
+    ['Role',d.owner?'owner — cannot be changed':d.role],
     ['IRC nick',d.nick||'—'],
     ['How they got here',JOIN_WORD[d.joinMethod]||d.joinMethod],
-    ['Invited by',d.invitedBy||(d.joinMethod==='setup'?'nobody — this is the founding account':'—')],
+    ['Invited by',d.invitedBy||(d.joinMethod==='setup'?'nobody — this is the owner account':'—')],
     ['Joined',`${dateOnly(d.joinedAt)} · ${relTime(d.joinedAt)}`],
     ['Last seen',d.lastSeen?`${dateOnly(d.lastSeen)} · ${relTime(d.lastSeen)}`:'never'],
     ['Two-factor',d.totp?'on':'off'],
@@ -5142,9 +5174,9 @@ function wireSettings(box){
   const warn=()=>{
     const w=S('st-inv-warn');
     if(!w)return;
-    const owner=roleSel&&roleSel.value==='owner';
+    const owner=roleSel&&roleSel.value==='admin';
     const many=usesSel&&+usesSel.value>1;
-    w.innerHTML=owner?`<div class="note warn"><b>This link creates owners.</b>
+    w.innerHTML=owner?`<div class="note warn"><b>This link creates admins.</b>
       Anyone who uses it can add and remove people, change networks and mint
       more invites${many?`, and it will do that for up to ${+usesSel.value} of them`:''}.
       Only send it to someone you would trust with the server itself.</div>`:'';
@@ -5153,13 +5185,13 @@ function wireSettings(box){
   if(usesSel)usesSel.onchange=warn;
 
   if(S('st-invite'))S('st-invite').onclick=async()=>{
-    const role=roleSel?roleSel.value:'member';
+    const role=roleSel?roleSel.value:'user';
     const uses=usesSel?+usesSel.value:1;
-    if(role==='owner'&&!confirm(
+    if(role==='admin'&&!confirm(
         uses>1
-          ? `Create a pass that makes up to ${uses} owners?\n\n`+
+          ? `Create a pass that makes up to ${uses} admins?\n\n`+
             `Every person who uses this link gets full control of this server.`
-          : `Create an owner invite?\n\nWhoever uses this link gets full `+
+          : `Create an admin invite?\n\nWhoever uses this link gets full `+
             `control of this server.`))return;
     const r=await post('/api/invites',
       {role,uses,label:S('st-inv-label').value.trim()||undefined});
@@ -5514,8 +5546,8 @@ members(){
       <label class="fhead">Generate a join link</label>
       <div class="formrow">
         <select id="wz-inv-role" aria-label="Role">
-          <option value="member">Member</option>
-          <option value="owner">Owner</option></select>
+          <option value="user">User</option>
+          <option value="admin">Admin</option></select>
         <select id="wz-inv-uses" aria-label="How many people">
           <option value="1">1 person</option>
           <option value="3">A pass for 3</option>
@@ -5531,7 +5563,7 @@ members(){
           from.</div>
         <div class="copyfield"><code>${esc(inviteLink(inv.token))}</code>
           <button class="btn ghost" id="wz-inv-copy" type="button">Copy</button></div>`:''}
-      <div class="hint">A member can read, send and tag. An owner can do all of
+      <div class="hint">A user can read, send and tag. An admin can do all of
         that and manage this server.</div>
     </div>
 
@@ -5544,8 +5576,8 @@ members(){
         <input id="wz-na-pass" type="password" placeholder="Password"
                autocomplete="new-password"></div>
       <div class="formrow">
-        <select id="wz-na-role"><option value="member">Member</option>
-          <option value="owner">Owner</option></select>
+        <select id="wz-na-role"><option value="user">User</option>
+          <option value="admin">Admin</option></select>
         <button class="btn" id="wz-na-go" type="button">Create account</button></div>
       ${WIZ.data.manual.length?`<div class="stack">${WIZ.data.manual.map(m=>
         `<div class="row"><span class="rmain"><span class="nm">${esc(m.name)}</span>
@@ -5626,7 +5658,7 @@ done(){
       <div class="summary">
         <div class="kv"><span class="k">Username</span><span class="v">${esc(u.name||'')}</span></div>
         <div class="kv"><span class="k">IRC nick</span><span class="v">${esc(u.nick||'')}</span></div>
-        <div class="kv"><span class="k">Role</span><span class="v">${esc(u.role||'member')}</span></div>
+        <div class="kv"><span class="k">Role</span><span class="v">${esc(u.role||'user')}</span></div>
         <div class="kv"><span class="k">Passkey</span>
           <span class="v${d.secured.includes('passkey')?'':' dim'}">${
             d.secured.includes('passkey')?'added':'not added'}</span></div>
@@ -5647,7 +5679,7 @@ done(){
       <div class="kv"><span class="k">Server name</span>
         <span class="v">${esc(APPNAME)}</span></div>
       <div class="kv"><span class="k">Owner account</span>
-        <span class="v">${esc(u.name||d.username)} · root, cannot be removed</span></div>
+        <span class="v">${esc(u.name||d.username)} · the owner, cannot be removed</span></div>
       <div class="kv"><span class="k">IRC nick</span>
         <span class="v">${esc(u.nick||d.nick||d.username)}</span></div>
       <div class="kv"><span class="k">Password</span>
@@ -5743,8 +5775,8 @@ const WIZ_WIRE={
     const warn=()=>{
       const w=$('#wz-inv-warn');
       if(!w)return;
-      w.innerHTML=(role.value==='owner')?`<div class="note warn">
-        <b>An owner link hands over the keys.</b> Anyone who uses it can add and
+      w.innerHTML=(role.value==='admin')?`<div class="note warn">
+        <b>An admin link hands over the keys.</b> Anyone who uses it can add and
         remove people, change networks and mint further invitations${
         +uses.value>1?`, and it will do that for up to ${+uses.value} of them`:''}.
         Only send it to someone you would trust with this server.</div>`:'';
@@ -5752,11 +5784,11 @@ const WIZ_WIRE={
     role.onchange=warn;uses.onchange=warn;warn();
 
     $('#wz-inv-go').onclick=async()=>{
-      if(role.value==='owner'&&!confirm(
+      if(role.value==='admin'&&!confirm(
           +uses.value>1
-            ? `Create a pass that makes up to ${+uses.value} owners?\n\n`+
+            ? `Create a pass that makes up to ${+uses.value} admins?\n\n`+
               `Every person who uses this link gets full control of this server.`
-            : `Create an owner invite?\n\nWhoever uses this link gets full `+
+            : `Create an admin invite?\n\nWhoever uses this link gets full `+
               `control of this server.`))return;
       const r=await post('/api/invites',{role:role.value,uses:+uses.value});
       if(r.error)return wizErr(r.error);
@@ -6074,9 +6106,9 @@ function shrinkImage(file,maxW=1920,quality=0.82){
   });
 }
 
-/* Appearance is a settings section now, not a sheet of its own - one place
-   for everything you can change about your account. */
-$('#theme').onclick=()=>openSettings('appearance');
+/* Appearance is reached from the account sheet and Settings; the status-bar
+   shortcut earned its keep back when it was the only door in. */
+{ const t=$('#theme'); if(t)t.onclick=()=>openSettings('appearance'); }
 $$('#theme-seg button').forEach(b=>b.onclick=()=>{
   look.theme=b.dataset.th||'';saveLook();applyLook();repaintColours();
 });
@@ -6184,7 +6216,7 @@ function applySaved(s){
   state.kinds=new Set(extra.kinds||[]);
   state.showEvents=!!extra.events;
   $('#from').value=state.from;$('#to').value=state.to;
-  $('#show-events').setAttribute('aria-pressed',state.showEvents);
+  $('#show-events')?.setAttribute('aria-pressed',state.showEvents);
   $$('#order-seg button').forEach(x=>x.setAttribute('aria-pressed',x.dataset.order===state.order));
   syncKindChips();
   $('#q').value=s.query||'';
@@ -6200,9 +6232,7 @@ async function deleteSaved(name){
 }
 $('#save-search').onclick=e=>{
   e.preventDefault();
-  if(!SESSION.signedIn)return toast('Sign in to save searches');
-  // Same flow as the bookmark in the search bar, so there is one way to do it
-  closeAll();$('#q').focus();openSaveSearch();
+  saveCurrentSearch();   // the same act as the bookmark: one way to do it
 };
 
 /* composer */
@@ -6231,7 +6261,10 @@ function prewarmSend(){
   post('/api/prewarm',{channel:chan}).catch(()=>{});
 }
 ta.addEventListener('focus',prewarmSend);
-$('#sendchan').addEventListener('change',prewarmSend);
+$('#sendchan').addEventListener('change',()=>{
+  rememberSendChannel($('#sendchan').value);   // a hand pick is a preference
+  prewarmSend();
+});
 function copyPermalink(id,btn){
   const row=$(`#log .msg[data-id="${id}"]`);
   const chan=row?.querySelector('[data-chan]')?.dataset.chan||[...state.channels][0];
@@ -6332,6 +6365,7 @@ $('#composer').onsubmit=async e=>{
   echo.dataset.text=text;
   log.appendChild(echo);log.scrollTop=log.scrollHeight;
 
+  rememberSendChannel(channel);
   const r=await post('/api/send',{channel,text});
   if(r.error){
     echo.remove();syncTail();
@@ -6485,7 +6519,7 @@ addEventListener('hashchange',()=>{
   try{ wantPeople=localStorage.getItem('people')==='1' }catch(e){}
   document.body.classList.toggle('no-people',!wantPeople);
   try{ state.showEvents=localStorage.getItem('events')==='1' }catch(e){}
-  $('#show-events').setAttribute('aria-pressed',state.showEvents);
+  $('#show-events')?.setAttribute('aria-pressed',state.showEvents);
   if(sidebarPinned())
     $('#people-btn').setAttribute('aria-pressed',
       !document.body.classList.contains('no-people'));
@@ -6501,6 +6535,9 @@ addEventListener('hashchange',()=>{
   setTZHint();
   await refreshHistory();
   syncSearchTools();
+  // The saved list first drew before the session came back, so a signed-in
+  // reader was told to sign in until something else redrew it.
+  drawSaved();
   // An invite, or an archive nobody has claimed, should announce itself rather
   // than hide behind an icon nobody knows to press.
   if(SESSION.setupNeeded)startWizard('setup');

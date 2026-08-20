@@ -2,6 +2,33 @@
 
 ## 1.1.2
 
+- **Roles renamed.** The role once called "owner" is **admin**, a "member" is
+  a **user**, and **owner** now names the founding account alone. Stored
+  roles migrate in place on first start; nothing else about who can do what
+  changes.
+- **Search bar overhauled.** The bookmark saves the search as it stands,
+  named by its own terms — the naming box is gone, and so is the second,
+  native clear button. The bookmark only appears once there is something to
+  save, picking a recent search lights the clear button, the forget-✕ sits
+  inside the row's hover bar, and Clear in the heading is a proper little
+  button rather than a full-width strip. The saved list no longer tells a
+  signed-in reader to sign in.
+- **Theming.** System now follows Light/Dark rather than Noir, and there is a
+  fifth theme: **Borealis**, deep indigo with a soft blurple accent, the
+  house theme. Every generated colour (nick, channel, tag) now agrees on
+  which themes are dark.
+- **One radius scale.** Buttons, inputs, selects and search all sit on 10px;
+  small controls on 8px; cards and floating panels on 14px. Nothing is
+  rounded by accident any more.
+- The status bar is gone. The count lives in the header — narrowed views say
+  "N of M messages" — and Copy is a small app-bar button.
+- Inline images moved from Appearance into Filters, next to the other
+  decisions about what the feed shows. The joins-and-quits toggle and a few
+  paragraphs of lecture left the panels entirely.
+- The quick date ranges hold one line instead of wrapping "All" onto its own.
+- The composer remembers the channel you last sent to and starts there.
+- Server settings cards got breathing room, and the "Settings | Appearance"
+  buttons split their row evenly.
 - A message permalink stays on its message. The jump landed and highlighted
   the right line, then the composer appeared - it shows up about half a
   second after boot, once the session is confirmed - and the resize handler

@@ -123,8 +123,8 @@ def cmd_adduser(args):
     import getpass
     from ircarchive import auth
     con = db.connect(args.db)
-    role = "owner" if args.owner else "member"
-    if role == "owner" and auth.any_users(con) and not args.force:
+    role = "admin" if args.admin else "user"
+    if role == "admin" and auth.any_users(con) and not args.force:
         print("Users already exist. Invite from the app instead, or pass --force.")
         return
     name = args.username or input("Username: ").strip()
@@ -162,7 +162,7 @@ def cmd_passwd(args):
     from ircarchive import auth
     con = db.connect(args.db)
     if not auth.any_users(con):
-        print("No accounts yet. Create the owner with:\n  ./archive.py adduser --owner")
+        print("No accounts yet. Create the owner with:\n  ./archive.py adduser --admin")
     else:
         print("Passwords are per-user now. Change yours in the app under Settings,")
         print("or add another account with:\n  ./archive.py adduser")
@@ -267,9 +267,10 @@ def main():
     p = sub.add_parser("stats", help="summarise archive contents")
     p.set_defaults(func=cmd_stats)
 
-    p = sub.add_parser("adduser", help="create an account (the first one must be an owner)")
+    p = sub.add_parser("adduser", help="create an account (the first one must be an admin)")
     p.add_argument("username", nargs="?")
-    p.add_argument("--owner", action="store_true", help="make this account an owner")
+    p.add_argument("--admin", "--owner", dest="admin", action="store_true",
+                   help="make this account an admin (--owner is the old spelling)")
     p.add_argument("--nick", help="IRC nick to send under (defaults to the username)")
     p.add_argument("--force", action="store_true")
     p.set_defaults(func=cmd_adduser)

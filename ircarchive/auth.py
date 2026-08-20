@@ -30,7 +30,7 @@ CREATE TABLE IF NOT EXISTS users (
     id           INTEGER PRIMARY KEY,
     username     TEXT NOT NULL UNIQUE COLLATE NOCASE,
     password     TEXT,                      -- NULL until an invite is redeemed
-    role         TEXT NOT NULL DEFAULT 'member',   -- 'owner' | 'member'
+    role         TEXT NOT NULL DEFAULT 'user',     -- 'admin' | 'user'
     irc_nick     TEXT,                      -- identity for their send connection
     totp_secret  TEXT,
     totp_enabled INTEGER NOT NULL DEFAULT 0,
@@ -210,6 +210,14 @@ def _migrate(con):
                     "WHERE id = ? AND join_method IS NULL", (first["id"],))
     con.execute("UPDATE users SET join_method = 'manual' WHERE join_method IS NULL")
 
+    # The words changed in 1.1.2: the role once called "owner" is "admin", a
+    # "member" is a "user", and "owner" now names the founding account alone.
+    # Stored values follow, so the API and the UI never speak two dialects.
+    con.execute("UPDATE users SET role = 'admin' WHERE role = 'owner'")
+    con.execute("UPDATE users SET role = 'user' WHERE role = 'member'")
+    con.execute("UPDATE invites SET role = 'admin' WHERE role = 'owner'")
+    con.execute("UPDATE invites SET role = 'user' WHERE role = 'member'")
+
 
 # ------------------------------------------------------------------ passwords
 
@@ -307,14 +315,14 @@ def is_root(con, uid):
     return uid is not None and uid == root_id(con)
 
 
-def create_user(con, username, password, role="member", irc_nick=None,
+def create_user(con, username, password, role="user", irc_nick=None,
                 join_method=None, invited_by=None):
     username = str(username or "").strip()
     if not USERNAME_RE.match(username):
         raise ValueError("usernames are 2-32 chars: letters, digits, . _ -")
     if user_by_name(con, username):
         raise ValueError("that username is taken")
-    if role not in ("owner", "member"):
+    if role not in ("admin", "user"):
         raise ValueError("unknown role")
     cur = con.execute(
         "INSERT INTO users(username, password, role, irc_nick, created, "
@@ -335,7 +343,7 @@ def set_password(con, uid, password):
 MAX_PASS_USES = 100
 
 
-def create_invite(con, by_uid, role="member", hours=INVITE_HOURS, uses=1,
+def create_invite(con, by_uid, role="user", hours=INVITE_HOURS, uses=1,
                   label=None):
     """Mint an invite link.
 
@@ -344,7 +352,7 @@ def create_invite(con, by_uid, role="member", hours=INVITE_HOURS, uses=1,
     redemption is recorded against the token, so an owner can still see exactly
     who came in on which link.
     """
-    if role not in ("owner", "member"):
+    if role not in ("admin", "user"):
         raise ValueError("unknown role")
     try:
         uses = int(uses or 1)
@@ -461,9 +469,9 @@ def user_detail(con, username):
     return {
         "name": u["username"],
         "role": u["role"],
+        "owner": is_root(con, u["id"]),
         "nick": u["irc_nick"],
         "disabled": bool(u["disabled"]),
-        "root": is_root(con, u["id"]),
         "created": u["created"],
         "lastSeen": u["last_seen"],
         "totp": bool(u["totp_enabled"]),
