@@ -1,5 +1,29 @@
 # Changelog
 
+## 1.2.2
+
+- **IRC commands in the composer.** Slash commands now autocomplete as you
+  type and cover WHOIS, ISON, NAMES, WHO, USERHOST, WHOWAS, MOTD, VERSION,
+  TIME and NickServ INFO/STATUS, with private, readable replies. Read-only
+  raw queries are supported too; OFTC's missing MONITOR support is explained
+  and presence checks use ISON instead.
+- **People have profiles.** Click a name or picture for live status, recent
+  archive activity and identity hints, plus filtering, favourites, private
+  notes and profile links. Server-side pictures now appear on the public page
+  by IRC nick without exposing account usernames.
+- Account setup, invite redemption and manual account creation now ask for an
+  IRC nick. Known account and live-roster conflicts are called out, while an
+  explicit ownership claim can proceed when the nick really is yours.
+- A new account starts with the System theme and no inherited background.
+  Account-scoped appearance loading is also guarded against stale responses
+  when switching between users.
+- Promoting a user to admin clears any earlier optional-security dismissal and
+  brings back a non-dismissible two-factor requirement. Optional two-factor
+  and passkey choices are labelled consistently for regular users.
+- Desktop Help now matches the Settings width and lays its sections out in
+  three columns, so it no longer needs to scroll. Narrow screens keep the
+  compact scrolling layout.
+
 ## 1.2.1
 
 - **Events are back in Filters.** The Show row once again has a control for
