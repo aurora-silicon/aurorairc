@@ -113,6 +113,42 @@ CREATE TABLE IF NOT EXISTS events (
 CREATE INDEX IF NOT EXISTS idx_events_chan_ts ON events(channel_id, ts);
 CREATE INDEX IF NOT EXISTS idx_events_ts      ON events(ts);
 
+-- Current channel rosters, rebuilt from NAMES whenever an archivist connects
+-- and then kept current from ordinary presence traffic. This is deliberately
+-- ephemeral rather than part of the archive: an old NAMES reply is not proof
+-- that somebody is online now.
+CREATE TABLE IF NOT EXISTS live_presence (
+    network_id INTEGER NOT NULL REFERENCES networks(id) ON DELETE CASCADE,
+    channel    TEXT    NOT NULL COLLATE NOCASE,
+    nick       TEXT    NOT NULL COLLATE NOCASE,
+    seen_at    INTEGER NOT NULL,
+    PRIMARY KEY (network_id, channel, nick)
+);
+CREATE INDEX IF NOT EXISTS idx_live_presence_nick
+    ON live_presence(network_id, nick);
+
+-- A channel is only safe to call "offline" once its initial NAMES list has
+-- completed. Until then the honest answer is unknown, not an empty room.
+CREATE TABLE IF NOT EXISTS live_presence_state (
+    network_id INTEGER NOT NULL REFERENCES networks(id) ON DELETE CASCADE,
+    channel    TEXT    NOT NULL COLLATE NOCASE,
+    synced_at  INTEGER NOT NULL,
+    PRIMARY KEY (network_id, channel)
+);
+
+-- On-demand, network-wide presence checks. The web process asks; the
+-- long-lived archivist issues ISON and writes the answer back. No private IRC
+-- text or server reply is persisted here, just the short-lived boolean.
+CREATE TABLE IF NOT EXISTS live_presence_checks (
+    network_id  INTEGER NOT NULL REFERENCES networks(id) ON DELETE CASCADE,
+    nick        TEXT    NOT NULL COLLATE NOCASE,
+    requested_at INTEGER NOT NULL,
+    checked_at   INTEGER,
+    online       INTEGER,
+    error        TEXT,
+    PRIMARY KEY (network_id, nick)
+);
+
 -- Outbound messages queued by the web UI. The web server never touches the
 -- network: it appends here, and the live IRC process drains the queue. A
 -- read-only connection (the MCP server) physically cannot insert into this,
@@ -126,6 +162,26 @@ CREATE TABLE IF NOT EXISTS outbox (
     error    TEXT
 );
 CREATE INDEX IF NOT EXISTS idx_outbox_pending ON outbox(sent_at) WHERE sent_at IS NULL;
+
+-- Read-only IRC commands issued from the composer. They travel through the
+-- signed-in member's sender connection, while their replies stay private to
+-- that account. The web process queues work here and the IRC process owns the
+-- socket, just like ordinary outbound messages.
+CREATE TABLE IF NOT EXISTS irc_commands (
+    id         INTEGER PRIMARY KEY,
+    user_id    INTEGER NOT NULL,
+    network_id INTEGER NOT NULL REFERENCES networks(id) ON DELETE CASCADE,
+    nick       TEXT    NOT NULL,
+    command    TEXT    NOT NULL,
+    wire       TEXT    NOT NULL,
+    created    INTEGER NOT NULL,
+    sent_at    INTEGER,
+    finished_at INTEGER,
+    response   TEXT    NOT NULL DEFAULT '[]',
+    error      TEXT
+);
+CREATE INDEX IF NOT EXISTS idx_irc_commands_pending
+    ON irc_commands(finished_at) WHERE finished_at IS NULL;
 
 -- Small key/value store: live heartbeat, desired nick, password hash, etc.
 CREATE TABLE IF NOT EXISTS settings (
@@ -180,12 +236,25 @@ def connect(path=None):
     path.parent.mkdir(parents=True, exist_ok=True)
     con = sqlite3.connect(str(path), timeout=30, isolation_level=None)
     con.row_factory = sqlite3.Row
-    con.executescript(SCHEMA)
-    from . import auth
-    auth.init(con)
-    seed_tags(con)
-    migrate(con)
-    return con
+    # ``serve`` and ``live`` are commonly started together. SQLite's busy
+    # timeout covers ordinary statements, but changing a brand-new database to
+    # WAL can still fail immediately while the sibling process is creating the
+    # same schema. Every initialization step is additive/idempotent, so retry
+    # the short race rather than making one daemon lose at startup.
+    deadline = time.monotonic() + 30
+    while True:
+        try:
+            con.executescript(SCHEMA)
+            from . import auth
+            auth.init(con)
+            seed_tags(con)
+            migrate(con)
+            return con
+        except sqlite3.OperationalError as exc:
+            if "locked" not in str(exc).lower() or time.monotonic() >= deadline:
+                con.close()
+                raise
+            time.sleep(0.05)
 
 
 # Used only when an archive predates multi-network support and has channels
@@ -245,6 +314,89 @@ def network_channels(con, network_id, archived_only=True):
     if archived_only:
         sql += " AND archived = 1"
     return [r["name"] for r in con.execute(sql + " ORDER BY name", (network_id,))]
+
+
+# ---------------------------------------------------------------- live presence
+
+def presence_reset_network(con, network_id):
+    """Forget a network's roster before a fresh IRC connection is trusted."""
+    if network_id is None:
+        return
+    con.execute("DELETE FROM live_presence WHERE network_id = ?", (network_id,))
+    con.execute("DELETE FROM live_presence_state WHERE network_id = ?", (network_id,))
+
+
+def presence_replace_channel(con, network_id, channel, nicks):
+    """Atomically install the completed NAMES snapshot for one channel."""
+    if network_id is None:
+        return
+    channel = "#" + str(channel).lstrip("#")
+    now = int(time.time())
+    # SAVEPOINT works both in autocommit and inside a caller transaction.
+    con.execute("SAVEPOINT presence_names")
+    try:
+        con.execute("DELETE FROM live_presence WHERE network_id = ? "
+                    "AND channel = ? COLLATE NOCASE", (network_id, channel))
+        con.executemany(
+            "INSERT OR IGNORE INTO live_presence(network_id, channel, nick, seen_at) "
+            "VALUES (?,?,?,?)",
+            [(network_id, channel, n, now) for n in nicks if n])
+        con.execute(
+            "INSERT INTO live_presence_state(network_id, channel, synced_at) "
+            "VALUES (?,?,?) ON CONFLICT(network_id, channel) DO UPDATE SET "
+            "synced_at = excluded.synced_at", (network_id, channel, now))
+        con.execute("RELEASE presence_names")
+    except Exception:
+        con.execute("ROLLBACK TO presence_names")
+        con.execute("RELEASE presence_names")
+        raise
+
+
+def presence_join(con, network_id, channel, nick):
+    if network_id is None or not channel or not nick:
+        return
+    con.execute(
+        "INSERT INTO live_presence(network_id, channel, nick, seen_at) VALUES (?,?,?,?) "
+        "ON CONFLICT(network_id, channel, nick) DO UPDATE SET seen_at=excluded.seen_at",
+        (network_id, "#" + channel.lstrip("#"), nick, int(time.time())))
+
+
+def presence_part(con, network_id, channel, nick):
+    if network_id is None:
+        return
+    con.execute("DELETE FROM live_presence WHERE network_id = ? "
+                "AND channel = ? COLLATE NOCASE AND nick = ? COLLATE NOCASE",
+                (network_id, "#" + channel.lstrip("#"), nick))
+
+
+def presence_quit(con, network_id, nick):
+    if network_id is None:
+        return
+    con.execute("DELETE FROM live_presence WHERE network_id = ? "
+                "AND nick = ? COLLATE NOCASE", (network_id, nick))
+
+
+def presence_rename(con, network_id, old, new):
+    if network_id is None or not old or not new:
+        return
+    now = int(time.time())
+    rows = list(con.execute(
+        "SELECT channel FROM live_presence WHERE network_id = ? "
+        "AND nick = ? COLLATE NOCASE", (network_id, old)))
+    con.executemany(
+        "INSERT OR IGNORE INTO live_presence(network_id, channel, nick, seen_at) "
+        "VALUES (?,?,?,?)", [(network_id, r["channel"], new, now) for r in rows])
+    presence_quit(con, network_id, old)
+
+
+def presence_clear_channel(con, network_id, channel):
+    if network_id is None:
+        return
+    channel = "#" + str(channel).lstrip("#")
+    con.execute("DELETE FROM live_presence WHERE network_id = ? "
+                "AND channel = ? COLLATE NOCASE", (network_id, channel))
+    con.execute("DELETE FROM live_presence_state WHERE network_id = ? "
+                "AND channel = ? COLLATE NOCASE", (network_id, channel))
 
 
 class Ids:

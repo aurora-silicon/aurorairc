@@ -2,9 +2,9 @@
 
 Deliberately passive: it connects, joins the configured channels, and records
 what it sees. It never sends a message, notice, or CTCP reply to a channel or
-a user - the only things it ever transmits are NICK/USER registration, JOIN,
-and PONG keepalives. Reconnects with exponential backoff so it can be left
-running.
+a user. Beyond NICK/USER registration, JOIN/PART and PONG keepalives, the only
+query it emits is ISON when a signed-in reader explicitly refreshes somebody's
+status. Reconnects with exponential backoff so it can be left running.
 
 Presence is plain: the nick and realname are whatever you pass in, with no
 tooling banner attached, so it looks like any other client idling in the
@@ -95,6 +95,8 @@ class Logger:
         self._last_beat = 0
         self._last_pump = 0
         self._wanted = None
+        self._names = {}
+        self._ison = None
         self.registered = False
 
     # -- plumbing ---------------------------------------------------------
@@ -115,6 +117,9 @@ class Logger:
         self.sock.settimeout(0.3)
         self._buf = b""
         self.registered = False
+        self._names = {}
+        self._ison = None
+        db.presence_reset_network(self.con, self.network_id)
         self.send(f"NICK {self.nick}")
         self.send(f"USER {self.username} 0 * :{self.realname}")
 
@@ -147,21 +152,23 @@ class Logger:
         if self.verbose and n:
             print(f"   [{channel}] <{nick}> {text[:100]}")
 
-    # -- outbound (web UI only) -------------------------------------------
+    # -- quiet maintenance -------------------------------------------------
 
     def pump(self):
-        """Heartbeat only. This connection never sends to a channel.
+        """Heartbeat, channel changes, and one-at-a-time ISON lookups.
 
         Outbound traffic belongs to ircarchive.connections, which opens a
         separate send-only client under the posting user's own nick. Keeping
-        the archivist strictly read-only is what guarantees the log keeps
-        running no matter who is signed in.
+        channel speech away from the archivist is what guarantees the log keeps
+        running no matter who is signed in. ISON is private server metadata: it
+        never produces channel or user-visible text.
         """
         if time.time() - self._last_pump < 0.25:
             return
         self._last_pump = time.time()
         self.apply_channels()
         now = int(time.time())
+        self.pump_presence_check(now)
         if now - self._last_beat >= 10:
             self._last_beat = now
             # Per-network keys: with several archivists running, a single
@@ -175,6 +182,29 @@ class Logger:
                 # keep the unsuffixed keys as a summary for the status pill
                 db.setting(self.con, "live_heartbeat", now)
                 db.setting(self.con, "live_nick", self.nick)
+
+    def pump_presence_check(self, now):
+        """Issue at most one pending ISON lookup on this network at a time."""
+        if self.network_id is None or not self.registered:
+            return
+        if self._ison:
+            nick, started = self._ison
+            if now - started <= 10:
+                return
+            self.con.execute(
+                "UPDATE live_presence_checks SET checked_at=?, online=NULL, "
+                "error='server did not answer ISON' WHERE network_id=? "
+                "AND nick=? COLLATE NOCASE", (now, self.network_id, nick))
+            self._ison = None
+        row = self.con.execute(
+            "SELECT nick FROM live_presence_checks WHERE network_id=? AND "
+            "(checked_at IS NULL OR requested_at > checked_at) "
+            "ORDER BY requested_at LIMIT 1", (self.network_id,)).fetchone()
+        if not row:
+            return
+        nick = row["nick"]
+        self._ison = (nick, now)
+        self.send(f"ISON :{nick}")
 
     # -- inbound ----------------------------------------------------------
 
@@ -200,6 +230,7 @@ class Logger:
             print(f"   joining {ch}")
         for ch in sorted(have - set(want)):
             self.send(f"PART {ch}")
+            db.presence_clear_channel(self.con, self.network_id, ch)
             print(f"   leaving {ch}")
         self.channels = want
 
@@ -225,6 +256,40 @@ class Logger:
             self.nick += "_"
             print(f"   nick taken, retrying as {self.nick}")
             self.send(f"NICK {self.nick}")
+        elif command == "303":  # RPL_ISON
+            if self._ison:
+                asked, _ = self._ison
+                online = any(n.lower() == asked.lower()
+                             for n in (params[-1].split() if params else []))
+                self.con.execute(
+                    "UPDATE live_presence_checks SET checked_at=?, online=?, error=NULL "
+                    "WHERE network_id=? AND nick=? COLLATE NOCASE",
+                    (int(time.time()), 1 if online else 0, self.network_id, asked))
+                self._ison = None
+        elif command == "421" and self._ison and len(params) >= 2 and params[1].upper() == "ISON":
+            asked, _ = self._ison
+            self.con.execute(
+                "UPDATE live_presence_checks SET checked_at=?, online=NULL, error=? "
+                "WHERE network_id=? AND nick=? COLLATE NOCASE",
+                (int(time.time()), "ISON is not supported by this network",
+                 self.network_id, asked))
+            self._ison = None
+        elif command == "353" and len(params) >= 2:  # RPL_NAMREPLY
+            channel = params[-2]
+            if channel.startswith("#"):
+                names = self._names.setdefault(channel.lower(), [])
+                for raw in params[-1].split():
+                    clean = raw.lstrip("~&@%+")
+                    if clean:
+                        names.append(clean)
+        elif command == "366" and len(params) >= 2:  # RPL_ENDOFNAMES
+            channel = params[-2]
+            if channel.startswith("#"):
+                names = self._names.pop(channel.lower(), [])
+                # Preserve order while collapsing multi-prefix duplicates.
+                names = list(dict.fromkeys(names))
+                db.presence_replace_channel(
+                    self.con, self.network_id, channel, names)
         elif command == "PRIVMSG" and len(params) >= 2:
             target, text = params[0], params[-1]
             if not target.startswith("#"):
@@ -238,22 +303,35 @@ class Logger:
 
         # Presence traffic - recorded to the events table, never to messages
         elif command == "JOIN" and params:
+            db.presence_join(self.con, self.network_id, params[0], nick)
             self.note(params[0], nick, db.EV_JOIN, "")
         elif command == "PART" and params:
+            if nick.lower() == self.nick.lower():
+                db.presence_clear_channel(self.con, self.network_id, params[0])
+            else:
+                db.presence_part(self.con, self.network_id, params[0], nick)
             self.note(params[0], nick, db.EV_PART,
                       params[-1] if len(params) > 1 else "")
         elif command == "KICK" and len(params) >= 2:
+            if params[1].lower() == self.nick.lower():
+                db.presence_clear_channel(self.con, self.network_id, params[0])
+            else:
+                db.presence_part(self.con, self.network_id, params[0], params[1])
             self.note(params[0], params[1], db.EV_KICK,
                       f"by {nick}" + (f" [{params[-1]}]" if len(params) > 2 else ""))
         elif command == "MODE" and params and params[0].startswith("#"):
             self.note(params[0], nick, db.EV_MODE, " ".join(params[1:]))
         elif command == "QUIT":
+            db.presence_quit(self.con, self.network_id, nick)
             # QUIT carries no channel, so it lands against every channel we hold
             for ch in self.channels:
                 self.note(ch, nick, db.EV_QUIT, params[-1] if params else "")
         elif command == "NICK" and params:
+            db.presence_rename(self.con, self.network_id, nick, params[-1])
             for ch in self.channels:
                 self.note(ch, nick, db.EV_NICK, params[-1])
+            if nick.lower() == self.nick.lower():
+                self.nick = params[-1]
 
     # -- main loop --------------------------------------------------------
 

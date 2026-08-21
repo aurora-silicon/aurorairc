@@ -6,9 +6,10 @@ two front ends can never drift apart.
 Authorisation model (see ircarchive.auth for the mechanics):
 
   * anonymous - read only, and only the record itself: browse, search and
-    filter the messages as IRC carried them. Tags, saved searches, avatars
-    and every other member annotation stay behind a sign-in, and every
-    mutating endpoint is behind _need_auth.
+    filter the messages as IRC carried them. Public IRC-facing avatars are
+    visible; tags, saved searches, private person notes and other member
+    annotations stay behind a sign-in, and every mutating endpoint is behind
+    _need_auth.
   * user - may send messages under their own IRC nick, and manage tags.
   * admin - the above, plus invites, user administration and the audit log.
     Admins must have two-factor on to reach the management surface. The
@@ -26,13 +27,15 @@ the only receiver, so the message returns through it and is recorded once.
 
 Endpoints:
   GET  /api/meta|messages|context|locate|activity|events|stream    (public)
+  GET  /api/person            archive + live profile for one IRC nick
+  GET  /api/command/status    private reply to a queued IRC command
   GET  /api/tags|searches|avatar|prefs           (tags/searches empty for anon)
   GET  /api/session          sign-in state, role, CSRF token, live status
   GET  /api/users|invites|authlog                     (owner)
   GET  /api/sessions         this user's active sessions
   POST /api/setup            {username, password, nick}  first run only
   POST /api/login            {username, password, totp?}
-  POST /api/redeem           {token, username, password}
+  POST /api/redeem           {token, username, password, nick, claimNick?}
   POST /api/signout
   POST /api/me               {nick?, password?, current?}          (auth)
   POST /api/me/totp          {action: begin|confirm|disable|decline} (auth)
@@ -45,6 +48,9 @@ Endpoints:
   POST /api/tags|tags/update|tags/delete|message/tag               (auth)
   POST /api/searches|searches/delete|searches/used                 (auth)
   POST /api/history          {action: record|clear, query}        (auth)
+  POST /api/person           private favourite, notes and links   (auth)
+  POST /api/person/status    refresh network-wide ISON status     (auth)
+  POST /api/command          queue a read-only IRC slash command   (auth)
   POST /api/invites          {role, uses?, label?}                (owner)
   POST /api/invites/revoke   {token}                              (owner)
   POST /api/networks/test    {host, port, tls, nick}              (owner)
@@ -67,7 +73,7 @@ import time
 from http.cookies import SimpleCookie
 from http.server import ThreadingHTTPServer, SimpleHTTPRequestHandler
 from pathlib import Path
-from urllib.parse import urlparse, parse_qs
+from urllib.parse import urlparse, parse_qs, quote
 
 from . import (auth as A, backfill as BF, db, events as EV,
                fetching as F, query as Q, webauthn as W)
@@ -81,6 +87,15 @@ MAX_IMPORT_BODY = 16 * 1024 * 1024   # except an uploaded log, which is the payl
 MAX_MEDIA_BODY = 1024 * 1024   # a profile picture or a background in the prefs
 AVATAR_MAX_BYTES = 300 * 1024  # decoded; the client sends a 256px crop anyway
 PREFS_MAX_LEN = 800_000        # serialized prefs, background image included
+PERSON_NOTES_MAX = 2000
+PERSON_LINK_MAX = 500
+PERSON_LINK_KINDS = ("website", "github", "x", "matrix", "other")
+IRC_COMMAND_ARGS = {
+    "WHOIS": (1, 2), "ISON": (1, 10), "NAMES": (0, 1),
+    "WHO": (0, 2), "USERHOST": (1, 5), "WHOWAS": (1, 2),
+    "MOTD": (0, 1), "VERSION": (0, 1), "TIME": (0, 1),
+}
+IRC_NICK_RE = re.compile(r"^[A-Za-z\[\]\\`_^{|}][A-Za-z0-9\[\]\\`_^{|}-]{0,29}$")
 MAX_IMAGE_BYTES = 25 * 1024 * 1024
 # Served back from our own origin, so the list is what a browser will render
 # as a picture and nothing else. SVG is a document with script in it and is
@@ -186,6 +201,262 @@ def channel_network(con, channel):
         "SELECT network_id FROM channels WHERE name = ? COLLATE NOCASE "
         "AND archived = 1", (channel.lstrip("#").lower(),)).fetchone()
     return row["network_id"] if row and row["network_id"] else None
+
+
+def clean_person_nick(value):
+    """A lookup key, not a complete network-specific nick validator."""
+    nick = str(value or "").strip()
+    if (not nick or len(nick) > 30 or any(c.isspace() or ord(c) < 32 for c in nick)
+            or "," in nick):
+        raise ValueError("invalid nick")
+    return nick
+
+
+def normalize_irc_nick(value, fallback=None):
+    nick = str(value or fallback or "").strip()
+    if not IRC_NICK_RE.fullmatch(nick):
+        raise ValueError("IRC nicks are 1–30 characters and cannot start with a number")
+    return nick
+
+
+def irc_nick_state(con, value, exclude_user=None):
+    """Known nick conflicts without pretending Aurora can prove ownership.
+
+    Account mappings are durable; channel presence is current but limited to
+    the networks and rooms Aurora tracks. The UI presents either as a warning
+    and lets a person explicitly claim a nick they know is theirs.
+    """
+    nick = normalize_irc_nick(value)
+    args = [nick]
+    sql = "SELECT 1 FROM users WHERE irc_nick=? COLLATE NOCASE AND disabled=0"
+    if exclude_user is not None:
+        sql += " AND id != ?"
+        args.append(exclude_user)
+    account = bool(con.execute(sql + " LIMIT 1", args).fetchone())
+    channels = [r["channel"] for r in con.execute(
+        "SELECT DISTINCT channel FROM live_presence WHERE nick=? COLLATE NOCASE "
+        "ORDER BY channel", (nick,))]
+    reason = ("another Aurora account already uses this nick" if account else
+              ("currently online in " + ", ".join(channels) if channels else ""))
+    return {"nick": nick, "taken": bool(account or channels),
+            "account": account, "online": bool(channels),
+            "channels": channels, "reason": reason,
+            "scope": "Aurora accounts and tracked channel rosters"}
+
+
+def person_network(con, nick, channel=None, network_id=None):
+    """Resolve profile context to the supplied channel or the nick's latest one."""
+    if network_id is not None:
+        try:
+            row = con.execute("SELECT * FROM networks WHERE id = ?",
+                              (int(network_id),)).fetchone()
+        except (TypeError, ValueError):
+            row = None
+        return dict(row) if row else None
+    if channel:
+        row = con.execute(
+            "SELECT n.* FROM channels c JOIN networks n ON n.id=c.network_id "
+            "WHERE c.name=? COLLATE NOCASE", (str(channel).lstrip("#"),)).fetchone()
+        if row:
+            return dict(row)
+    row = con.execute(
+        "SELECT net.* FROM messages m JOIN nicks ni ON ni.id=m.nick_id "
+        "JOIN channels c ON c.id=m.channel_id "
+        "JOIN networks net ON net.id=c.network_id "
+        "WHERE ni.name=? COLLATE NOCASE ORDER BY m.ts DESC LIMIT 1", (nick,)).fetchone()
+    if not row:
+        row = con.execute("SELECT * FROM networks WHERE enabled=1 ORDER BY id LIMIT 1").fetchone()
+    return dict(row) if row else None
+
+
+def person_kind(nick, internal=None):
+    """Conservative bridge hints derived only from conventional nick affixes."""
+    if internal:
+        return {"kind": "aurora", "label": "Aurora member"}
+    if re.search(r"\[m\]$", nick, re.I) or re.match(r"^M-", nick, re.I):
+        return {"kind": "matrix", "label": "Likely Matrix bridge"}
+    if re.search(r"\[d\]$", nick, re.I) or re.search(r"[|_-]discord$", nick, re.I):
+        return {"kind": "discord", "label": "Likely Discord bridge"}
+    if re.search(r"[|_-]slack$", nick, re.I):
+        return {"kind": "slack", "label": "Likely Slack bridge"}
+    return {"kind": "irc", "label": "IRC nickname"}
+
+
+def normalize_person_links(raw):
+    if raw is None:
+        return {}
+    if not isinstance(raw, dict):
+        raise ValueError("links must be an object")
+    out = {}
+    for kind in PERSON_LINK_KINDS:
+        value = str(raw.get(kind) or "").strip()
+        if not value:
+            continue
+        if len(value) > PERSON_LINK_MAX:
+            raise ValueError("a profile link is too long")
+        if kind == "github" and re.fullmatch(r"[A-Za-z0-9-]{1,39}", value):
+            value = "https://github.com/" + value
+        elif kind == "x" and re.fullmatch(r"@?[A-Za-z0-9_]{1,15}", value):
+            value = "https://x.com/" + value.lstrip("@")
+        elif kind == "matrix" and value.startswith("@") and ":" in value:
+            value = "https://matrix.to/#/" + quote(value, safe="@:")
+        elif "://" not in value:
+            value = "https://" + value
+        parsed = urlparse(value)
+        if parsed.scheme not in ("http", "https") or not parsed.netloc:
+            raise ValueError("profile links must be http or https addresses")
+        out[kind] = value
+    return out
+
+
+def prepare_irc_command(value, channel=None):
+    """Validate the deliberately read-only slash/raw command surface.
+
+    Aurora accounts are not IRC operators, and the persistent sender assumes
+    it owns its nick and joined channels. Letting arbitrary JOIN, PART, NICK,
+    OPER, KILL or PRIVMSG lines through would violate those invariants. `/raw`
+    therefore means raw syntax and raw replies for the same safe query set,
+    rather than an unbounded socket escape hatch.
+    """
+    value = str(value or "").strip()
+    if not value or len(value) > MAX_SEND or any(c in value for c in "\r\n\0"):
+        raise ValueError("invalid IRC command")
+    value = value[1:].lstrip() if value.startswith("/") else value
+    bits = value.split()
+    if not bits:
+        raise ValueError("command required")
+    if bits[0].lower() in ("raw", "quote"):
+        bits = bits[1:]
+        if not bits:
+            raise ValueError("/raw needs an IRC command")
+
+    name = bits[0].upper()
+    args = bits[1:]
+    if name in ("NS", "NICKSERV"):
+        if len(args) != 2 or args[0].upper() not in ("INFO", "STATUS"):
+            raise ValueError("use /ns info <nick> or /ns status <nick>")
+        sub, target = args[0].upper(), clean_person_nick(args[1])
+        return {"command": f"/ns {sub.lower()} {target}",
+                "wire": f"PRIVMSG NickServ :{sub} {target}",
+                "name": "NICKSERV", "networkCommand": "PRIVMSG"}
+
+    if name == "MONITOR":
+        raise ValueError("OFTC does not advertise MONITOR; use /ison <nick>")
+    spec = IRC_COMMAND_ARGS.get(name)
+    if not spec:
+        raise ValueError(
+            "supported commands: WHOIS, ISON, NAMES, WHO, USERHOST, WHOWAS, "
+            "NickServ INFO/STATUS, MOTD, VERSION and TIME")
+    if name in ("NAMES", "WHO") and not args and channel:
+        args = ["#" + str(channel).lstrip("#")]
+    lo, hi = spec
+    if len(args) < lo or len(args) > hi:
+        hint = {
+            "WHOIS": "<nick>", "ISON": "<nick> [nick…]",
+            "NAMES": "[#channel]", "WHO": "[#channel|mask]",
+            "USERHOST": "<nick> [nick…]", "WHOWAS": "<nick> [count]",
+            "MOTD": "[server]", "VERSION": "[server]", "TIME": "[server]",
+        }[name]
+        raise ValueError(f"use /{name.lower()} {hint}".rstrip())
+    if any(len(a) > 100 or any(ord(c) < 33 for c in a) for a in args):
+        raise ValueError("invalid IRC command argument")
+    wire = " ".join([name] + args)
+    return {"command": "/" + " ".join([name.lower()] + args),
+            "wire": wire, "name": name, "networkCommand": name}
+
+
+def person_profile(con, nick, *, session=None, channel=None, network_id=None):
+    """Archive facts, current presence, and this reader's private annotation."""
+    nick = clean_person_nick(nick)
+    net = person_network(con, nick, channel=channel, network_id=network_id)
+    nid = net["id"] if net else None
+
+    stat = con.execute(
+        "SELECT COUNT(*) AS count, MIN(m.ts) AS first, MAX(m.ts) AS last "
+        "FROM messages m JOIN nicks n ON n.id=m.nick_id "
+        "WHERE n.name=? COLLATE NOCASE", (nick,)).fetchone()
+    chans = [dict(r) for r in con.execute(
+        "SELECT c.name, COUNT(*) AS count, MAX(m.ts) AS last FROM messages m "
+        "JOIN nicks n ON n.id=m.nick_id JOIN channels c ON c.id=m.channel_id "
+        "WHERE n.name=? COLLATE NOCASE GROUP BY c.id ORDER BY last DESC", (nick,))]
+    recent_events = [dict(r) for r in con.execute(
+        "SELECT e.ts, e.kind, e.detail, c.name AS channel FROM events e "
+        "JOIN nicks n ON n.id=e.nick_id JOIN channels c ON c.id=e.channel_id "
+        "WHERE n.name=? COLLATE NOCASE ORDER BY e.ts DESC, e.id DESC LIMIT 8", (nick,))]
+    event_last = recent_events[0]["ts"] if recent_events else None
+    last_seen = max([x for x in (stat["last"], event_last) if x is not None], default=None)
+
+    roster = []
+    synced = False
+    connected = False
+    checked = None
+    if nid is not None:
+        connected = network_status(con, nid)["connected"]
+        roster = [r["channel"].lstrip("#") for r in con.execute(
+            "SELECT channel FROM live_presence WHERE network_id=? "
+            "AND nick=? COLLATE NOCASE ORDER BY channel", (nid, nick))]
+        synced = bool(con.execute(
+            "SELECT 1 FROM live_presence_state WHERE network_id=? LIMIT 1", (nid,)).fetchone())
+        checked = con.execute(
+            "SELECT checked_at, online, error, requested_at FROM live_presence_checks "
+            "WHERE network_id=? AND nick=? COLLATE NOCASE", (nid, nick)).fetchone()
+
+    now = int(time.time())
+    if roster and connected:
+        presence = {"state": "online", "label": "Online", "source": "channel",
+                    "channels": roster, "checkedAt": now}
+    elif checked and checked["checked_at"] and now - checked["checked_at"] < 180:
+        if checked["online"] is None:
+            presence = {"state": "unknown", "label": "Status unavailable",
+                        "source": "ison", "error": checked["error"],
+                        "channels": [], "checkedAt": checked["checked_at"]}
+        else:
+            online = bool(checked["online"])
+            presence = {"state": "online" if online else "offline",
+                        "label": "Online" if online else "Offline",
+                        "source": "ison", "channels": [],
+                        "checkedAt": checked["checked_at"]}
+    elif connected and synced:
+        presence = {"state": "not_here", "label": "Not in tracked channels",
+                    "source": "channel", "channels": [], "checkedAt": None}
+    else:
+        presence = {"state": "unknown", "label": "Live status unavailable",
+                    "source": "none", "channels": [], "checkedAt": None}
+    presence["refreshing"] = bool(checked and (
+        checked["checked_at"] is None or checked["requested_at"] > checked["checked_at"]))
+    presence["canCheck"] = bool(session and connected and nid is not None)
+
+    internal = None
+    annotation = {"favourite": False, "notes": "", "links": {}, "updated": None}
+    row = con.execute(
+        "SELECT username, avatar_at FROM users WHERE irc_nick=? COLLATE NOCASE "
+        "AND disabled=0 ORDER BY COALESCE(avatar_at,0) DESC, id DESC LIMIT 1",
+        (nick,)).fetchone()
+    if row:
+        internal = {"avatar": row["avatar_at"] or 0,
+                    "username": row["username"] if session else None}
+    if session:
+        if nid is not None:
+            row = con.execute(
+                "SELECT favourite, notes, links, updated FROM person_annotations "
+                "WHERE user_id=? AND network_id=? AND nick=? COLLATE NOCASE",
+                (session["user_id"], nid, nick)).fetchone()
+            if row:
+                try:
+                    links = json.loads(row["links"] or "{}")
+                except ValueError:
+                    links = {}
+                annotation = {"favourite": bool(row["favourite"]),
+                              "notes": row["notes"] or "", "links": links,
+                              "updated": row["updated"]}
+
+    return {"nick": nick, "network": ({"id": nid,
+             "name": net["name"], "label": net["label"] or net["name"]} if net else None),
+            "identity": person_kind(nick, internal), "internal": internal,
+            "presence": presence, "lastSeen": last_seen,
+            "messages": stat["count"] or 0, "firstSeen": stat["first"],
+            "lastMessage": stat["last"], "channels": chans,
+            "recentEvents": recent_events, "annotation": annotation}
 
 
 class Handler(SimpleHTTPRequestHandler):
@@ -398,16 +669,22 @@ class Handler(SimpleHTTPRequestHandler):
 
             if url.path == "/api/meta":
                 m = dict(cached_meta(con))
+                # A profile picture is part of a person's public IRC-facing
+                # identity. Address it by IRC nick so anonymous readers do not
+                # learn the separate Aurora account username.
+                avatars = {}
+                for r in con.execute(
+                        "SELECT id, irc_nick, avatar_at FROM users "
+                        "WHERE avatar IS NOT NULL AND irc_nick IS NOT NULL "
+                        "AND disabled=0 ORDER BY avatar_at DESC, id DESC"):
+                    avatars.setdefault(r["irc_nick"].lower(),
+                                       {"n": r["irc_nick"],
+                                        "v": r["avatar_at"] or 0})
+                m["avatars"] = avatars
                 if authed:
-                    # Who has a face: nick -> avatar version, so the feed can
-                    # show profile pictures on the messages of people who set
-                    # one. Members only, like everything else personal.
-                    m["avatars"] = {
-                        r["irc_nick"].lower(): {"u": r["username"],
-                                                "v": r["avatar_at"] or 0}
-                        for r in con.execute(
-                            "SELECT username, irc_nick, avatar_at FROM users "
-                            "WHERE avatar IS NOT NULL AND irc_nick IS NOT NULL")}
+                    m["personFavorites"] = [r["nick"] for r in con.execute(
+                        "SELECT nick FROM person_annotations WHERE user_id=? "
+                        "AND favourite=1 ORDER BY updated DESC", (authed["user_id"],))]
                 else:
                     m["tags"] = []
                 return self._json(m)
@@ -432,6 +709,15 @@ class Handler(SimpleHTTPRequestHandler):
                     {"month": b["bucket"], "count": b["count"]} for b in res["buckets"]]})
             if url.path == "/api/tags":
                 return self._json({"tags": Q.tags(con) if authed else []})
+            if url.path == "/api/nick/check":
+                try:
+                    return self._json(irc_nick_state(
+                        con, p.get("nick", [""])[0],
+                        exclude_user=(authed["user_id"] if authed and
+                                      p.get("excludeSelf", ["0"])[0] == "1"
+                                      else None)))
+                except ValueError as exc:
+                    return self._json({"error": str(exc), "taken": False}, 400)
             if url.path == "/api/searches":
                 if not authed:
                     return self._json({"searches": []})
@@ -439,20 +725,29 @@ class Handler(SimpleHTTPRequestHandler):
                     "SELECT name, query, extra, created, used FROM saved_searches "
                     "ORDER BY used DESC, name")]})
             if url.path == "/api/avatar":
-                # The picture itself. Members only; the URL carries a version
-                # so the browser can cache hard and still update on change.
-                if not authed:
-                    return self._json({"error": "sign in first"}, 401)
-                row = con.execute(
-                    "SELECT avatar, avatar_type, avatar_at FROM users "
-                    "WHERE username = ? COLLATE NOCASE",
-                    (p.get("u", [""])[0],)).fetchone()
+                # IRC-nick URLs are public profile pictures. Username URLs are
+                # retained for account/settings surfaces and remain private.
+                by_nick = p.get("n", [""])[0]
+                if by_nick:
+                    row = con.execute(
+                        "SELECT avatar, avatar_type, avatar_at FROM users "
+                        "WHERE irc_nick=? COLLATE NOCASE AND disabled=0 "
+                        "ORDER BY COALESCE(avatar_at,0) DESC, id DESC LIMIT 1",
+                        (by_nick,)).fetchone()
+                elif authed:
+                    row = con.execute(
+                        "SELECT avatar, avatar_type, avatar_at FROM users "
+                        "WHERE username = ? COLLATE NOCASE",
+                        (p.get("u", [""])[0],)).fetchone()
+                else:
+                    return self._json({"error": "avatar nick required"}, 400)
                 if not row or not row["avatar"]:
                     return self._json({"error": "no picture"}, 404)
                 self.send_response(200)
                 self.send_header("Content-Type", row["avatar_type"] or "image/jpeg")
                 self.send_header("Content-Length", str(len(row["avatar"])))
-                self.send_header("Cache-Control", "private, max-age=86400")
+                self.send_header("Cache-Control", ("public" if by_nick else "private")
+                                 + ", max-age=86400")
                 self.end_headers()
                 self.wfile.write(row["avatar"])
                 return
@@ -480,6 +775,40 @@ class Handler(SimpleHTTPRequestHandler):
                     channels=p.get("channel", []),
                     nicks=p.get("nick", []),
                     limit=int(p.get("limit", ["4000"])[0]))})
+            if url.path == "/api/person":
+                try:
+                    profile = person_profile(
+                        con, p.get("nick", [""])[0], session=authed,
+                        channel=p.get("channel", [None])[0],
+                        network_id=p.get("network", [None])[0])
+                except ValueError as exc:
+                    return self._json({"error": str(exc)}, 400)
+                return self._json(profile)
+            if url.path == "/api/command/status":
+                s = self._need_auth(csrf=False)
+                if not s:
+                    return
+                try:
+                    cid = int(p.get("id", ["0"])[0])
+                except ValueError:
+                    return self._json({"error": "bad id"}, 400)
+                row = con.execute(
+                    "SELECT command, created, sent_at, finished_at, response, error "
+                    "FROM irc_commands WHERE id=? AND user_id=?",
+                    (cid, s["user_id"])).fetchone()
+                if not row:
+                    return self._json({"state": "unknown"})
+                if row["finished_at"] is None:
+                    return self._json({"state": "running" if row["sent_at"] else "queued",
+                                       "command": row["command"],
+                                       "waited": int(time.time()) - row["created"]})
+                try:
+                    replies = json.loads(row["response"] or "[]")
+                except ValueError:
+                    replies = []
+                return self._json({"state": "failed" if row["error"] else "done",
+                                   "command": row["command"], "replies": replies,
+                                   "error": row["error"], "at": row["finished_at"]})
             if url.path == "/api/send/status":
                 # What actually happened to a queued line. The client used to
                 # guess with a timer, which called a slow-but-fine send a
@@ -890,9 +1219,14 @@ class Handler(SimpleHTTPRequestHandler):
                 if A.any_users(con):
                     return self._json({"error": "already set up"}, 409)
                 try:
+                    nick = normalize_irc_nick(body.get("nick"), body.get("username"))
+                    nick_state = irc_nick_state(con, nick)
+                    if nick_state["taken"] and not body.get("claimNick"):
+                        return self._json({"error": "that IRC nick appears to be in use",
+                                           "nickConflict": nick_state}, 409)
                     uid = A.create_user(con, body.get("username"),
                                         str(body.get("password", "")), role="admin",
-                                        irc_nick=body.get("nick"),
+                                        irc_nick=nick,
                                         join_method=A.JOIN_SETUP)
                 except ValueError as exc:
                     return self._json({"error": str(exc)}, 400)
@@ -952,9 +1286,14 @@ class Handler(SimpleHTTPRequestHandler):
 
             if url.path == "/api/redeem":
                 try:
+                    nick = normalize_irc_nick(body.get("nick"), body.get("username"))
+                    nick_state = irc_nick_state(con, nick)
+                    if nick_state["taken"] and not body.get("claimNick"):
+                        return self._json({"error": "that IRC nick appears to be in use",
+                                           "nickConflict": nick_state}, 409)
                     uid = A.redeem_invite(con, body.get("token"),
                                           body.get("username"),
-                                          str(body.get("password", "")))
+                                          str(body.get("password", "")), irc_nick=nick)
                 except ValueError as exc:
                     A.log(con, "redeem_fail", ip=ip, detail=str(exc))
                     return self._json({"error": str(exc)}, 400)
@@ -988,9 +1327,14 @@ class Handler(SimpleHTTPRequestHandler):
                     A.drop_user_sessions(con, s["user_id"], keep=s["id"])
                     A.log(con, "password_change", username=s["username"], ip=ip)
                 if body.get("nick") is not None:
-                    nick = str(body["nick"]).strip()
-                    if not nick or len(nick) > 30 or any(c.isspace() for c in nick):
-                        return self._json({"error": "invalid nick"}, 400)
+                    try:
+                        nick = normalize_irc_nick(body["nick"])
+                        nick_state = irc_nick_state(con, nick, exclude_user=s["user_id"])
+                    except ValueError as exc:
+                        return self._json({"error": str(exc)}, 400)
+                    if nick_state["taken"] and not body.get("claimNick"):
+                        return self._json({"error": "that IRC nick appears to be in use",
+                                           "nickConflict": nick_state}, 409)
                     con.execute("UPDATE users SET irc_nick = ? WHERE id = ?",
                                 (nick, s["user_id"]))
                 if body.get("username"):
@@ -1377,10 +1721,15 @@ class Handler(SimpleHTTPRequestHandler):
                 if not s:
                     return
                 try:
+                    nick = normalize_irc_nick(body.get("nick"), body.get("username"))
+                    nick_state = irc_nick_state(con, nick)
+                    if nick_state["taken"] and not body.get("claimNick"):
+                        return self._json({"error": "that IRC nick appears to be in use",
+                                           "nickConflict": nick_state}, 409)
                     uid = A.create_user(con, body.get("username"),
                                         str(body.get("password", "")),
                                         role=str(body.get("role", "user")),
-                                        irc_nick=body.get("nick"),
+                                        irc_nick=nick,
                                         join_method=A.JOIN_MANUAL,
                                         invited_by=s["user_id"])
                 except ValueError as exc:
@@ -1444,8 +1793,13 @@ class Handler(SimpleHTTPRequestHandler):
                         body.get("role") == "user" or body.get("disabled")):
                     return self._json({"error": "you cannot demote or disable yourself"}, 400)
                 if "role" in body and body["role"] in ("admin", "user"):
-                    con.execute("UPDATE users SET role = ? WHERE id = ?",
-                                (body["role"], target["id"]))
+                    # A user's one-time dismissal is not consent to skip a
+                    # future admin requirement. Clear it at promotion as well
+                    # as enforcing the gate from the live role on every login.
+                    con.execute(
+                        "UPDATE users SET role = ?, totp_declined = CASE "
+                        "WHEN ? = 'admin' THEN 0 ELSE totp_declined END WHERE id = ?",
+                        (body["role"], body["role"], target["id"]))
                 if "disabled" in body:
                     con.execute("UPDATE users SET disabled = ? WHERE id = ?",
                                 (1 if body["disabled"] else 0, target["id"]))
@@ -1461,6 +1815,79 @@ class Handler(SimpleHTTPRequestHandler):
                 return self._json({"ok": True})
 
             # ---- everything below needs a session ----
+            if url.path == "/api/person/status":
+                s = self._need_auth()
+                if not s:
+                    return
+                nick = clean_person_nick(body.get("nick"))
+                net = person_network(con, nick, channel=body.get("channel"),
+                                     network_id=body.get("network"))
+                if not net:
+                    return self._json({"error": "no IRC network for that person"}, 400)
+                if not network_status(con, net["id"])["connected"]:
+                    return self._json({"error": "that IRC network is not connected"}, 409)
+                now = int(time.time())
+                old = con.execute(
+                    "SELECT requested_at FROM live_presence_checks WHERE network_id=? "
+                    "AND nick=? COLLATE NOCASE", (net["id"], nick)).fetchone()
+                if not old or now - old["requested_at"] >= 3:
+                    con.execute(
+                        "INSERT INTO live_presence_checks(network_id, nick, requested_at, "
+                        "checked_at, online, error) VALUES (?,?,?,NULL,NULL,NULL) "
+                        "ON CONFLICT(network_id, nick) DO UPDATE SET "
+                        "requested_at=excluded.requested_at, error=NULL",
+                        (net["id"], nick, now))
+                return self._json(person_profile(
+                    con, nick, session=s, network_id=net["id"]))
+
+            if url.path == "/api/person":
+                s = self._need_auth()
+                if not s:
+                    return
+                nick = clean_person_nick(body.get("nick"))
+                net = person_network(con, nick, channel=body.get("channel"),
+                                     network_id=body.get("network"))
+                if not net:
+                    return self._json({"error": "no IRC network for that person"}, 400)
+                old = con.execute(
+                    "SELECT favourite, notes, links FROM person_annotations "
+                    "WHERE user_id=? AND network_id=? AND nick=? COLLATE NOCASE",
+                    (s["user_id"], net["id"], nick)).fetchone()
+                favourite = bool(old["favourite"]) if old else False
+                notes = old["notes"] if old else ""
+                try:
+                    links = json.loads(old["links"] or "{}") if old else {}
+                except ValueError:
+                    links = {}
+                if "favourite" in body:
+                    favourite = bool(body["favourite"])
+                if "notes" in body:
+                    notes = str(body.get("notes") or "").rstrip()
+                    if len(notes) > PERSON_NOTES_MAX:
+                        return self._json(
+                            {"error": f"notes are capped at {PERSON_NOTES_MAX} characters"}, 400)
+                if "links" in body:
+                    try:
+                        links = normalize_person_links(body.get("links"))
+                    except ValueError as exc:
+                        return self._json({"error": str(exc)}, 400)
+                now = int(time.time())
+                if not favourite and not notes and not links:
+                    con.execute(
+                        "DELETE FROM person_annotations WHERE user_id=? AND network_id=? "
+                        "AND nick=? COLLATE NOCASE", (s["user_id"], net["id"], nick))
+                else:
+                    con.execute(
+                        "INSERT INTO person_annotations(user_id, network_id, nick, favourite, "
+                        "notes, links, updated) VALUES (?,?,?,?,?,?,?) "
+                        "ON CONFLICT(user_id, network_id, nick) DO UPDATE SET "
+                        "favourite=excluded.favourite, notes=excluded.notes, "
+                        "links=excluded.links, updated=excluded.updated",
+                        (s["user_id"], net["id"], nick, 1 if favourite else 0,
+                         notes, json.dumps(links, ensure_ascii=False), now))
+                return self._json(person_profile(
+                    con, nick, session=s, network_id=net["id"]))
+
             if url.path == "/api/live/nick":
                 if not (s := self._need_auth()):
                     return
@@ -1470,6 +1897,45 @@ class Handler(SimpleHTTPRequestHandler):
                 db.setting(con, "desired_nick", nick)
                 s["nick"] = nick
                 return self._json({"nick": nick, "live": live_status(con)})
+
+            if url.path == "/api/command":
+                s = self._need_auth()
+                if not s:
+                    return
+                channel = str(body.get("channel", "")).strip()
+                nid = channel_network(con, channel) if channel else None
+                if not nid:
+                    try:
+                        nid = int(body.get("network") or 0)
+                    except (TypeError, ValueError):
+                        nid = 0
+                net = con.execute("SELECT id FROM networks WHERE id=? AND enabled=1",
+                                  (nid,)).fetchone()
+                if not net:
+                    return self._json({"error": "choose a channel on a live network"}, 400)
+                if not network_status(con, nid)["connected"]:
+                    return self._json({"error": "that IRC network is not connected"}, 409)
+                try:
+                    command = prepare_irc_command(body.get("command"), channel=channel)
+                except ValueError as exc:
+                    return self._json({"error": str(exc)}, 400)
+                recent = con.execute(
+                    "SELECT COUNT(*) FROM irc_commands WHERE user_id=? AND created>?",
+                    (s["user_id"], int(time.time()) - 10)).fetchone()[0]
+                pending = con.execute(
+                    "SELECT COUNT(*) FROM irc_commands WHERE user_id=? "
+                    "AND finished_at IS NULL", (s["user_id"],)).fetchone()[0]
+                if recent >= 6 or pending >= 3:
+                    return self._json(
+                        {"error": "too many IRC commands at once — wait for a reply"}, 429)
+                cur = con.execute(
+                    "INSERT INTO irc_commands(user_id, network_id, nick, command, wire, "
+                    "created) VALUES (?,?,?,?,?,?)",
+                    (s["user_id"], nid, s["irc_nick"], command["command"],
+                     command["wire"], int(time.time())))
+                return self._json({"queued": cur.lastrowid,
+                                   "command": command["command"],
+                                   "name": command["name"]})
 
             if url.path == "/api/send":
                 s = self._need_auth()

@@ -70,9 +70,17 @@ consequence is that logging never stops, whatever anyone else is doing.
 - **Tags** — Finder-style coloured flags for marking messages worth finding
   again. Members-only, like every annotation: an anonymous reader sees the
   record exactly as IRC carried it.
-- **Profile pictures** — set one under Settings → Account and it shows beside
-  your messages for signed-in members, on every device.
-- **Help** — press `?` for the keybinds and the search grammar.
+- **People profiles** — click a name or avatar for live/last-seen status,
+  archive activity and recent presence events. Signed-in readers can filter,
+  favourite, and keep private notes and links for that IRC nick.
+- **IRC commands** — type `/` in the composer for autocomplete. Aurora returns
+  private replies for `/whois`, `/ison`, `/names`, `/who`, `/userhost`,
+  `/whowas`, `/motd`, `/version`, `/time`, and NickServ `INFO`/`STATUS`.
+  `/raw` accepts the same read-only query set in protocol syntax. OFTC does not
+  advertise `MONITOR`, so Aurora points it to `/ison` instead.
+- **Profile pictures** — set one under Settings → Account and it shows publicly
+  beside your IRC messages and in your person profile, on every device.
+- **Help** — press `?` for keybinds, search grammar, and the IRC command list.
 - **Jump to context** — land on any message in its surrounding conversation, with
   a linkable URL.
 - **Live** — new messages arrive over server-sent events, typically within a
@@ -96,8 +104,9 @@ consequence is that logging never stops, whatever anyone else is doing.
 
 Anonymous read-only access is the public product; every write sits behind a
 session — and so does everything members layer on top of the record: tags,
-saved searches, profile pictures and synced appearance are never shown to an
-anonymous reader. The **first account created is the owner** and cannot be
+saved searches, private person notes and synced appearance are never shown to
+an anonymous reader. A profile picture is deliberately public wherever that
+account's IRC nick appears. The **first account created is the owner** and cannot be
 demoted, disabled or removed by anyone, including other admins.
 
 Sign in with a password, optionally with TOTP two-factor, or with a **passkey**.
@@ -109,6 +118,12 @@ into enrolment at sign-in and refused the management surface until it is done
 of their own server). Users are offered the same enrolment once and may say
 "Not now". Sessions live in the database, carry a CSRF token, and can be
 revoked per device from Settings.
+
+Every setup path asks for the IRC nick the account will post under. Aurora
+checks existing accounts and the live channel rosters it can see; a conflict is
+shown as a warning and can be explicitly claimed when it is a registered nick
+the person controls. Appearance belongs to the account, so a new account starts
+at System with no inherited background or theme.
 
 **Password resets.** An admin can mint a single-use reset link for an account
 from Settings → People — it lives 24 hours, replaces any earlier link for the

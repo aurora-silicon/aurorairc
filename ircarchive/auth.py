@@ -39,6 +39,22 @@ CREATE TABLE IF NOT EXISTS users (
     last_seen    INTEGER
 );
 
+-- Private, per-account context about an IRC identity. Notes, favourites and
+-- links are member annotations just like tags: they never become part of the
+-- public archive and one member cannot read another member's copy.
+CREATE TABLE IF NOT EXISTS person_annotations (
+    user_id    INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    network_id INTEGER NOT NULL REFERENCES networks(id) ON DELETE CASCADE,
+    nick       TEXT    NOT NULL COLLATE NOCASE,
+    favourite  INTEGER NOT NULL DEFAULT 0,
+    notes      TEXT    NOT NULL DEFAULT '',
+    links      TEXT    NOT NULL DEFAULT '{}',
+    updated    INTEGER NOT NULL,
+    PRIMARY KEY (user_id, network_id, nick)
+);
+CREATE INDEX IF NOT EXISTS idx_person_annotations_user_favourite
+    ON person_annotations(user_id, favourite, updated);
+
 CREATE TABLE IF NOT EXISTS invites (
     token      TEXT PRIMARY KEY,
     username   TEXT,
@@ -415,13 +431,13 @@ def revoke_invite(con, token):
     con.execute("UPDATE invites SET revoked = 1 WHERE token = ?", (str(token or ""),))
 
 
-def redeem_invite(con, token, username, password):
+def redeem_invite(con, token, username, password, irc_nick=None):
     inv = invite_ok(con, token)
     if not inv:
         raise ValueError("that invite is invalid, used up or has expired")
     if inv["username"] and inv["username"].lower() != str(username).strip().lower():
         raise ValueError(f"this invite is for {inv['username']}")
-    uid = create_user(con, username, password, role=inv["role"])
+    uid = create_user(con, username, password, role=inv["role"], irc_nick=irc_nick)
     now = int(time.time())
     con.execute("UPDATE invites SET uses = uses + 1, used_by = COALESCE(used_by, ?), "
                 "used_at = COALESCE(used_at, ?) WHERE token = ?", (uid, now, token))

@@ -222,8 +222,11 @@ def main():
 
         joiner = Client(base)
         r = joiner.post("/api/redeem", {"token": token, "username": "alice",
-                                        "password": "another good one"})
+                                        "password": "another good one",
+                                        "nick": "alice_irc"})
         check("alice joins on the pass", r.get("signedIn") is True, str(r))
+        check("an invite records the requested IRC nick",
+              (r.get("user") or {}).get("nick") == "alice_irc", str(r))
         bob = Client(base)
         r = bob.post("/api/redeem", {"token": token, "username": "bob",
                                      "password": "another good one"})
@@ -256,10 +259,27 @@ def main():
 
         r = c.post("/api/users/create", {"username": "dave",
                                          "password": "another good one",
-                                         "role": "user"})
+                                         "role": "user", "nick": "dave_irc"})
         check("an account can be created directly", bool(r.get("id")), str(r))
         d = c.get("/api/users/detail", username="dave")
         check("and is recorded as created by hand", d.get("joinMethod") == "manual")
+
+        nick = c.get("/api/nick/check", nick="ryan_")
+        check("nick availability spots another Aurora account",
+              nick.get("taken") is True and nick.get("account") is True, str(nick))
+        clash = c.post("/api/users/create", {"username": "nickclaim",
+                       "password": "another good one", "role": "user",
+                       "nick": "ryan_"})
+        check("a known IRC nick conflict warns instead of silently claiming",
+              bool(clash.get("nickConflict")), str(clash))
+        claimed = c.post("/api/users/create", {"username": "nickclaim",
+                         "password": "another good one", "role": "user",
+                         "nick": "ryan_", "claimNick": True})
+        check("an explicit ownership claim may override the warning",
+              bool(claimed.get("id")), str(claimed))
+        invalid = c.get("/api/nick/check", nick="9not-a-nick")
+        check("invalid IRC nicks are rejected before account creation",
+              "error" in invalid, str(invalid))
 
         # --------------------------------------------------------- sign-in
         head("Sign-in with a second factor")
@@ -372,6 +392,83 @@ def main():
         rows = [m for m in c.get("/api/messages", channel="mychannel", limit=80)["messages"]
                 if m["text"] == "hello from the web"]
         check("recorded exactly once", len(rows) == 1, str(len(rows)))
+
+        # ----------------------------------------- people and IRC commands
+        head("People profiles and IRC commands")
+        ircd.inject_join("profile_guest", "#mychannel")
+        prof = wait_for(lambda: p if (p := c.get(
+            "/api/person", nick="profile_guest", channel="mychannel")).get(
+                "presence", {}).get("state") == "online" else None,
+            timeout=10)
+        check("a live JOIN appears in the person's channel roster", bool(prof), str(prof))
+        nick = c.get("/api/nick/check", nick="profile_guest")
+        check("account setup also warns about a nick in a visible live roster",
+              nick.get("taken") is True and nick.get("online") is True, str(nick))
+        check("archive activity is included in a profile",
+              c.get("/api/person", nick="someone").get("messages", 0) >= 2)
+
+        saved = c.post("/api/person", {"nick": "someone", "network": nid,
+                       "favourite": True, "notes": "GMT+2",
+                       "links": {"github": "octocat", "x": "@aurora_test"}})
+        check("a favourite and private note can be saved",
+              saved.get("annotation", {}).get("favourite") is True
+              and saved.get("annotation", {}).get("notes") == "GMT+2", str(saved))
+        check("profile link shorthand is normalised",
+              saved.get("annotation", {}).get("links", {}).get("github")
+              == "https://github.com/octocat", str(saved))
+        private = joiner.get("/api/person", nick="someone", network=nid)
+        check("another account cannot see those annotations",
+              private.get("annotation", {}).get("notes") == ""
+              and not private.get("annotation", {}).get("favourite"), str(private))
+        public = anon.get("/api/person", nick="someone", network=nid)
+        check("anonymous profiles keep private annotations empty",
+              public.get("annotation", {}).get("links") == {}, str(public))
+
+        asked = c.post("/api/person/status", {"nick": "definitely_offline",
+                                               "network": nid})
+        checked = wait_for(lambda: p if (p := c.get(
+            "/api/person", nick="definitely_offline", network=nid)).get(
+                "presence", {}).get("state") == "offline" else None,
+            timeout=10)
+        check("ISON supplies an honest network-wide offline result", bool(checked), str(asked))
+
+        who = c.post("/api/command", {"channel": "#mychannel",
+                                       "command": "/whois ryan_"})
+        who_done = wait_for(lambda: x if (x := c.get(
+            "/api/command/status", id=who.get("queued", 0))).get(
+                "state") == "done" else None, timeout=20)
+        check("WHOIS is queued and its IRC numerics come back privately",
+              bool(who_done) and any(x.get("code") == "311"
+                                     for x in who_done.get("replies", [])), str(who_done))
+        ison = c.post("/api/command", {"channel": "#mychannel",
+                                        "command": "/ison ryan_ nobody_here"})
+        ison_done = wait_for(lambda: x if (x := c.get(
+            "/api/command/status", id=ison.get("queued", 0))).get(
+                "state") == "done" else None, timeout=20)
+        check("ISON replies include only online nicknames",
+              bool(ison_done) and any(x.get("code") == "303" and "ryan_" in
+                                      " ".join(x.get("params", []))
+                                      for x in ison_done.get("replies", [])), str(ison_done))
+        ns = c.post("/api/command", {"channel": "#mychannel",
+                                      "command": "/ns info ryan_"})
+        ns_done = wait_for(lambda: x if (x := c.get(
+            "/api/command/status", id=ns.get("queued", 0))).get(
+                "state") == "done" else None, timeout=20)
+        check("NickServ INFO notices are returned",
+              bool(ns_done) and any(x.get("code") == "NOTICE"
+                                    for x in ns_done.get("replies", [])), str(ns_done))
+        bad = c.post("/api/command", {"channel": "#mychannel",
+                                      "command": "/monitor + ryan_"})
+        check("MONITOR explains OFTC's limitation", "OFTC" in bad.get("error", ""), str(bad))
+        bad = c.post("/api/command", {"channel": "#mychannel",
+                                      "command": "/raw OPER root secret"})
+        check("raw syntax cannot escape the read-only query set", "error" in bad, str(bad))
+
+        ircd.inject_quit("profile_guest")
+        gone = wait_for(lambda: c.get(
+            "/api/person", nick="profile_guest", network=nid).get("presence", {}).get("state")
+            != "online", timeout=10)
+        check("QUIT removes the person from the live roster", bool(gone))
 
         # ------------------------------------------------- channel admin live
         head("Channel changes apply to a running archivist")
@@ -594,6 +691,15 @@ def main():
         s = bob.get("/api/session")
         check("and the choice rides the session",
               (s.get("user") or {}).get("totpDeclined") is True, str(s))
+        r = c.post("/api/users/update", {"username": "bob", "role": "admin"})
+        check("a user who declined can later be promoted", "error" not in r, str(r))
+        s = bob.get("/api/session")
+        check("promotion clears the old optional-security dismissal",
+              (s.get("user") or {}).get("role") == "admin"
+              and (s.get("user") or {}).get("totpDeclined") is False, str(s))
+        locked = bob.get("/api/users")
+        check("the promoted admin remains locked out until two-factor is set",
+              locked.get("totpSetup") is True, str(locked))
         check("the founder stays exempt from the hard gate",
               "users" in c.get("/api/users"))
 
@@ -645,13 +751,22 @@ def main():
               hdr.get("content-type") == "image/png", str(hdr.get("content-type")))
         check("byte for byte", body == png)
         status, _h, _b = anon.raw("/api/avatar?u=ryan")
-        check("anonymous readers get nothing", status == 401, str(status))
+        check("anonymous readers cannot address avatars by account username",
+              status == 400, str(status))
+        status, hdr, body = anon.raw("/api/avatar?n=ryan_")
+        check("but the IRC-facing profile picture is public", status == 200, str(status))
+        check("the public picture is byte for byte", body == png)
         m = c.get("/api/meta")
         check("meta maps the nick to the picture for members",
-              (m.get("avatars") or {}).get("ryan_", {}).get("u") == "ryan",
+              (m.get("avatars") or {}).get("ryan_", {}).get("n") == "ryan_",
               str(m.get("avatars")))
         m = anon.get("/api/meta")
-        check("and not for anyone else", "avatars" not in m)
+        check("and supplies the same public nick mapping anonymously",
+              (m.get("avatars") or {}).get("ryan_", {}).get("n") == "ryan_", str(m))
+        profile = anon.get("/api/person", nick="ryan_", network=nid)
+        check("public person profiles recognise an Aurora member without leaking username",
+              profile.get("identity", {}).get("kind") == "aurora"
+              and profile.get("internal", {}).get("username") is None, str(profile))
         r = c.post("/api/me/avatar",
                    {"image": "data:image/jpeg;base64,"
                              + base64.b64encode(png).decode()})

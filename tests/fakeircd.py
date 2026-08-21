@@ -162,6 +162,58 @@ class FakeIRCd:
                 self._part(c, ch, args[-1] if len(args) > 1 else "")
         elif cmd == "PRIVMSG" and len(args) >= 2:
             self._privmsg(c, args[0], args[-1])
+        elif cmd == "ISON":
+            wanted = " ".join(args).lstrip(":").split()
+            with self.lock:
+                online = {o.nick.lower(): o.nick for o in self.clients
+                          if o.alive and o.registered and o.nick}
+            found = " ".join(online[n.lower()] for n in wanted if n.lower() in online)
+            c.send(f":{self.name} 303 {c.nick} :{found}")
+        elif cmd == "WHOIS" and args:
+            target = args[-1].split(",", 1)[0]
+            with self.lock:
+                hit = next((o for o in self.clients
+                            if o.nick and o.nick.lower() == target.lower()), None)
+            if not hit:
+                c.send(f":{self.name} 401 {c.nick} {target} :No such nick")
+            else:
+                chans = " ".join(sorted(hit.channels))
+                c.send(f":{self.name} 311 {c.nick} {hit.nick} {hit.user or hit.nick} "
+                       f"test * :{hit.nick}")
+                c.send(f":{self.name} 312 {c.nick} {hit.nick} {self.name} :Test server")
+                if chans:
+                    c.send(f":{self.name} 319 {c.nick} {hit.nick} :{chans}")
+                c.send(f":{self.name} 318 {c.nick} {hit.nick} :End of /WHOIS list")
+        elif cmd == "NAMES":
+            targets = args or sorted(c.channels)
+            for channel in targets:
+                names = " ".join(m.nick for m in self._members(channel) if m.nick)
+                c.send(f":{self.name} 353 {c.nick} = {channel} :{names}")
+                c.send(f":{self.name} 366 {c.nick} {channel} :End of /NAMES list")
+        elif cmd == "WHO":
+            target = args[0] if args else "*"
+            members = self._members(target) if target.startswith("#") else []
+            for member in members:
+                c.send(f":{self.name} 352 {c.nick} {target} {member.user or member.nick} "
+                       f"test {self.name} {member.nick} H :0 {member.nick}")
+            c.send(f":{self.name} 315 {c.nick} {target} :End of /WHO list")
+        elif cmd == "USERHOST":
+            wanted = " ".join(args).split()
+            with self.lock:
+                online = {o.nick.lower(): o for o in self.clients if o.nick and o.alive}
+            found = " ".join(f"{online[n.lower()].nick}=+{online[n.lower()].user or n}@test"
+                             for n in wanted if n.lower() in online)
+            c.send(f":{self.name} 302 {c.nick} :{found}")
+        elif cmd == "WHOWAS" and args:
+            c.send(f":{self.name} 406 {c.nick} {args[0]} :There was no such nickname")
+        elif cmd == "MOTD":
+            c.send(f":{self.name} 375 {c.nick} :- {self.name} Message of the day -")
+            c.send(f":{self.name} 372 {c.nick} :- Welcome to the fake network")
+            c.send(f":{self.name} 376 {c.nick} :End of /MOTD command")
+        elif cmd == "VERSION":
+            c.send(f":{self.name} 351 {c.nick} fake-1.0 {self.name} :test server")
+        elif cmd == "TIME":
+            c.send(f":{self.name} 391 {c.nick} {self.name} :today")
         elif cmd == "TOPIC" and len(args) >= 2:
             with self.lock:
                 for peer in self.clients:
@@ -228,6 +280,16 @@ class FakeIRCd:
 
     def _privmsg(self, c, target, text):
         self.seen.append((c.nick, target, text, time.time()))
+        if target.lower() == "nickserv":
+            bits = text.split()
+            sub = bits[0].upper() if bits else ""
+            nick = bits[1] if len(bits) > 1 else c.nick
+            if sub == "STATUS":
+                c.send(f":NickServ!service@{self.name} NOTICE {c.nick} :STATUS {nick} 3")
+            elif sub == "INFO":
+                c.send(f":NickServ!service@{self.name} NOTICE {c.nick} :Information on {nick}")
+                c.send(f":NickServ!service@{self.name} NOTICE {c.nick} :Account: {nick}")
+            return
         if not target.startswith("#"):
             return
         for m in self._members(target):

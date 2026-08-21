@@ -7,16 +7,17 @@ The shape, which is the whole point of the design:
     word. It stays up regardless of who is signed in, so the log never has a
     hole in it.
 
-  * When a signed-in user posts, a **send-only** connection is opened under
-    *their* nick. It registers, joins, sends, and ignores everything inbound.
-    Their line comes back through the archivist like any other message, so it
-    is recorded exactly once with correct attribution and there is no local
-    echo to reconcile.
+  * When a signed-in user posts or runs a private query, a separate connection
+    is opened under *their* nick. It registers, joins when posting, and ignores
+    inbound traffic except while collecting a bounded WHOIS/ISON-style reply.
+    Channel speech comes back through the archivist like any other message, so
+    it is recorded exactly once with correct attribution and no local echo.
 
 Send-only clients idle out after a few minutes, so a user who posts once does
 not hold a socket open all day.
 """
 
+import json
 import socket
 import ssl
 import threading
@@ -31,7 +32,7 @@ PREWARM_MAX_AGE = 90      # ignore pre-open requests older than this
 
 
 class Sender:
-    """A minimal, write-only IRC client for one nick on one network."""
+    """A minimal posting and private-query client for one nick on one network."""
 
     def __init__(self, host, port, nick, tls=True, verbose=False):
         self.host, self.port, self.nick, self.tls = host, port, nick, tls
@@ -133,6 +134,80 @@ class Sender:
                 return
             self._send(f"PRIVMSG {channel} :{text}")
             self.last_used = time.time()
+
+    def query(self, line):
+        """Send one read-only IRC command and collect its bounded reply.
+
+        Sender connections normally discard inbound traffic. A command is the
+        exception: while holding the same lock as say(), collect numerics and
+        service notices until the command's standard end marker (or a short
+        quiet period for NickServ) arrives. Returning parsed lines lets the web
+        UI make common replies friendly without hiding the actual protocol.
+        """
+        with self.lock:
+            if not self.ready:
+                self.connect()
+            self.drain()
+            line = str(line or "").replace("\r", " ").replace("\n", " ").strip()
+            if not line:
+                return []
+            self._send(line)
+            self.last_used = time.time()
+
+            name = line.split(None, 1)[0].upper()
+            ends = {
+                "WHOIS": {"318", "401", "402", "431"},
+                "ISON": {"303", "461"},
+                "NAMES": {"366", "403", "442"},
+                "WHO": {"315", "403", "461"},
+                "USERHOST": {"302", "461"},
+                "WHOWAS": {"369", "406", "431"},
+                "MOTD": {"376", "422"},
+                "VERSION": {"351", "402"},
+                "TIME": {"391", "402"},
+            }.get(name, set())
+            replies, buf = [], ""
+            deadline = time.monotonic() + 10
+            quiet_at = None
+            try:
+                self.sock.settimeout(0.35)
+                while time.monotonic() < deadline:
+                    try:
+                        chunk = self.sock.recv(4096).decode("utf-8", "replace")
+                    except socket.timeout:
+                        if replies and quiet_at and time.monotonic() >= quiet_at:
+                            break
+                        continue
+                    if not chunk:
+                        raise RuntimeError("IRC closed the connection")
+                    buf += chunk
+                    while "\r\n" in buf:
+                        raw, _, buf = buf.partition("\r\n")
+                        prefix, cmd, params = parse_line(raw)
+                        if cmd == "PING":
+                            self._send("PONG :" + (params[-1] if params else ""))
+                            continue
+                        if cmd == "PONG":
+                            continue
+                        visible = list(params)
+                        if visible and visible[0].lower() == self.nick.lower():
+                            visible.pop(0)
+                        replies.append({
+                            "from": (prefix or "").split("!", 1)[0],
+                            "code": cmd,
+                            "params": visible,
+                            "raw": raw,
+                        })
+                        quiet_at = time.monotonic() + 0.9
+                        if cmd in ends:
+                            return replies
+                return replies
+            finally:
+                try:
+                    if self.sock is not None:
+                        self.sock.settimeout(CONNECT_TIMEOUT)
+                except OSError:
+                    pass
 
     def close(self):
         try:
@@ -295,6 +370,37 @@ class Manager:
                 self.senders.pop((net["id"], nick), None)
                 self.log(f"   send failed as {nick}: {exc}")
 
+    def pump_commands(self, con):
+        """Run queued read-only commands without giving the web process a socket."""
+        now = int(time.time())
+        if now - getattr(self, "_last_command_cleanup", 0) > 3600:
+            self._last_command_cleanup = now
+            con.execute("DELETE FROM irc_commands WHERE finished_at IS NOT NULL "
+                        "AND finished_at < ?", (now - 7 * 86400,))
+        nets = {n["id"]: n for n in db.networks(con, enabled_only=True)}
+        rows = con.execute(
+            "SELECT id, user_id, network_id, nick, command, wire FROM irc_commands "
+            "WHERE finished_at IS NULL ORDER BY id LIMIT 5").fetchall()
+        for row in rows:
+            net = nets.get(row["network_id"])
+            if not net:
+                con.execute("UPDATE irc_commands SET finished_at=?, error=? WHERE id=?",
+                            (now, "that IRC network is unavailable", row["id"]))
+                continue
+            try:
+                con.execute("UPDATE irc_commands SET sent_at=? WHERE id=?",
+                            (now, row["id"]))
+                replies = self.sender_for(net, row["nick"]).query(row["wire"])
+                con.execute(
+                    "UPDATE irc_commands SET finished_at=?, response=? WHERE id=?",
+                    (int(time.time()), json.dumps(replies, ensure_ascii=False), row["id"]))
+                self.log(f"   command as {row['nick']}: {row['command']}")
+            except Exception as exc:
+                con.execute("UPDATE irc_commands SET finished_at=?, error=? WHERE id=?",
+                            (int(time.time()), str(exc), row["id"]))
+                self.senders.pop((net["id"], row["nick"]), None)
+                self.log(f"   command failed as {row['nick']}: {exc}")
+
     def prewarm(self, con):
         """Honour requests from the web server to open a sender in advance.
 
@@ -394,6 +500,7 @@ class Manager:
             while not self._stop.is_set():
                 try:
                     self.pump(con)
+                    self.pump_commands(con)
                     self.prewarm(con)
                     self.reap()
                     now = time.time()

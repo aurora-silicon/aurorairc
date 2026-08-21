@@ -275,6 +275,7 @@ aside{
 .person .nm{flex:1;font-size:14px;font-weight:520;overflow:hidden;
   text-overflow:ellipsis;white-space:nowrap}
 .person .ct{color:var(--fg-3);font-size:12px;font-variant-numeric:tabular-nums}
+.person .fav{color:var(--accent);font-size:13px;line-height:1}
 .av{
   width:26px;height:26px;border-radius:50%;flex:none;display:grid;place-items:center;
   font-size:12px;font-weight:680;color:#fff;text-transform:uppercase;
@@ -285,6 +286,7 @@ aside{
 .av.pic{background:var(--sunken)}
 .av.pic img{width:100%;height:100%;object-fit:cover;display:block}
 .av.big{width:64px;height:64px;font-size:26px}
+.av[data-nick],.who[data-nick],.mention[data-nick],.evt [data-nick]{cursor:pointer}
 /* Member-only surfaces disappear entirely for anonymous readers - a section
    that only says "sign in" is clutter, not an invitation. */
 .public #tags-field,.public #saved-field{display:none}
@@ -476,6 +478,22 @@ mark{background:var(--mark);color:var(--mark-fg);border-radius:3px;padding:0 2px
 .sendbtn:disabled{opacity:.35;cursor:default}
 .sendbtn svg{width:17px;height:17px;stroke:currentColor;fill:none;stroke-width:2.1;
   stroke-linecap:round;stroke-linejoin:round}
+#cmdsuggest{
+  display:none;position:absolute;z-index:14;left:12px;right:12px;bottom:calc(100% + 7px);
+  max-height:min(360px,50vh);overflow-y:auto;padding:6px;background:var(--surface);
+  border:1px solid var(--line);border-radius:14px;box-shadow:var(--shadow)
+}
+#cmdsuggest.on{display:block}
+.cmdsuggest-row{
+  width:100%;display:flex;align-items:center;gap:10px;text-align:left;padding:9px 10px;
+  border-radius:9px;color:var(--fg-2)
+}
+.cmdsuggest-row:hover,.cmdsuggest-row.on{background:var(--accent-soft);color:var(--fg)}
+.cmdsuggest-row code{font:600 13px/1.3 var(--mono);color:var(--accent);white-space:nowrap}
+.cmdsuggest-row .cmdabout{flex:1;min-width:0;display:flex;flex-direction:column;gap:2px}
+.cmdsuggest-row .cmdhint{font-size:13px;font-weight:590;color:var(--fg)}
+.cmdsuggest-row .cmddesc{font-size:11.5px;color:var(--fg-3);white-space:nowrap;
+  overflow:hidden;text-overflow:ellipsis}
 
 /* ============================ overlays ============================ */
 .scrim{position:fixed;inset:0;background:rgba(10,10,14,.45);z-index:40;
@@ -952,6 +970,10 @@ label.btn{cursor:pointer}
   border-color:color-mix(in srgb,var(--mark) 50%,transparent)}
 .note code{font-family:var(--mono);font-size:12px;word-break:break-all}
 .note b{color:inherit}
+.nickstate{min-height:18px;margin-top:7px;font-size:12.5px;line-height:1.4;color:var(--fg-3)}
+.nickstate.ok{color:var(--ok)}
+.nickstate.warn{color:var(--danger)}
+.nickclaim{margin-top:8px}
 
 /* ---- section heading inside a scrolling panel ---- */
 .sect{display:flex;flex-direction:column;gap:var(--gap)}
@@ -1151,6 +1173,7 @@ label.btn{cursor:pointer}
   display:none;flex-direction:column;opacity:0;transition:opacity .16s,transform .16s;
 }
 #dlg.on{display:flex;opacity:1;transform:translate(-50%,-50%) scale(1)}
+#dlg.persondlg,#dlg.commanddlg{width:min(560px,94vw)}
 #dlg header{display:flex;align-items:center;gap:12px;padding:14px 16px;
   border-bottom:1px solid var(--line-soft);flex:none}
 #dlg header h3{margin:0;font-size:16px;font-weight:660}
@@ -1161,6 +1184,52 @@ label.btn{cursor:pointer}
    shrinkage cut off rows and even the bottoms of letters instead of making
    the dialog scroll. */
 #dlg .content > *{flex-shrink:0}
+.personhero{display:flex;align-items:center;gap:15px}
+.personhero .av.big{width:72px;height:72px;font-size:28px}
+.personhero-main{flex:1;min-width:0;display:flex;flex-direction:column;gap:5px}
+.personname{font-size:22px;font-weight:710;letter-spacing:-.025em;overflow-wrap:anywhere}
+.personstatus{display:flex;align-items:center;gap:7px;color:var(--fg-2);font-size:13.5px}
+.pdot{width:9px;height:9px;border-radius:50%;background:var(--fg-3);flex:none}
+.pdot.online{background:var(--ok);box-shadow:0 0 0 3px color-mix(in srgb,var(--ok) 15%,transparent)}
+.pdot.offline{background:var(--fg-3)}
+.pdot.not_here,.pdot.unknown{background:var(--mark)}
+.personbadges,.personchannels{display:flex;gap:6px;flex-wrap:wrap}
+.personbadge{font-size:11.5px;color:var(--fg-3);background:var(--raised);
+  border:1px solid var(--line-soft);border-radius:99px;padding:3px 8px}
+.personchannels .personbadge{color:var(--accent);background:var(--accent-soft)}
+.personactions{display:flex;gap:8px;flex-wrap:wrap}
+.personactions .btn{width:auto;flex:1 1 130px}
+.personnotes textarea{height:100px;min-height:100px;padding:11px 13px;resize:vertical;
+  line-height:1.45}
+.profilelinks{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.profilelinks .labelled{min-width:0}
+.profilelinks input{height:40px;font-size:14px}
+.profileevents{display:flex;flex-direction:column;gap:7px}
+.profileevent{display:grid;grid-template-columns:70px 1fr;gap:10px;padding:8px 10px;
+  border-radius:9px;background:var(--raised);font-size:13px}
+.profileevent time{color:var(--fg-3);font-size:11.5px}
+.cmdresults{display:flex;flex-direction:column;gap:7px}
+.cmdline{display:flex;align-items:flex-start;gap:10px;padding:9px 10px;border-radius:9px;
+  background:var(--raised);font-size:13px;line-height:1.45;overflow-wrap:anywhere}
+.cmdline code{flex:none;color:var(--accent);font:600 11.5px/1.45 var(--mono)}
+.cmdraw summary{cursor:pointer;color:var(--fg-3);font-size:12.5px}
+.cmdraw pre{white-space:pre-wrap;overflow-wrap:anywhere;background:var(--sunken);
+  padding:10px;border-radius:9px;font:11.5px/1.5 var(--mono);max-height:230px;overflow:auto}
+@media (max-width:520px){.profilelinks{grid-template-columns:1fr}.personactions .btn{flex-basis:100%}}
+@media (min-width:900px){
+  #dlg.helpdlg{width:min(940px,94vw);max-height:min(760px,92vh)}
+  #dlg.helpdlg .content{padding:22px;overflow:hidden}
+  .helpgrid{display:grid;grid-template-columns:1fr 1fr 1fr;gap:22px;align-items:start}
+  .helpcol{display:flex;flex-direction:column;gap:18px;min-width:0}
+  .helpdlg .summary .kv{padding:8px 11px}
+  .helpdlg .summary .kv .k{flex-basis:34%;font-size:12px}
+  .helpdlg .minihead{margin-bottom:8px}
+  .helpcommands .summary .kv{padding:6px 9px;gap:7px}
+  .helpcommands .summary .kv .k{flex:0 0 112px;max-width:112px}
+  .helpcommands .summary .kv .v{font-size:11.5px;white-space:nowrap;
+    overflow:hidden;text-overflow:ellipsis}
+}
+@media (max-width:899px){.helpgrid,.helpcol{display:flex;flex-direction:column;gap:var(--gap)}}
 /* Search dropdown rows that carry their own delete control */
 .sgrow{display:flex;align-items:center;gap:2px}
 .sgrow > button[role="option"]{flex:1;min-width:0}
@@ -1399,9 +1468,11 @@ details.card[open] > summary{margin-bottom:2px}
     <button class="newpill" id="newpill">↓ Jump to latest</button>
     <div class="sendstatus" id="sendstatus"></div>
     <form class="composer" id="composer">
+      <div id="cmdsuggest" role="listbox" aria-label="IRC commands"></div>
       <select id="sendchan"></select>
       <div class="cbox">
-        <textarea id="sendtext" rows="1" placeholder="Message" maxlength="450"></textarea>
+        <textarea id="sendtext" rows="1" placeholder="Message or /command" maxlength="450"
+          aria-autocomplete="list" aria-controls="cmdsuggest" aria-expanded="false"></textarea>
         <button class="sendbtn" id="sendbtn" type="submit" disabled title="Send">
           <svg viewBox="0 0 24 24"><path d="M4 12h15M13 6l6 6-6 6"/></svg>
         </button>
@@ -1688,6 +1759,7 @@ function applyAppName(){
 }
 let META=null, SESSION={signedIn:false, live:{connected:false}};
 let nickSort='count', nickFilter='', lastDay=null, lastMsg=null, seq=0, jumpSeq=0, ctxFocus=null;
+let PERSON_FAVS=new Set(), PERSON_OPEN=null, PERSON_SEQ=0, personTimer=null;
 
 /* ---------------- helpers ---------------- */
 const esc = s => s.replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
@@ -1709,23 +1781,24 @@ function chanStyle(name){
 }
 const nickColor = n => `hsl(${hue(n)} 58% ${isDark()?'68%':'38%'})`;
 const avatarBg = n => `hsl(${hue(n)} 52% 46%)`;
-/* Profile pictures. /api/meta hands members a nick -> owner map; anonymous
-   readers get nothing, so their feed keeps the plain initials. */
+/* Profile pictures are public IRC-facing identity, addressed by nick so the
+   separate Aurora account username stays private to signed-in surfaces. */
 let AVATARS={};
-function avatarUrl(username,v){
-  return `/api/avatar?u=${encodeURIComponent(username)}&v=${v||0}`;
+function avatarUrl(name,v,byNick=false){
+  return `/api/avatar?${byNick?'n':'u'}=${encodeURIComponent(name)}&v=${v||0}`;
 }
 function avatarFor(nick){
   const e=nick&&AVATARS[String(nick).toLowerCase()];
-  return e?avatarUrl(e.u,e.v):null;
+  return e?avatarUrl(e.n||nick,e.v,true):null;
 }
 /* One circle for everyone: a picture if the nick belongs to an account that
    set one, the coloured initial otherwise. */
-function avHTML(name,extra=''){
+function avHTML(name,extra='',person=false){
   const src=avatarFor(name);
+  const attrs=person?` data-nick="${esc(name)}" role="button" aria-label="Open ${esc(name)} profile"`:'';
   return src
-    ? `<span class="av pic ${extra}"><img src="${src}" alt="" loading="lazy"></span>`
-    : `<span class="av ${extra}" style="background:${avatarBg(name)}">${esc((name||'?')[0]||'?')}</span>`;
+    ? `<span class="av pic ${extra}"${attrs}><img src="${src}" alt="" loading="lazy"></span>`
+    : `<span class="av ${extra}" style="background:${avatarBg(name)}"${attrs}>${esc((name||'?')[0]||'?')}</span>`;
 }
 /* Rows already on screen keep their old face until something redraws them;
    called when the map changes so a new picture lands everywhere at once. */
@@ -1735,7 +1808,7 @@ function repaintAvatars(){
     const n=(row&&(row.dataset.rownick||row.dataset.avname))||null;
     if(!n)return;
     const wrap=document.createElement('span');
-    wrap.innerHTML=avHTML(n,el.classList.contains('big')?'big':'');
+    wrap.innerHTML=avHTML(n,el.classList.contains('big')?'big':'',el.hasAttribute('data-nick'));
     el.replaceWith(wrap.firstElementChild);
   });
 }
@@ -2330,9 +2403,9 @@ function msgNode(m, opts={}){
   // rownick, not nick: data-nick marks clickable names, and click delegation
   // uses closest(), so putting it on the row would swallow every body click
   el.dataset.id=m.id; el.dataset.rownick=m.nick; el.dataset.ts=m.ts;
+  el.dataset.channel=m.channel;
 
-  const filtered=state.nicks.has(m.nick);
-  const whoTitle=filtered?'Jump to this message in the full timeline':`Show only ${m.nick}`;
+  const whoTitle=`Open ${m.nick}'s profile`;
   // Show the channel whenever the feed can mix them: unfiltered, or 2+ selected
   const multi=META&&META.channels.length>1&&state.channels.size!==1;
   const ch=chanStyle(m.channel);
@@ -2340,7 +2413,7 @@ function msgNode(m, opts={}){
   el.innerHTML =
     `<div class="gutter">${grouped
         ? `<span class="time">${hhmmTight(m.ts)}</span>`
-        : avHTML(m.nick)}</div>`+
+        : avHTML(m.nick,'',true)}</div>`+
     `<div class="body">`+
       (grouped?'':
        `<div class="meta">`+
@@ -2401,6 +2474,7 @@ function evtNode(e){
   const el=document.createElement('div');
   el.className='evt';
   el.dataset.ts=e.ts;
+  if(e.channel)el.dataset.channel=e.channel;
   const [cls,glyph]=EV_SIG[e.kind]||['','·'];
   let detail=(e.detail||'').trim();
   if(e.kind===0)detail='';                       // "joined #chan" is redundant
@@ -2700,6 +2774,7 @@ function asideHTML(){
       <div class="row"><h2>People</h2>
         <select class="nicksort">
           <option value="count">Most active</option>
+          <option value="favorite">Favourites first</option>
           <option value="name">A–Z</option>
           <option value="recent">Recently active</option>
         </select></div>
@@ -2712,6 +2787,8 @@ function drawNicks(){
   if(nickFilter){const f=nickFilter.toLowerCase();list=list.filter(n=>n.name.toLowerCase().includes(f))}
   if(nickSort==='name')list.sort((a,b)=>a.name.localeCompare(b.name));
   else if(nickSort==='recent')list.sort((a,b)=>b.last-a.last);
+  else if(nickSort==='favorite')list.sort((a,b)=>
+    (PERSON_FAVS.has(b.name.toLowerCase())-PERSON_FAVS.has(a.name.toLowerCase()))||b.last-a.last);
   else list.sort((a,b)=>b.count-a.count);
   const shown=list.slice(0,400);
 
@@ -2722,9 +2799,12 @@ function drawNicks(){
       const row=document.createElement('div');
       row.className='person'+(state.nicks.has(n.name)?' on':'');
       row.dataset.avname=n.name;
+      row.dataset.nick=n.name;
       row.innerHTML=avHTML(n.name)+
-        `<span class="nm">${esc(n.name)}</span><span class="ct">${fmtN(n.count)}</span>`;
-      row.onclick=()=>{toggleNick(n.name);if(!sidebarPinned())closeAll()};
+        `<span class="nm">${esc(n.name)}</span>`+
+        (PERSON_FAVS.has(n.name.toLowerCase())?'<span class="fav" aria-label="Favourite">★</span>':'')+
+        `<span class="ct">${fmtN(n.count)}</span>`;
+      row.onclick=()=>showPerson(n.name);
       frag.appendChild(row);
     }
     box.appendChild(frag);
@@ -2752,6 +2832,12 @@ function toggleToken(kind,value){
 const toggleNick    = n => toggleToken('nick',n);
 const toggleTag     = t => toggleToken('tag',t);
 const toggleChannel = c => toggleToken('chan',c);
+
+function selectOnlyNick(name){
+  const p=parseQuery($('#q').value);
+  writeQueryBox(new Set([name]),p.text,p.chans,p.tags);
+  applyQueryBox();
+}
 
 function selectDay(k){
   // k is a local calendar day; params() turns it into local-midnight bounds
@@ -3546,6 +3632,7 @@ function closeAll(opts={}){
     el.classList.remove('on');
     if(el.id==='wizard')WIZ.open=false;
   });
+  PERSON_OPEN=null;PERSON_SEQ++;clearTimeout(personTimer);
   $('#picker').classList.remove('on');
   closeLightbox();
   hideTip();
@@ -3736,7 +3823,7 @@ function adoptSession(r){
   INVITE='';RESET='';
   LOGIN.stage='creds';LOGIN.username='';LOGIN.password='';
   history.replaceState(null,'',location.pathname+location.hash.replace(/[#&](invite|reset)=[^&]*/,''));
-  applyLook();drawLive();syncComposer();drawTagList();
+  prepareLookForSession();drawLive();syncComposer();drawTagList();
   refreshSaved();refreshHistory().then(syncSearchTools);
   // Tags and avatars exist for this reader now; the feed should show them -
   // on the rows already drawn too, so the visible page reloads unless the
@@ -3849,7 +3936,7 @@ function drawLive(){
     HISTORY=[];SAVED=[];lastCommitted='';
     // Tags and avatars are member annotations: they leave with the session,
     // from the rows already on screen too, not just from future loads.
-    AVATARS={};refreshMeta.avKey=undefined;
+    AVATARS={};PERSON_FAVS.clear();refreshMeta.avKey=undefined;
     if(state.tags.size){state.tags=new Set();applyStateToBox()}
     applyLook();drawLive();syncComposer();drawSaved();syncSearchTools();
     refreshMeta().catch(()=>{});refresh();
@@ -3911,17 +3998,20 @@ async function refreshSession(){
   try{
     const s=await api('/api/session');
     const wasIn=SESSION.signedIn;
+    const wasUser=String(SESSION.user&&SESSION.user.name||'').toLowerCase();
     SESSION={...SESSION,...s};
     CSRF=s.csrf||'';
     syncComposer();
-    if(wasIn!==SESSION.signedIn){
-      applyLook();   // anonymous is pinned to Noir
+    const nowUser=String(SESSION.user&&SESSION.user.name||'').toLowerCase();
+    if(wasIn!==SESSION.signedIn||wasUser!==nowUser){
+      if(SESSION.signedIn)prepareLookForSession();
+      else{resetLook();applyLook()}   // anonymous is pinned to Noir
       // A change mid-session (an expiry, a revocation) changes what may be on
       // screen: tags, avatars and saved searches leave with the session, from
       // rows already drawn too. At boot there is nothing to scrub - every
       // fetch so far already carried the same cookie the session check did.
       if(refreshSession.booted){
-        if(!SESSION.signedIn){AVATARS={};refreshMeta.avKey=undefined}
+        if(!SESSION.signedIn){AVATARS={};PERSON_FAVS.clear();refreshMeta.avKey=undefined}
         refreshMeta().catch(()=>{});refreshSaved();refresh();
       }
     }
@@ -3997,6 +4087,7 @@ async function refreshMeta(){
   const m=await api('/api/meta');
   if(!m||!m.total)return;
   META=m;
+  PERSON_FAVS=new Set((m.personFavorites||[]).map(n=>String(n).toLowerCase()));
   const avKey=JSON.stringify(m.avatars||{});
   if(avKey!==refreshMeta.avKey){
     refreshMeta.avKey=avKey;
@@ -4261,9 +4352,13 @@ $('#log').onclick=e=>{
   const when=e.target.closest('[data-ctx]');
   if(when)return showContext(+when.dataset.ctx);
 
-  // A name - in the header or addressed mid-message - filters to that person
+  // A name - in the header, avatar, event, or addressed mid-message - opens
+  // the same person surface. Filtering remains an explicit action inside it.
   const who=e.target.closest('[data-nick]');
-  if(who)return toggleNick(who.dataset.nick);
+  if(who){
+    const row=who.closest('.msg,.evt');
+    return showPerson(who.dataset.nick,row&&row.dataset.channel);
+  }
 
   // Anywhere else on the row: on touch, offer the choices instead of acting.
   // Where there is a real pointer the hover strip already carries every one of
@@ -4278,7 +4373,8 @@ $('#ctxbody').onclick=e=>{
     return openLightbox(pic);
   }
   const row=e.target.closest('.msg');
-  if(row&&e.target.closest('[data-nick]'))jumpTo(+row.dataset.id);
+  const who=e.target.closest('[data-nick]');
+  if(who)return showPerson(who.dataset.nick,row&&row.dataset.channel);
 };
 
 /* paging by scroll - simpler and more reliable than sentinels */
@@ -4401,6 +4497,11 @@ let SETDATA={sessions:[],users:[],invites:[],networks:[],expiresHours:48,maxUses
 
 async function openSettings(section){
   if(!SESSION.signedIn)return toast('Sign in to reach settings');
+  const u=SESSION.user||{};
+  if(u.role==='admin'&&!u.owner&&!u.totp){
+    maybeSecureFlow({login:true});
+    return;
+  }
   if(section)setTab=section;
   openPanel('#setpanel');
   await drawSettings(true);
@@ -4446,7 +4547,7 @@ async function drawSettings(force){
     return;
   }
   const u=SESSION.user||{};
-  const owner=u.role==='admin';   // admins see the management sections
+  const owner=u.role==='admin'&&(u.owner||u.totp); // privileged data stays gated by 2FA
   const sections=SET_SECTIONS.filter(x=>!x.owner||owner);
   if(!sections.some(x=>x.key===setTab))setTab='account';
 
@@ -4501,8 +4602,8 @@ function setAccount(u){
           ?`<span class="av pic big" id="st-av"><img src="${avatarUrl(u.name,u.avatar)}" alt=""></span>`
           :`<span class="av big" id="st-av" style="background:${avatarBg(u.name||'?')}">${esc((u.name||'?')[0])}</span>`}
         <span class="rmain"><span class="nm">${esc(u.name||'')}</span>
-          <span class="sub2">Shown beside your messages, for signed-in
-            members.</span></span>
+          <span class="sub2">Shown beside your messages and on your public
+            IRC profile.</span></span>
       </div>
       <div class="formrow">
         <label class="btn ghost fill" for="st-av-file">Choose picture…</label>
@@ -4528,6 +4629,9 @@ function setAccount(u){
       <div class="formrow">
         <input id="st-nick" value="${esc(u.nick||'')}" autocomplete="off">
         <button class="btn" id="st-nick-save">Save</button></div>
+      <div id="st-nick-state" class="nickstate"></div>
+      <button class="chip nickclaim" id="st-nick-claim" type="button"
+        aria-pressed="false" hidden><i class="dotm"></i> This registered nick is mine</button>
       <div class="hint">Messages you send go out under this name, over a
         connection of your own — never the archivist's.</div>
     </div>
@@ -4850,27 +4954,166 @@ function setPeople(u){
       <label class="fhead">Create an account directly</label>
       <div class="formrow">
         <input id="na-user" placeholder="Username" autocomplete="off">
-        <input id="na-pass" type="password" placeholder="Password" autocomplete="new-password"></div>
+        <input id="na-nick" placeholder="IRC nick" autocomplete="off"></div>
+      <div id="na-nick-state" class="nickstate"></div>
+      <button class="chip nickclaim" id="na-nick-claim" type="button"
+        aria-pressed="false" hidden><i class="dotm"></i> This registered nick is theirs</button>
       <div class="formrow">
+        <input id="na-pass" type="password" placeholder="Password" autocomplete="new-password">
         <select id="na-role"><option value="user">User</option>
           <option value="admin">Admin</option></select>
         <button class="btn" id="na-go">Create</button></div>
+      <div class="hint">Aurora checks its accounts and the live rosters it can
+        see. A known conflict is a warning: you may explicitly claim a
+        registered nick when the person can prove it is theirs on IRC.</div>
     </div>
   </div>`;
 }
 
 /* ---------------------------------------------------- account details */
-function openDialog(title,html){
+function openDialog(title,html,kind=''){
   $('#dlg-title').textContent=title;
   $('#dlg-body').innerHTML=html;
+  $('#dlg').classList.remove('persondlg','commanddlg','helpdlg');
+  if(kind)$('#dlg').classList.add(kind+'dlg');
   $('#dlg').classList.add('on');
   $('#scrim').classList.add('on');
 }
 $('#dlg-close').onclick=()=>{
   $('#dlg').classList.remove('on');
+  PERSON_OPEN=null;PERSON_SEQ++;clearTimeout(personTimer);
   // Settings is still open behind it, so the scrim stays
   $('#scrim').classList.toggle('on',$$('.panel.on, .sheet.on').length>0);
 };
+
+function personStatusNote(p){
+  if(p.source==='ison')return p.checkedAt
+    ? `Network-wide ISON check · ${relTime(p.checkedAt)}`
+    : 'Waiting for a network-wide ISON check';
+  if(p.source==='channel')return p.channels&&p.channels.length
+    ? 'Present in the live channel roster'
+    : 'Absent from Aurora’s tracked channel rosters';
+  return 'Aurora does not currently have a live answer';
+}
+function personFace(d){
+  if(d.internal){
+    const src=avatarUrl(d.nick,d.internal.avatar,true);
+    if(d.internal.avatar)
+      return `<span class="av pic big"><img src="${src}" alt="" loading="lazy"></span>`;
+  }
+  return avHTML(d.nick,'big');
+}
+function profileEvent(e){
+  const verb=EV_VERB[e.kind]||'changed presence';
+  let detail=(e.detail||'').trim();
+  if(e.kind===3&&detail)detail=' '+esc(detail);
+  else if(detail)detail=' · '+esc(detail);
+  const chan=e.channel&&![2,3].includes(e.kind)?' #'+esc(e.channel):'';
+  return `<div class="profileevent"><time title="${esc(stamp(e.ts))}">${esc(relTime(e.ts))}</time>`+
+    `<span>${esc(drawnNickForEvent(e))} ${esc(verb)}${chan}${detail}</span></div>`;
+}
+function drawnNickForEvent(e){ return PERSON_OPEN&&PERSON_OPEN.nick||'' }
+
+function drawPerson(d){
+  if(!d||d.error)return toast((d&&d.error)||'Could not load that person');
+  const a=d.annotation||{favourite:false,notes:'',links:{}};
+  const p=d.presence||{state:'unknown',label:'Unknown',channels:[]};
+  const badges=[d.identity&&d.identity.label,d.internal&&d.internal.username?'@'+d.internal.username:null,
+    d.network&&d.network.label].filter(Boolean);
+  const facts=[
+    ['Last seen in archive',d.lastSeen?`${esc(relTime(d.lastSeen))} · ${esc(stamp(d.lastSeen))}`:'No recorded activity'],
+    ['Messages',fmtN(d.messages||0)],
+    ['First appeared',d.firstSeen?`${esc(dateOnly(d.firstSeen))} · ${esc(relTime(d.firstSeen))}`:'—'],
+    ['Most recent message',d.lastMessage?esc(relTime(d.lastMessage)):'—'],
+  ];
+  const linkLabels={website:'Website',github:'GitHub',x:'X',matrix:'Matrix',other:'Other'};
+  const links=a.links||{};
+  const editors=SESSION.signedIn?`
+    <div class="field personnotes"><label class="fhead">Private notes</label>
+      <textarea id="person-notes" maxlength="2000" placeholder="Timezone, context, how you know them…">${esc(a.notes||'')}</textarea>
+      <div class="hint">Only you can see these notes.</div></div>
+    <div class="field"><label class="fhead">Private links</label>
+      <div class="profilelinks">${Object.entries(linkLabels).map(([k,label])=>
+        `<label class="labelled"><span>${label}${links[k]?` · <a href="${esc(links[k])}" target="_blank" rel="noopener">open ↗</a>`:''}</span>`+
+        `<input id="person-link-${k}" value="${esc(links[k]||'')}" placeholder="${k==='github'?'username or URL':k==='x'?'@handle or URL':'https://…'}"></label>`).join('')}</div>
+      <button class="btn sm auto" id="person-save" type="button">Save notes and links</button>
+      <div class="hint">These are attached to your Aurora account, not published to IRC.</div></div>`:'';
+  const html=`
+    <div class="personhero">${personFace(d)}<div class="personhero-main">
+      <div class="personname">${esc(d.nick)}</div>
+      <div class="personstatus"><i class="pdot ${esc(p.state)}"></i><b>${esc(p.label)}</b>`+
+        `${p.refreshing?' · checking…':''}</div>
+      <div class="hint">${esc(personStatusNote(p))}</div>
+      <div class="personbadges">${badges.map(x=>`<span class="personbadge">${esc(x)}</span>`).join('')}</div>
+    </div></div>
+    ${p.channels&&p.channels.length?`<div class="personchannels">${p.channels.map(c=>
+      `<span class="personbadge">#${esc(c)}</span>`).join('')}</div>`:''}
+    <div class="personactions">
+      <button class="btn ghost sm" id="person-filter" type="button">Filter by ${esc(d.nick)}</button>
+      ${SESSION.signedIn?`<button class="btn ghost sm" id="person-fav" type="button">${a.favourite?'★ Favourited':'☆ Favourite'}</button>`:''}
+      ${p.canCheck?`<button class="btn ghost sm" id="person-check" type="button">Check network-wide</button>`:''}
+    </div>
+    <div class="summary">${facts.map(([k,v])=>`<div class="kv"><span class="k">${esc(k)}</span><span class="v${v==='—'?' dim':''}">${v}</span></div>`).join('')}</div>
+    ${d.channels&&d.channels.length?`<div class="field"><label class="fhead">Archive activity</label><div class="personchannels">${d.channels.slice(0,12).map(c=>
+      `<span class="personbadge">#${esc(c.name)} · ${fmtN(c.count)}</span>`).join('')}</div></div>`:''}
+    ${editors}
+    ${d.recentEvents&&d.recentEvents.length?`<div class="field"><label class="fhead">Recent event log</label>`+
+      `<div class="profileevents">${d.recentEvents.map(profileEvent).join('')}</div></div>`:''}`;
+  openDialog(d.nick,html,'person');
+  $('#person-filter').onclick=()=>{selectOnlyNick(d.nick);closeAll()};
+  const fav=$('#person-fav');
+  if(fav)fav.onclick=async()=>{
+    fav.disabled=true;
+    const r=await post('/api/person',{nick:d.nick,network:d.network&&d.network.id,
+                                      favourite:!a.favourite});
+    if(r.error){fav.disabled=false;return toast(r.error)}
+    r.annotation.favourite?PERSON_FAVS.add(d.nick.toLowerCase()):PERSON_FAVS.delete(d.nick.toLowerCase());
+    drawNicks();drawPerson(r);
+  };
+  const save=$('#person-save');
+  if(save)save.onclick=async()=>{
+    save.disabled=true;
+    const out={};for(const k of Object.keys(linkLabels))out[k]=$(`#person-link-${k}`).value;
+    const r=await post('/api/person',{nick:d.nick,network:d.network&&d.network.id,
+      notes:$('#person-notes').value,links:out});
+    if(r.error){save.disabled=false;return toast(r.error)}
+    toast('Person details saved');drawPerson(r);
+  };
+  const check=$('#person-check');
+  if(check)check.onclick=()=>refreshPersonStatus(d);
+}
+
+async function showPerson(nick,channel){
+  nick=String(nick||'').trim();if(!nick)return;
+  closeAll({quiet:true});
+  const my=++PERSON_SEQ;
+  PERSON_OPEN={nick,channel:channel||''};
+  openDialog(nick,'<div class="loading">Loading person…</div>','person');
+  const q=new URLSearchParams({nick});if(channel)q.set('channel',channel);
+  let d;
+  try{d=await api('/api/person',q.toString())}catch(e){d={error:'Could not load that person'}}
+  if(my!==PERSON_SEQ||!PERSON_OPEN)return;
+  if(d.error){openDialog(nick,`<div class="note err">${esc(d.error)}</div>`,'person');return}
+  PERSON_OPEN={nick:d.nick,channel:channel||'',network:d.network&&d.network.id};
+  drawPerson(d);
+  if(d.presence&&d.presence.canCheck&&d.presence.state!=='online')refreshPersonStatus(d,true);
+}
+
+async function refreshPersonStatus(d,automatic=false){
+  if(!SESSION.signedIn||!PERSON_OPEN)return;
+  const mine=PERSON_SEQ,nick=d.nick,network=d.network&&d.network.id;
+  const asked=await post('/api/person/status',{nick,network,channel:PERSON_OPEN.channel});
+  if(asked.error){if(!automatic)toast(asked.error);return}
+  if(mine!==PERSON_SEQ)return;
+  if(!busyTyping($('#dlg-body')))drawPerson(asked);
+  for(let i=0;i<24&&mine===PERSON_SEQ;i++){
+    await new Promise(r=>setTimeout(r,350));
+    const q=new URLSearchParams({nick});if(network)q.set('network',network);
+    const fresh=await api('/api/person',q.toString()).catch(()=>null);
+    if(!fresh||mine!==PERSON_SEQ)return;
+    if(!fresh.presence.refreshing){if(!busyTyping($('#dlg-body')))drawPerson(fresh);return}
+  }
+}
 
 async function showUserDetail(name){
   const d=await api('/api/users/detail','username='+encodeURIComponent(name));
@@ -5279,8 +5522,11 @@ function wireSettings(box){
     if(r.user)SESSION.user={...SESSION.user,...r.user};
     ok('Username updated');
   };
+  wireNickCheck('st-nick',null,true);
   if(S('st-nick-save'))S('st-nick-save').onclick=async()=>{
-    const r=await post('/api/me',{nick:S('st-nick').value.trim()});
+    const r=await post('/api/me',{nick:S('st-nick').value.trim(),
+                                  claimNick:nickClaimed('st-nick')});
+    if(r.nickConflict){showNickConflict('st-nick',r);return err(r.error)}
     if(r.error)return err(r.error);
     if(r.user)SESSION.user={...SESSION.user,...r.user};
     ok('Nick updated');
@@ -5395,9 +5641,14 @@ function wireSettings(box){
     SETDATA.invites=r.invites||SETDATA.invites;
     drawSettings(true);
   };
+  wireNickCheck('na-nick','#na-user');
   if(S('na-go'))S('na-go').onclick=async()=>{
+    const name=S('na-user').value.trim();
+    const nick=S('na-nick').value.trim()||name;
     const r=await post('/api/users/create',{username:S('na-user').value.trim(),
-      password:S('na-pass').value,role:S('na-role').value});
+      nick,password:S('na-pass').value,role:S('na-role').value,
+      claimNick:nickClaimed('na-nick')});
+    if(r.nickConflict){showNickConflict('na-nick',r);return err(r.error)}
     if(r.error)return err(r.error);
     ok('Account created');
   };
@@ -5625,7 +5876,9 @@ function drawWizard(){
     alt.hidden=false;alt.textContent='Skip for now';
   }
   if(key==='account'&&WIZ.data.created&&WIZ.sub==='secure'){
-    alt.hidden=false;alt.textContent='Skip for now';
+    const u=SESSION.user||{},required=u.role==='admin'&&!u.owner;
+    next.disabled=required&&!u.totp;
+    if(!required){alt.hidden=false;alt.textContent='Skip for now'}
   }
   if(key==='secure'){
     const u=SESSION.user||{};
@@ -5640,6 +5893,69 @@ function drawWizard(){
 
 const wizErr=m=>{const e=$('#wiz-err');if(e)e.innerHTML=`<div class="note err">${esc(m)}</div>`};
 const wizMark=d=>`<div class="wizmark">${IC(d,26)}</div>`;
+
+function nickClaimed(prefix){
+  const b=$('#'+prefix+'-claim');
+  return !!b&&b.getAttribute('aria-pressed')==='true';
+}
+function showNickState(prefix,state){
+  const out=$('#'+prefix+'-state'),claim=$('#'+prefix+'-claim');
+  if(!out||!claim)return;
+  out.className='nickstate';
+  if(!state){out.textContent='';claim.hidden=true;return}
+  if(state.error){
+    out.classList.add('warn');out.textContent=state.error;claim.hidden=true;return;
+  }
+  if(state.taken){
+    out.classList.add('warn');
+    out.textContent=(state.reason||'That nick appears to be in use')+'.';
+    claim.hidden=false;
+  }else{
+    out.classList.add('ok');
+    out.textContent='Available in Aurora accounts and visible live rosters.';
+    claim.hidden=true;claim.setAttribute('aria-pressed','false');
+  }
+}
+function showNickConflict(prefix,response){
+  showNickState(prefix,response.nickConflict||{taken:true,
+    reason:response.error||'That nick appears to be in use'});
+}
+function wireNickCheck(prefix,userSelector,excludeSelf=false){
+  const input=$('#'+prefix),source=$(userSelector),claim=$('#'+prefix+'-claim');
+  if(!input||!claim)return;
+  let timer=null,seq=0,edited=!!input.value;
+  const check=()=>{
+    clearTimeout(timer);
+    const nick=input.value.trim();
+    claim.setAttribute('aria-pressed','false');
+    if(!nick){showNickState(prefix,null);return}
+    const mine=++seq;
+    timer=setTimeout(async()=>{
+      let r;
+      try{r=await api('/api/nick/check?nick='+encodeURIComponent(nick)+
+        (excludeSelf?'&excludeSelf=1':''))}
+      catch(e){r={error:'Could not check that nick just now'}}
+      if(mine===seq&&input.isConnected&&input.value.trim()===nick)
+        showNickState(prefix,r);
+    },220);
+  };
+  if(source){
+    source.addEventListener('input',()=>{
+      if(!edited||!input.value.trim()){
+        input.value=source.value.trim();edited=false;check();
+      }
+    });
+    if(!input.value&&source.value)input.value=source.value.trim();
+  }
+  input.addEventListener('input',()=>{
+    edited=!source||input.value.trim()!==source.value.trim();check();
+  });
+  claim.onclick=()=>{
+    const on=claim.getAttribute('aria-pressed')==='true';
+    claim.setAttribute('aria-pressed',String(!on));
+  };
+  if(input.value)check();
+}
 
 /* ------------------------------------------------------------ renders */
 const WIZ_RENDER={
@@ -5700,6 +6016,13 @@ account(){
         your messages go out under — it can be the same or different.</p>
       <div class="field"><label class="fhead">Username</label>
         <input id="wz-user" autocomplete="username" placeholder="you"></div>
+      <div class="field"><label class="fhead">IRC nick</label>
+        <input id="wz-nick" autocomplete="off" placeholder="The nick you will post under">
+        <div id="wz-nick-state" class="nickstate"></div>
+        <button class="chip nickclaim" id="wz-nick-claim" type="button"
+          aria-pressed="false" hidden><i class="dotm"></i> This registered nick is mine</button>
+        <div class="hint">Defaults to your username. Aurora will warn if an
+          account or visible live user already has it.</div></div>
       <div class="field"><label class="fhead">Password</label>
         <input id="wz-pw1" type="password" autocomplete="new-password"
                placeholder="At least 8 characters"></div>
@@ -5714,8 +6037,11 @@ account(){
         including other owners — it is the way back in if anything goes wrong.</p>
       <div class="field"><label class="fhead">Username</label>
         <input id="wz-user" autocomplete="username" placeholder="you"></div>
-      <div class="field"><label class="fhead">IRC nick <span class="opt">Optional</span></label>
+      <div class="field"><label class="fhead">IRC nick</label>
         <input id="wz-nick" autocomplete="off" placeholder="The nick you will post under">
+        <div id="wz-nick-state" class="nickstate"></div>
+        <button class="chip nickclaim" id="wz-nick-claim" type="button"
+          aria-pressed="false" hidden><i class="dotm"></i> This registered nick is mine</button>
         <div class="hint">Defaults to your username. Your messages go out over a
           connection of your own, never the archivist's.</div></div>
       <div class="field"><label class="fhead">Password</label>
@@ -5728,14 +6054,15 @@ account(){
   }
   // Created: the same step now offers the ways in that are not a password
   const u=SESSION.user||{};
+  const required=u.role==='admin'&&!u.owner;
   return `<div class="sect">
     <h4>Secure your account</h4>
-    <p class="lede">Signed in as <b>${esc(u.name||WIZ.data.username)}</b>. A
-      passkey or a second factor is optional, and much easier to add now than to
-      remember to add later.</p>
+    <p class="lede">Signed in as <b>${esc(u.name||WIZ.data.username)}</b>. ${required
+      ? 'Two-factor is required before this admin account can continue. A passkey is optional.'
+      : 'A passkey and two-factor are optional, and much easier to add now than to remember later.'}</p>
 
     <div class="field">
-      <label class="fhead">Passkey</label>
+      <label class="fhead">Passkey <span class="opt">Optional</span></label>
       <div id="wz-pk" class="stack"></div>
       <button class="btn" id="wz-pk-add" type="button">Add a passkey</button>
       <div class="hint" id="wz-pk-hint">Face ID, Touch ID, Windows Hello or a
@@ -5746,7 +6073,7 @@ account(){
     <div class="hr"></div>
 
     <div class="field">
-      <label class="fhead">Two-factor</label>
+      <label class="fhead">Two-factor <span class="opt">${required?'Required':'Optional'}</span></label>
       <div id="wz-totp" class="stack"></div>
     </div>
     <div id="wiz-err"></div>
@@ -5767,7 +6094,7 @@ secure(){
          now</b> skips it, and Settings → Security always has it later.`}</p>
 
     <div class="field">
-      <label class="fhead">Two-factor</label>
+      <label class="fhead">Two-factor <span class="opt">${required?'Required':'Optional'}</span></label>
       <div id="sc-totp" class="stack"></div>
     </div>
 
@@ -5825,15 +6152,19 @@ members(){
       <label class="fhead">Add someone manually</label>
       <div class="formrow">
         <input id="wz-na-user" placeholder="Username" autocomplete="off">
-        <input id="wz-na-pass" type="password" placeholder="Password"
-               autocomplete="new-password"></div>
+        <input id="wz-na-nick" placeholder="IRC nick" autocomplete="off"></div>
+      <div id="wz-na-nick-state" class="nickstate"></div>
+      <button class="chip nickclaim" id="wz-na-nick-claim" type="button"
+        aria-pressed="false" hidden><i class="dotm"></i> This registered nick is theirs</button>
       <div class="formrow">
+        <input id="wz-na-pass" type="password" placeholder="Password"
+               autocomplete="new-password">
         <select id="wz-na-role"><option value="user">User</option>
           <option value="admin">Admin</option></select>
         <button class="btn" id="wz-na-go" type="button">Create account</button></div>
       ${WIZ.data.manual.length?`<div class="stack">${WIZ.data.manual.map(m=>
         `<div class="row"><span class="rmain"><span class="nm">${esc(m.name)}</span>
-          <span class="sub2">${esc(m.role)} · created</span></span>
+          <span class="sub2">${esc(m.role)} · ${esc(m.nick)} · created</span></span>
           <span class="pill ok">added</span></div>`).join('')}</div>`:''}
       <div class="hint">They can change the password themselves once they sign in.</div>
     </div>
@@ -5979,6 +6310,7 @@ const WIZ_WIRE={
 
   account(){
     if(!WIZ.data.created){
+      wireNickCheck('wz-nick','#wz-user');
       for(const id of ['#wz-user','#wz-nick','#wz-pw1','#wz-pw2']){
         const f=$(id);
         if(f)f.onkeydown=e=>{if(e.key==='Enter'){e.preventDefault();wizNext()}};
@@ -6085,14 +6417,18 @@ const WIZ_WIRE={
     };
     const copy=$('#wz-inv-copy');
     if(copy)copy.onclick=()=>copyText(inviteLink(WIZ.data.invite.token));
+    wireNickCheck('wz-na-nick','#wz-na-user');
     $('#wz-na-go').onclick=async()=>{
       const name=$('#wz-na-user').value.trim();
+      const nick=$('#wz-na-nick').value.trim()||name;
       const pass=$('#wz-na-pass').value;
       if(!name||!pass)return wizErr('A username and a password, please.');
       const r=await post('/api/users/create',
-        {username:name,password:pass,role:$('#wz-na-role').value});
+        {username:name,nick,password:pass,role:$('#wz-na-role').value,
+         claimNick:nickClaimed('wz-na-nick')});
+      if(r.nickConflict){showNickConflict('wz-na-nick',r);return wizErr(r.error)}
       if(r.error)return wizErr(r.error);
-      WIZ.data.manual.push({name,role:$('#wz-na-role').value});
+      WIZ.data.manual.push({name,nick,role:$('#wz-na-role').value});
       drawWizard();toast('Account created');
     };
   },
@@ -6180,18 +6516,21 @@ const WIZ_ADVANCE={
     if(WIZ.data.created)return true;      // the secure sub-step: nothing to do
     const user=($('#wz-user').value||'').trim();
     const nickEl=$('#wz-nick');
-    const nick=nickEl?(nickEl.value||'').trim():'';
+    const nick=(nickEl?(nickEl.value||'').trim():'')||user;
     const p1=$('#wz-pw1').value,p2=$('#wz-pw2').value;
     if(!user)return wizErr('Pick a username.'),false;
     if(p1.length<8)return wizErr('Passwords are at least 8 characters.'),false;
     if(p1!==p2)return wizErr("Those two passwords don't match."),false;
 
     const r=WIZ.flow==='invite'
-      ? await post('/api/redeem',{token:INVITE,username:user,password:p1})
+      ? await post('/api/redeem',{token:INVITE,username:user,password:p1,nick,
+                                  claimNick:nickClaimed('wz-nick')})
       : await post('/api/setup',{username:user,password:p1,
-                                 nick:nick||undefined,appName:WIZ.data.appName});
+                                 nick,claimNick:nickClaimed('wz-nick'),
+                                 appName:WIZ.data.appName});
+    if(r.nickConflict){showNickConflict('wz-nick',r);wizErr(r.error);return false}
     if(r.error)return wizErr(r.error),false;
-    WIZ.data.username=user;WIZ.data.nick=nick||user;WIZ.data.created=true;
+    WIZ.data.username=user;WIZ.data.nick=nick;WIZ.data.created=true;
     if(WIZ.data.appName)APPNAME=WIZ.data.appName;
     adoptSession(r);
     applyAppName();
@@ -6255,9 +6594,9 @@ const WIZ_ADVANCE={
    "Not now", which is remembered on the account. Both are offered a passkey
    in the same breath. At most once per page load — it is a prompt, not a
    metronome. */
-let SECURE_SHOWN=false;
+const SECURE_SHOWN_FOR=new Set();
 function maybeSecureFlow(opts={}){
-  if(SECURE_SHOWN||WIZ.open)return;
+  if(WIZ.open)return;
   if(!SESSION.signedIn||!SESSION.user||SESSION.setupNeeded)return;
   const u=SESSION.user;
   if(u.totp)return;
@@ -6265,10 +6604,13 @@ function maybeSecureFlow(opts={}){
   // it - the server refuses them the management surface until it is on. The
   // owner and ordinary users are offered it right after signing in, once.
   if(u.role==='admin'&&!u.owner){
-    SECURE_SHOWN=true;
+    // Required means required: do not let a previous account's dismissal, or
+    // this account's old user-role dismissal, suppress the admin gate.
     startWizard('secure');
   }else if(opts.login&&!u.totpDeclined){
-    SECURE_SHOWN=true;
+    const key=String(u.name||'').toLowerCase()+':user';
+    if(SECURE_SHOWN_FOR.has(key))return;
+    SECURE_SHOWN_FOR.add(key);
     startWizard('secure',{dismissable:true});
   }
 }
@@ -6309,7 +6651,8 @@ $('#wiz-alt').onclick=async()=>{
 /* ---------------- appearance ---------------- */
 const ACCENTS=['#2563d8','#5b9dff','#7c5cff','#c2410c','#e11d48',
                '#0f9d58','#0d9488','#b45309','#6b7280'];
-const look={theme:'',accent:'',bg:'',strength:35,blur:0,scrim:50,images:true,clock:''};
+const LOOK_DEFAULT={theme:'',accent:'',bg:'',strength:35,blur:0,scrim:50,images:true,clock:''};
+const look={...LOOK_DEFAULT};
 
 /* Appearance follows the account: what you set here is pushed to the server
    and pulled wherever you sign in next. One small switch opts a device out,
@@ -6318,12 +6661,39 @@ let LOOK_LOCAL=false;
 try{ LOOK_LOCAL=localStorage.getItem('lookLocal')==='1' }catch(e){}
 let LOOK_SYNCED_AT=0, lookPushTimer=null;
 
+function lookStorageKey(){
+  const name=SESSION.signedIn&&SESSION.user&&SESSION.user.name;
+  return name?'look:'+String(name).toLowerCase():'look';
+}
+function resetLook(values){
+  for(const key of Object.keys(look))delete look[key];
+  Object.assign(look,LOOK_DEFAULT,values||{});
+}
+function prepareLookForSession(){
+  clearTimeout(lookPushTimer);LOOK_SYNCED_AT=0;resetLook();
+  // Device-only appearance is still account-scoped. A different user on the
+  // same browser must never inherit the last person's background or theme.
+  if(LOOK_LOCAL&&SESSION.signedIn&&SESSION.user){
+    try{
+      const raw=localStorage.getItem(lookStorageKey());
+      if(raw)resetLook(JSON.parse(raw));
+    }catch(e){}
+  }
+  applyLook();repaintColours();
+}
+
 function pushLook(){
   if(!SESSION.signedIn||LOOK_LOCAL)return;
   clearTimeout(lookPushTimer);
+  const owner=String(SESSION.user&&SESSION.user.name||'').toLowerCase();
+  const prefs=JSON.parse(JSON.stringify(look));
   lookPushTimer=setTimeout(async()=>{
+    if(!SESSION.signedIn||String(SESSION.user&&SESSION.user.name||'').toLowerCase()!==owner)
+      return;
     try{
-      const r=await post('/api/prefs',{prefs:look});
+      const r=await post('/api/prefs',{prefs});
+      if(!SESSION.signedIn||String(SESSION.user&&SESSION.user.name||'').toLowerCase()!==owner)
+        return;
       if(r.at)LOOK_SYNCED_AT=r.at;
       if(SESSION.user)SESSION.user.prefsAt=r.at||SESSION.user.prefsAt;
       if(r.error)toast(r.error);
@@ -6332,16 +6702,20 @@ function pushLook(){
 }
 async function pullLook(){
   if(!SESSION.signedIn||LOOK_LOCAL)return;
+  const owner=String(SESSION.user&&SESSION.user.name||'').toLowerCase();
   const r=await api('/api/prefs');
+  if(!SESSION.signedIn||String(SESSION.user&&SESSION.user.name||'').toLowerCase()!==owner)
+    return;
   if(r.prefs){
-    Object.assign(look,r.prefs);
+    resetLook(r.prefs);
     LOOK_SYNCED_AT=r.at||0;
-    try{localStorage.setItem('look',JSON.stringify(look))}catch(e){}
-    applyLook();repaintColours();
   }else{
-    // Nothing stored yet: this device's look becomes the account's
-    pushLook();
+    // No server copy means a genuinely new account: System theme, no accent,
+    // no background. Never upload whichever account happened to sign out.
+    resetLook();LOOK_SYNCED_AT=0;
   }
+  try{localStorage.setItem('look:'+owner,JSON.stringify(look))}catch(e){}
+  applyLook();repaintColours();
 }
 
 function loadLook(){
@@ -6353,7 +6727,7 @@ function loadLook(){
   applyLook();
 }
 function saveLook(){
-  try{localStorage.setItem('look',JSON.stringify(look))}
+  try{localStorage.setItem(lookStorageKey(),JSON.stringify(look))}
   catch(e){toast('Could not save — the image may be too large')}
   pushLook();
 }
@@ -6504,6 +6878,9 @@ function shrinkAvatar(file,size=256,quality=0.85){
       LOOK_LOCAL=!LOOK_LOCAL;
       try{localStorage.setItem('lookLocal',LOOK_LOCAL?'1':'0')}catch(e){}
       ll.setAttribute('aria-pressed',LOOK_LOCAL);
+      if(LOOK_LOCAL){
+        try{localStorage.setItem(lookStorageKey(),JSON.stringify(look))}catch(e){}
+      }
       // Rejoining the account's look means taking the account's copy back
       if(!LOOK_LOCAL)pullLook().catch(()=>{});
     };
@@ -6637,14 +7014,96 @@ $('#save-search').onclick=e=>{
 
 /* composer */
 const ta=$('#sendtext');
+const IRC_COMMANDS=[
+  {name:'whois',usage:'/whois <nick>',fill:'/whois ',desc:'Identity, server, channels, idle time and account'},
+  {name:'ison',usage:'/ison <nick…>',fill:'/ison ',desc:'Ask the network who is online'},
+  {name:'ns info',usage:'/ns info <nick>',fill:'/ns info ',desc:'NickServ registration information'},
+  {name:'ns status',usage:'/ns status <nick>',fill:'/ns status ',desc:'NickServ online and identified status'},
+  {name:'names',usage:'/names [#channel]',fill:'/names ',desc:'List the names in a channel'},
+  {name:'who',usage:'/who [#channel|mask]',fill:'/who ',desc:'List users matching a channel or mask'},
+  {name:'userhost',usage:'/userhost <nick…>',fill:'/userhost ',desc:'Return user and host information'},
+  {name:'whowas',usage:'/whowas <nick>',fill:'/whowas ',desc:'Look up a recently disconnected nickname'},
+  {name:'motd',usage:'/motd',fill:'/motd',desc:'Show the network message of the day'},
+  {name:'version',usage:'/version',fill:'/version',desc:'Show IRC server software'},
+  {name:'time',usage:'/time',fill:'/time',desc:'Show the IRC server time'},
+  {name:'raw',usage:'/raw <query command>',fill:'/raw ',desc:'Use raw IRC syntax for the safe query set'},
+  {name:'me',usage:'/me <action>',fill:'/me ',desc:'Send an IRC action to this channel'},
+  {name:'say',usage:'/say <text>',fill:'/say ',desc:'Send text that begins with a slash'},
+  {name:'help',usage:'/help',fill:'/help',desc:'Open Aurora’s command reference'},
+];
+let CMD_ITEMS=[],CMD_INDEX=0;
+function hideCommandSuggest(){
+  const box=$('#cmdsuggest');box.classList.remove('on');box.innerHTML='';
+  ta.setAttribute('aria-expanded','false');CMD_ITEMS=[];CMD_INDEX=0;
+}
+function fillCommand(item){
+  ta.value=item.fill;ta.dispatchEvent(new Event('input'));ta.focus();
+  ta.setSelectionRange(ta.value.length,ta.value.length);
+}
+function drawCommandSuggest(){
+  const value=ta.value,box=$('#cmdsuggest');
+  if(!value.startsWith('/')||value.includes('\n'))return hideCommandSuggest();
+  const lower=value.toLowerCase();
+  let items=[];
+  const nickMatch=/^\/(?:whois|ison|userhost|whowas)\s+(?:.*\s)?([^\s]*)$/i.exec(value)
+    ||/^\/ns\s+(?:info|status)\s+([^\s]*)$/i.exec(value);
+  const chanMatch=/^\/(?:names|who)\s+([^\s]*)$/i.exec(value);
+  if(nickMatch&&META){
+    const term=(nickMatch[1]||'').toLowerCase();
+    const base=value.slice(0,value.length-(nickMatch[1]||'').length);
+    items=META.nicks.filter(n=>n.name.toLowerCase().includes(term)).slice(0,10).map(n=>({
+      fill:base+n.name,label:n.name,usage:n.name,desc:`${fmtN(n.count)} archived messages`,nick:n.name
+    }));
+  }else if(chanMatch&&META){
+    const term=(chanMatch[1]||'').replace(/^#/,'').toLowerCase();
+    const base=value.slice(0,value.length-(chanMatch[1]||'').length);
+    items=META.channels.filter(c=>c.name.toLowerCase().includes(term)).slice(0,10).map(c=>({
+      fill:base+'#'+c.name,label:'#'+c.name,usage:'#'+c.name,
+      desc:`${fmtN(c.count)} archived messages`
+    }));
+  }else if(!/\s/.test(value.slice(1))){
+    const term=lower.slice(1);
+    items=IRC_COMMANDS.filter(c=>c.name.startsWith(term)||c.name.includes(term));
+  }else if(/^\/ns\s+\S*$/i.test(value)){
+    const term=(value.split(/\s+/)[1]||'').toLowerCase();
+    items=IRC_COMMANDS.filter(c=>c.name.startsWith('ns ')&&c.name.slice(3).startsWith(term));
+  }
+  CMD_ITEMS=items;CMD_INDEX=Math.min(CMD_INDEX,Math.max(0,items.length-1));
+  if(!items.length)return hideCommandSuggest();
+  box.innerHTML=items.map((item,i)=>`<button class="cmdsuggest-row${i===CMD_INDEX?' on':''}" `+
+    `type="button" role="option" aria-selected="${i===CMD_INDEX}" data-cmd-index="${i}">`+
+    (item.nick?avHTML(item.nick):'')+`<span class="cmdabout"><span class="cmdhint">${esc(item.usage||item.label)}</span>`+
+    `<span class="cmddesc">${esc(item.desc||'')}</span></span></button>`).join('');
+  box.classList.add('on');ta.setAttribute('aria-expanded','true');
+  $$('[data-cmd-index]').forEach(b=>b.onclick=()=>fillCommand(CMD_ITEMS[+b.dataset.cmdIndex]));
+}
+function moveCommandSuggest(step){
+  if(!CMD_ITEMS.length)return;
+  CMD_INDEX=(CMD_INDEX+step+CMD_ITEMS.length)%CMD_ITEMS.length;drawCommandSuggest();
+  $('#cmdsuggest .on')?.scrollIntoView({block:'nearest'});
+}
 ta.addEventListener('input',()=>{
   ta.style.height='auto';ta.style.height=Math.min(ta.scrollHeight,140)+'px';
+  drawCommandSuggest();
   syncComposer();
   measureComposer();   // directly, not via ResizeObserver, which can lag or not fire
 });
 ta.addEventListener('keydown',e=>{
+  if(CMD_ITEMS.length&&(e.key==='ArrowDown'||e.key==='ArrowUp')){
+    e.preventDefault();return moveCommandSuggest(e.key==='ArrowDown'?1:-1);
+  }
+  if(CMD_ITEMS.length&&e.key==='Tab'){
+    e.preventDefault();return fillCommand(CMD_ITEMS[CMD_INDEX]);
+  }
+  if(CMD_ITEMS.length&&e.key==='Enter'&&!e.shiftKey&&/^\/[^\s]*$/.test(ta.value)){
+    e.preventDefault();return fillCommand(CMD_ITEMS[CMD_INDEX]);
+  }
+  if(e.key==='Escape'&&CMD_ITEMS.length){e.preventDefault();return hideCommandSuggest()}
   if(e.key==='Enter'&&!e.shiftKey){e.preventDefault();$('#composer').requestSubmit()}
 });
+ta.addEventListener('blur',()=>setTimeout(()=>{
+  if(!$('#cmdsuggest').matches(':hover'))hideCommandSuggest();
+},120));
 
 /* Start opening the IRC connection the moment someone begins writing, so the
    twelve seconds of TLS, registration and JOIN are spent while they type
@@ -6698,39 +7157,50 @@ function copyText(text,said){
 function openHelp(){
   const kv=(k,v)=>`<div class="kv"><span class="k">${k}</span><span class="v">${v}</span></div>`;
   openDialog('Help',
-    `<div class="minihead">Keyboard</div>
-     <div class="summary">
-       ${kv('<code>/</code> or <code>S</code>','Jump to the search bar')}
-       ${kv('<code>F</code>','Filters')}
-       ${kv('<code>P</code>','People')}
-       ${kv('<code>L</code>','Account and live connection')}
-       ${kv('<code>G</code>','Jump to the newest message')}
-       ${kv('<code>Esc</code>','Close whatever is open')}
-       ${kv('<code>?</code>','This help')}
-     </div>
-     <div class="minihead">While a picture is open</div>
-     <div class="summary">
-       ${kv('<code>←</code> <code>→</code>','Previous and next picture')}
-       ${kv('<code>+</code> <code>−</code> <code>0</code>','Zoom in, out, and reset')}
-     </div>
-     ${SESSION.signedIn?`<div class="minihead">Writing</div>
-     <div class="summary">
-       ${kv('<code>Enter</code>','Send the message')}
-       ${kv('<code>Shift+Enter</code>','New line')}
-     </div>`:''}
-     <div class="minihead">Search</div>
-     <div class="summary">
-       ${kv('<code>hello world</code>','Messages containing those words')}
-       ${kv('<code>#general</code>','Only that channel')}
-       ${kv('<code>@dj</code>','Only that person')}
-       ${SESSION.signedIn?kv('<code>&amp;important</code>','Only that tag — or a colour, like <code>&amp;red</code>'):''}
-     </div>
-     <div class="hint">Mix them freely: <code>#general @dj release</code> means
-       that channel <i>and</i> that person <i>and</i> that word. Two of the same
-       kind widen instead: <code>@dj @sam</code> is either of them. Dates, sort
-       order and more live under Filters${SESSION.signedIn
-         ?', and the bookmark in the search bar keeps a search for later'
-         :''}.</div>`);
+    `<div class="helpgrid">
+      <div class="helpcol">
+       <section><div class="minihead">Keyboard</div><div class="summary">
+        ${SESSION.signedIn?kv('<code>/</code>','Open IRC command suggestions'):''}
+        ${kv('<code>S</code>','Jump to the search bar')}
+        ${kv('<code>F</code>','Filters')}${kv('<code>P</code>','People')}
+        ${kv('<code>L</code>','Account and live connection')}
+        ${kv('<code>G</code>','Jump to the newest message')}
+        ${kv('<code>Esc</code>','Close whatever is open')}${kv('<code>?</code>','This help')}
+       </div></section>
+       ${SESSION.signedIn?`<section><div class="minihead">Writing</div><div class="summary">
+        ${kv('<code>Enter</code>','Send or run the command')}
+        ${kv('<code>Tab</code>','Complete a suggestion')}
+        ${kv('<code>Shift+Enter</code>','New line')}</div></section>`:''}
+      </div>
+      <div class="helpcol">
+       <section><div class="minihead">Search</div><div class="summary">
+        ${kv('<code>hello world</code>','Messages containing those words')}
+        ${kv('<code>#general</code>','Only that channel')}
+        ${kv('<code>@dj</code>','Only that person')}
+        ${SESSION.signedIn?kv('<code>&amp;important</code>','Only that tag or colour'):''}
+       </div><div class="hint">Mix freely: <code>#general @dj release</code> requires
+        that channel, person, and word. Repeating one kind widens it.</div></section>
+       <section><div class="minihead">While a picture is open</div><div class="summary">
+        ${kv('<code>←</code> <code>→</code>','Previous and next picture')}
+        ${kv('<code>+</code> <code>−</code> <code>0</code>','Zoom in, out, and reset')}
+       </div></section>
+      </div>
+      <div class="helpcol">
+       <section class="helpcommands"><div class="minihead">IRC commands</div><div class="summary">
+        ${kv('<code>/whois nick</code>','Identity and connection details')}
+        ${kv('<code>/ison nick…</code>','Network-wide online check')}
+        ${kv('<code>/ns info nick</code>','NickServ account information')}
+        ${kv('<code>/ns status nick</code>','NickServ login status')}
+        ${kv('<code>/names [#chan]</code>','Names in a channel')}
+        ${kv('<code>/who [mask]</code>','Matching users')}
+        ${kv('<code>/userhost nick</code>','User and host information')}
+        ${kv('<code>/whowas nick</code>','Recently disconnected nick')}
+        ${kv('<code>/motd</code>','Network message of the day')}
+        ${kv('<code>/raw …</code>','Raw syntax for safe query commands')}
+       </div><div class="hint"><code>MONITOR</code> is intentionally not offered:
+        OFTC does not advertise it. Use <code>/ison</code> or a person profile.</div></section>
+      </div>
+     </div>`,'help');
 }
 $('#help-btn').onclick=openHelp;
 
@@ -6771,16 +7241,83 @@ function sendStatus(msg,{busy=false,error=false}={}){
   el.innerHTML=(busy?'<span class="spin"></span>':'')+esc(msg||'');
 }
 
+function readableIRCReply(r){
+  const p=r.params||[],last=p[p.length-1]||'',code=String(r.code||'');
+  if(['318','315','366','369','376'].includes(code))return null;
+  if(code==='311')return `${p[0]} is ${p[1]}@${p[2]} — ${last}`;
+  if(code==='312')return `${p[0]} is connected to ${p[1]} — ${last}`;
+  if(code==='313')return `${p[0]} is an IRC operator`;
+  if(code==='317')return `${p[0]} has been idle for ${fmtN(+p[1]||0)} seconds`;
+  if(code==='319')return `${p[0]} is in ${last||'no visible channels'}`;
+  if(code==='330')return `${p[0]} is logged in as ${p[1]}`;
+  if(code==='671')return `${p[0]} is using a secure connection`;
+  if(code==='303')return last.trim()?`Online: ${last.trim()}`:'None of those nicknames are online';
+  if(code==='353')return `Names in ${p[1]||p[0]}: ${last}`;
+  if(code==='352')return `${p[4]||'user'} · ${p[1]||''}@${p[2]||''} · ${p[0]||''}`;
+  if(code==='302')return last.trim()?`Userhost: ${last}`:'No matching users are online';
+  if(code==='314')return `${p[0]} was ${p[1]}@${p[2]} — ${last}`;
+  if(code==='351')return `Server version: ${p.join(' ')}`;
+  if(code==='391')return p.join(' — ');
+  if(code==='372'||code==='375')return last.replace(/^[- ]+/,'');
+  if(code==='NOTICE')return last||p.join(' ');
+  if(/^4\d\d$/.test(code))return last||p.join(' ');
+  return p.join(' ')||r.raw||code;
+}
+function showCommandResult(result){
+  const replies=result.replies||[];
+  const lines=replies.map(r=>({r,text:readableIRCReply(r)})).filter(x=>x.text);
+  openDialog(result.command||'IRC reply',
+    `<div class="note">Reply from IRC for <code>${esc(result.command||'command')}</code>.</div>`+
+    `<div class="cmdresults">${lines.length?lines.map(x=>
+      `<div class="cmdline"><code>${esc(x.r.code||'IRC')}</code><span>${esc(x.text)}</span></div>`).join(''):
+      '<div class="empty-row">The server returned no visible lines.</div>'}</div>`+
+    (replies.length?`<details class="cmdraw"><summary>Show raw IRC replies</summary><pre>${
+      esc(replies.map(r=>r.raw||'').filter(Boolean).join('\n'))}</pre></details>`:''),'command');
+}
+async function runIRCCommand(command,channel){
+  hideCommandSuggest();
+  if(/^\/help\s*$/i.test(command)){sendStatus('');return openHelp()}
+  if(/^\/monitor(?:\s|$)/i.test(command))
+    return sendStatus('OFTC does not advertise MONITOR — use /ison instead',{error:true});
+  sendStatus(`Running ${command.split(/\s+/)[0]}…`,{busy:true});
+  const queued=await post('/api/command',{command,channel});
+  if(queued.error)return sendStatus('Command failed — '+queued.error,{error:true});
+  for(let waited=0;waited<30;waited++){
+    await new Promise(r=>setTimeout(r,waited<5?350:700));
+    const result=await api('/api/command/status','id='+encodeURIComponent(queued.queued)).catch(()=>null);
+    if(!result)continue;
+    if(result.state==='failed')return sendStatus('Command failed — '+result.error,{error:true});
+    if(result.state==='done'){
+      sendStatus('IRC reply received');
+      setTimeout(()=>sendStatus(''),2200);showCommandResult(result);return;
+    }
+  }
+  sendStatus('IRC is still working on that command',{error:true});
+}
+
 $('#composer').onsubmit=async e=>{
   e.preventDefault();
-  const text=ta.value.trim(),channel=$('#sendchan').value;
+  let text=ta.value.trim();const channel=$('#sendchan').value;
   if(!text){
     // Shift+Enter a few times then Enter used to leave an invisible stack of
     // newlines holding the box tall. Nothing to send means reset, not ignore.
     ta.value='';ta.style.height='auto';syncComposer();measureComposer();
     return;
   }
+  const original=text;
+  if(/^\/say\s+/i.test(text))text=text.replace(/^\/say\s+/i,'');
+  else if(text.startsWith('/')&&!/^\/me\s+/i.test(text)){
+    ta.value='';ta.style.height='auto';syncComposer();measureComposer();
+    return runIRCCommand(text,channel);
+  }
+  let kind=0,wireText=text;
+  if(/^\/me\s+/i.test(text)){
+    text=text.replace(/^\/me\s+/i,'').trim();kind=1;
+    if(!text)return sendStatus('Use /me followed by an action',{error:true});
+    wireText='\x01ACTION '+text+'\x01';
+  }
   ta.value='';ta.style.height='auto';syncComposer();sendStatus('');
+  hideCommandSuggest();
 
   // Sending means joining the current conversation, so make sure we're looking
   // at the live end rather than somewhere back in history.
@@ -6797,21 +7334,21 @@ $('#composer').onsubmit=async e=>{
   const nick=(SESSION.user&&SESSION.user.nick)||SESSION.nick||'you';
   const log=$('#log');
   syncTail(log);
-  const pending={id:'pending',ts:Math.floor(Date.now()/1000),kind:0,text,
+  const pending={id:'pending',ts:Math.floor(Date.now()/1000),kind,text,
                  channel:channel.replace(/^#/,''),nick,source:'live'};
   const k=dayKey(pending.ts);
   if(k!==lastDay){lastDay=k;lastMsg=null;log.appendChild(sepNode(k))}
   const echo=msgNode(pending);
   echo.classList.add('sending');
-  echo.dataset.text=text;
+  echo.dataset.text=original;
   log.appendChild(echo);log.scrollTop=log.scrollHeight;
 
   rememberSendChannel(channel);
-  const r=await post('/api/send',{channel,text});
+  const r=await post('/api/send',{channel,text:wireText});
   if(r.error){
     echo.remove();syncTail();
     sendStatus('Not sent — '+r.error,{error:true});
-    ta.value=text;syncComposer();return;   // give the text back, don't lose it
+    ta.value=original;syncComposer();return;   // give the text back, don't lose it
   }
   watchSend(r.queued,echo);
 };
@@ -6883,7 +7420,12 @@ document.onkeydown=e=>{
   // A single-letter shortcut must not reach past a panel that owns the screen
   if($$('.panel.on').length||$('#dlg').classList.contains('on'))return;
   const k=e.key.toLowerCase();
-  if(k==='/'||k==='s'){e.preventDefault();$('#q').focus();$('#q').select()}
+  if(k==='/'){
+    e.preventDefault();
+    if(SESSION.signedIn&&SESSION.live&&SESSION.live.connected){ta.value='/';ta.focus();ta.dispatchEvent(new Event('input'))}
+    else{$('#q').focus();$('#q').select()}
+  }
+  else if(k==='s'){e.preventDefault();$('#q').focus();$('#q').select()}
   else if(k==='?'){e.preventDefault();openHelp()}
   else if(k==='p'){e.preventDefault();$('#people-btn').click()}
   else if(k==='f'){e.preventDefault();$('#filter-btn').click()}
@@ -6926,6 +7468,7 @@ addEventListener('hashchange',()=>{
 
   META=await api('/api/meta');
   AVATARS=(META&&META.avatars)||{};
+  PERSON_FAVS=new Set(((META&&META.personFavorites)||[]).map(n=>String(n).toLowerCase()));
   refreshMeta.avKey=JSON.stringify(AVATARS);
   if(META&&META.appName){APPNAME=META.appName;applyAppName()}
   // An empty archive is the *first-run* case, so it must not short-circuit

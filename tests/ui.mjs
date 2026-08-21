@@ -77,7 +77,9 @@ async function authorOf(page, index) {
 }
 
 const run = async () => {
-  const browser = await chromium.launch();
+  const browser = await chromium.launch(process.env.PLAYWRIGHT_EXECUTABLE_PATH
+    ? { executablePath: process.env.PLAYWRIGHT_EXECUTABLE_PATH }
+    : undefined);
   const page = await browser.newPage({ viewport: { width: 1280, height: 900 } });
   const errors = [];
   page.on('pageerror', e => errors.push(String(e)));
@@ -265,6 +267,39 @@ const run = async () => {
     await waitFor(async () => (await page.textContent('#log')).includes('and one more'));
     check('a second message of yours still groups under your name',
       await authorOf(page, -1) === 'ryan_');
+
+    // --------------------------------------- slash commands and people
+    head('IRC commands and people');
+    await page.fill('#sendtext', '/wh');
+    await page.waitForSelector('#cmdsuggest.on');
+    check('typing a slash command opens Discord-style suggestions',
+      (await page.textContent('#cmdsuggest')).includes('/whois'));
+    await page.press('#sendtext', 'Tab');
+    check('Tab completes the highlighted command',
+      (await page.inputValue('#sendtext')).startsWith('/who'));
+    await page.fill('#sendtext', '/whois ryan_');
+    await page.press('#sendtext', 'Enter');
+    await page.waitForSelector('#dlg.commanddlg.on', { timeout: 25000 });
+    check('WHOIS replies return in a private readable dialog',
+      (await page.textContent('#dlg-body')).includes('ryan_'));
+    await page.click('#dlg-close');
+
+    await page.locator('#log [data-nick="someone"]').first().click();
+    await page.waitForSelector('#dlg.persondlg.on #person-filter');
+    const personText=await page.textContent('#dlg-body');
+    check('clicking a name opens the person profile',
+      personText.includes('Last seen in archive') && personText.includes('Messages'));
+    check('a signed-in profile has filtering, favourite, notes, and links',
+      await page.isVisible('#person-filter') && await page.isVisible('#person-fav') &&
+      await page.isVisible('#person-notes') && await page.isVisible('#person-link-github'));
+    await page.fill('#person-notes', 'GMT+2');
+    await page.fill('#person-link-github', 'octocat');
+    await page.click('#person-save');
+    await waitFor(async()=> (await page.inputValue('#person-link-github'))===
+      'https://github.com/octocat');
+    check('private person notes and links survive the save',
+      (await page.inputValue('#person-link-github'))==='https://github.com/octocat');
+    await page.click('#dlg-close');
 
     // ---- the other bug: composer growth ----
     head('Composer growth');
@@ -639,6 +674,10 @@ const run = async () => {
     await invited.waitForSelector('#wizard', { state: 'hidden' });
     check('and lands in the app signed in',
       await invited.isVisible('.composer.on') || true);
+    check('a new account starts at System with no previous user background',
+      await invited.evaluate(() =>
+        !document.documentElement.hasAttribute('data-theme') &&
+        !document.body.classList.contains('has-bg')));
     await invited.close();
 
     // -------------------------------------------- the follow-on prompt
@@ -656,6 +695,8 @@ const run = async () => {
     const utext = await upage.textContent('#wiz-content');
     check('a user is offered two-factor after signing in',
       utext.includes('Protect your account'), utext.slice(0, 80));
+    check('two-factor is visibly labelled optional for a user',
+      /Two-factor\s+Optional/.test(utext), utext.slice(0, 160));
     check('with a single passkey button and nothing to name',
       await upage.isVisible('#sc-pk-add') &&
       await upage.evaluate(() => !document.querySelector('#wiz-content input')));
@@ -681,20 +722,16 @@ const run = async () => {
       !(await upage.textContent('#live-content')).includes('2FA'));
     await upage.close();
 
-    // An admin cannot wave it away: the wizard blocks until enrolment
+    // The exact privilege-escalation case: a user declined, was promoted, and
+    // must still be stopped at the security gate on the next login.
     await page.click('#live-btn');
     await page.waitForSelector('#open-settings');
     await page.click('#open-settings');
     await page.waitForSelector('#setpanel.on');
     await page.click('#set-nav button[data-tab="people"]');
-    await page.waitForSelector('#na-user');
-    await page.fill('#na-user', 'dj');
-    await page.fill('#na-pass', 'a decent one too');
-    await page.selectOption('#na-role', 'admin');
-    await page.click('#na-go');
-    await waitFor(async () =>
-      (await page.textContent('#set-content')).includes('dj'), { timeout: 10000 });
-    check('an admin account is created for dj', true);
+    await page.waitForSelector('[data-role="alice"][data-to="admin"]');
+    await page.click('[data-role="alice"][data-to="admin"]');
+    check('the user who declined security can be promoted', true);
     await page.click('#set-close');
 
     const dj = await browser.newPage();
@@ -702,13 +739,15 @@ const run = async () => {
     await dj.goto(base, { waitUntil: 'domcontentloaded' });
     await dj.click('#live-btn');
     await dj.waitForSelector('#li-user');
-    await dj.fill('#li-user', 'dj');
-    await dj.fill('#li-pw', 'a decent one too');
+    await dj.fill('#li-user', 'alice');
+    await dj.fill('#li-pw', 'another good one');
     await dj.click('#do-login');
     await dj.waitForSelector('#wizard.on', { timeout: 15000 });
     const djtext = await dj.textContent('#wiz-content');
-    check('an admin signing in without two-factor is stopped',
+    check('the promoted user is stopped despite the earlier dismissal',
       djtext.includes('Two-factor is required for admins'), djtext.slice(0, 80));
+    check('the required screen still labels passkeys optional',
+      /Passkey\s+Optional/.test(djtext), djtext.slice(0, 160));
     check('there is no way to decline', await dj.isHidden('#wiz-alt'));
     check('and Finish is disabled until it is on',
       await dj.evaluate(() => document.querySelector('#wiz-next').disabled));
@@ -734,7 +773,7 @@ const run = async () => {
     await dj.waitForSelector('#setpanel.on');
     await waitFor(async () =>
       (await dj.$$('#set-nav button')).length === 5, { timeout: 10000 });
-    check('with two-factor on, dj reaches the admin sections', true);
+    check('with two-factor on, the promoted admin reaches admin sections', true);
     await dj.close();
 
     // ------------------------------------------------------ reset links
@@ -788,6 +827,14 @@ const run = async () => {
     check('and the feed shows it on ryan_’s messages',
       await waitFor(() => page.evaluate(() =>
         !!document.querySelector('#log .av.pic img')), { timeout: 10000 }));
+    const publicAvatar = await browser.newPage();
+    publicAvatar.on('pageerror', e => errors.push('publicAvatar: ' + e));
+    await publicAvatar.goto(base, { waitUntil: 'domcontentloaded' });
+    await publicAvatar.waitForSelector('#log .msg');
+    check('the server-side picture also appears on the unauthenticated page',
+      await waitFor(() => publicAvatar.evaluate(() =>
+        !!document.querySelector('#log .av.pic img')), { timeout: 10000 }));
+    await publicAvatar.close();
     await page.click('#st-av-clear');
     await page.waitForSelector('#st-av:not(.pic)', { timeout: 15000 });
     check('removing it brings the initial back', true);
@@ -826,6 +873,19 @@ const run = async () => {
 
     // ------------------------------------------------------- help modal
     head('Help');
+    await page.keyboard.press('?');
+    await page.waitForSelector('#dlg.helpdlg.on');
+    const desktopHelp = await page.evaluate(() => {
+      const dlg=document.querySelector('#dlg'),body=document.querySelector('#dlg-body');
+      const cols=getComputedStyle(document.querySelector('.helpgrid')).gridTemplateColumns;
+      return {width:Math.round(dlg.getBoundingClientRect().width),
+              scrollable:body.scrollHeight>body.clientHeight,
+              columns:cols.split(' ').length};
+    });
+    check('desktop Help matches Settings width, uses three columns, and needs no scroll',
+      desktopHelp.width === 940 && desktopHelp.columns === 3 && !desktopHelp.scrollable,
+      JSON.stringify(desktopHelp));
+    await page.keyboard.press('Escape');
     await page.setViewportSize({ width: 506, height: 849 });
     await page.keyboard.press('?');
     await page.waitForSelector('#dlg.on');
