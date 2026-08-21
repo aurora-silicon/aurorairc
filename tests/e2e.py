@@ -155,7 +155,7 @@ def main():
         for needed in ("id=\"wizard\"", "id=\"setpanel\"", "id=\"tip\"",
                        "id=\"qsave\"", "id=\"look-controls\"", "id=\"img-toggle\"",
                        "id=\"help-btn\"", "id=\"look-local\"",
-                       "id=\"show-events\""):
+                       "id=\"show-events\"", "id=\"person-popover\""):
             check(f"page carries {needed}", needed in page)
 
         # ----------------------------------------------------------- setup
@@ -406,6 +406,10 @@ def main():
               nick.get("taken") is True and nick.get("online") is True, str(nick))
         check("archive activity is included in a profile",
               c.get("/api/person", nick="someone").get("messages", 0) >= 2)
+        directory = c.get("/api/nicks", contains="someone", limit=8)
+        check("the full people directory can find a low-volume speaker",
+              any(n.get("name") == "someone" for n in directory.get("nicks", []))
+              and directory.get("total", 0) >= 1, str(directory))
 
         saved = c.post("/api/person", {"nick": "someone", "network": nid,
                        "favourite": True, "notes": "GMT+2",

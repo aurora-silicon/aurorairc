@@ -244,7 +244,7 @@ def channels(con):
         "GROUP BY c.name ORDER BY count DESC")]
 
 
-def nicks(con, channel=None, limit=200, sort="count", contains=None):
+def nicks(con, channel=None, limit=200, sort="count", contains=None, offset=0):
     where, args = [], []
     if channel:
         where.append("c.name = ?")
@@ -258,9 +258,26 @@ def nicks(con, channel=None, limit=200, sort="count", contains=None):
         f"SELECT n.name, COUNT(*) AS count, MIN(m.ts) AS first, MAX(m.ts) AS last "
         f"FROM messages m JOIN nicks n ON n.id = m.nick_id "
         f"JOIN channels c ON c.id = m.channel_id{clause} "
-        f"GROUP BY n.name ORDER BY {order} LIMIT ?",
-        args + [max(1, min(int(limit), 2000))])
+        f"GROUP BY n.name ORDER BY {order} LIMIT ? OFFSET ?",
+        args + [max(1, min(int(limit), 2000)), max(0, int(offset))])
     return [dict(r) for r in rows]
+
+
+def nick_count(con, channel=None, contains=None):
+    """How many speaking nicks match the people-directory query."""
+    where, args = [], []
+    if channel:
+        where.append("c.name = ?")
+        args.append(str(channel).lstrip("#"))
+    if contains:
+        where.append("n.name LIKE ?")
+        args.append(f"%{contains}%")
+    clause = (" WHERE " + " AND ".join(where)) if where else ""
+    row = con.execute(
+        "SELECT COUNT(DISTINCT n.id) AS count FROM messages m "
+        "JOIN nicks n ON n.id = m.nick_id "
+        f"JOIN channels c ON c.id = m.channel_id{clause}", args).fetchone()
+    return row["count"] or 0
 
 
 def speakers(con):

@@ -26,7 +26,7 @@ opens a send-only connection for that identity. The archivist connection is
 the only receiver, so the message returns through it and is recorded once.
 
 Endpoints:
-  GET  /api/meta|messages|context|locate|activity|events|stream    (public)
+  GET  /api/meta|nicks|messages|context|locate|activity|events|stream (public)
   GET  /api/person            archive + live profile for one IRC nick
   GET  /api/command/status    private reply to a queued IRC command
   GET  /api/tags|searches|avatar|prefs           (tags/searches empty for anon)
@@ -688,6 +688,27 @@ class Handler(SimpleHTTPRequestHandler):
                 else:
                     m["tags"] = []
                 return self._json(m)
+            if url.path == "/api/nicks":
+                # The initial metadata deliberately carries only the busiest
+                # nicks.  People/search discovery is paged separately so a
+                # low-volume speaker remains findable without making every
+                # page load ship the entire archive directory.
+                try:
+                    limit = max(1, min(int(p.get("limit", ["200"])[0]), 500))
+                    offset = max(0, min(int(p.get("offset", ["0"])[0]),
+                                        MAX_OFFSET))
+                except ValueError:
+                    return self._json({"error": "bad nick page"}, 400)
+                contains = p.get("contains", [""])[0].strip()[:64]
+                sort = p.get("sort", ["count"])[0]
+                if sort not in ("count", "name", "recent"):
+                    sort = "count"
+                rows = Q.nicks(con, limit=limit, offset=offset, sort=sort,
+                               contains=contains or None)
+                total = Q.nick_count(con, contains=contains or None)
+                return self._json({"nicks": rows, "total": total,
+                                   "offset": offset,
+                                   "more": offset + len(rows) < total})
             if url.path == "/api/messages":
                 return self._json(public_msgs(Q.search(
                     con, **public_filters(),

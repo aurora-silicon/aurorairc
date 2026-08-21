@@ -339,7 +339,8 @@ aside{
 .msg:not(.head):hover .gutter .time{opacity:1}
 .msg .body{grid-column:2;min-width:0}
 .msg .meta{display:flex;align-items:baseline;gap:8px;margin-bottom:1px;flex-wrap:wrap}
-.msg .who{font-weight:640;font-size:14.5px;cursor:pointer;letter-spacing:-.01em}
+.msg .who{font-weight:640;font-size:14.5px;cursor:pointer;letter-spacing:-.01em;
+  max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .msg .who:hover{text-decoration:underline}
 .msg .when{font-size:11.5px;color:var(--fg-3);cursor:pointer;font-variant-numeric:tabular-nums}
 .msg .when:hover{color:var(--accent);text-decoration:underline}
@@ -1173,10 +1174,17 @@ label.btn{cursor:pointer}
   display:none;flex-direction:column;opacity:0;transition:opacity .16s,transform .16s;
 }
 #dlg.on{display:flex;opacity:1;transform:translate(-50%,-50%) scale(1)}
-#dlg.persondlg,#dlg.commanddlg{width:min(560px,94vw)}
+#dlg.commanddlg{width:min(560px,94vw)}
+#dlg.persondlg{width:min(680px,94vw);max-height:90vh}
 #dlg header{display:flex;align-items:center;gap:12px;padding:14px 16px;
   border-bottom:1px solid var(--line-soft);flex:none}
-#dlg header h3{margin:0;font-size:16px;font-weight:660}
+#dlg header h3{margin:0;font-size:16px;font-weight:660;min-width:0;overflow:hidden;
+  text-overflow:ellipsis;white-space:nowrap}
+#dlg-tools{display:flex;align-items:center;gap:4px;flex:none}
+#dlg-tools:empty{display:none}
+#dlg-tools .iconact{width:34px;height:34px}
+#dlg-tools svg{width:17px;height:17px;stroke:currentColor;fill:none;stroke-width:1.9;
+  stroke-linecap:round;stroke-linejoin:round}
 #dlg .content{overflow-y:auto;min-height:0;padding:16px;display:flex;
   flex-direction:column;gap:var(--gap)}
 /* A scrolling flex column otherwise shrinks its children to avoid overflow.
@@ -1184,10 +1192,11 @@ label.btn{cursor:pointer}
    shrinkage cut off rows and even the bottoms of letters instead of making
    the dialog scroll. */
 #dlg .content > *{flex-shrink:0}
-.personhero{display:flex;align-items:center;gap:15px}
+.personhero{display:flex;align-items:center;gap:15px;min-width:0}
 .personhero .av.big{width:72px;height:72px;font-size:28px}
 .personhero-main{flex:1;min-width:0;display:flex;flex-direction:column;gap:5px}
-.personname{font-size:22px;font-weight:710;letter-spacing:-.025em;overflow-wrap:anywhere}
+.personname{font-size:22px;font-weight:710;letter-spacing:-.025em;min-width:0;
+  overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .personstatus{display:flex;align-items:center;gap:7px;color:var(--fg-2);font-size:13.5px}
 .pdot{width:9px;height:9px;border-radius:50%;background:var(--fg-3);flex:none}
 .pdot.online{background:var(--ok);box-shadow:0 0 0 3px color-mix(in srgb,var(--ok) 15%,transparent)}
@@ -1195,12 +1204,27 @@ label.btn{cursor:pointer}
 .pdot.not_here,.pdot.unknown{background:var(--mark)}
 .personbadges,.personchannels{display:flex;gap:6px;flex-wrap:wrap}
 .personbadge{font-size:11.5px;color:var(--fg-3);background:var(--raised);
-  border:1px solid var(--line-soft);border-radius:99px;padding:3px 8px}
+  border:1px solid var(--line-soft);border-radius:99px;padding:3px 8px;
+  max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .personchannels .personbadge{color:var(--accent);background:var(--accent-soft)}
 .personactions{display:flex;gap:8px;flex-wrap:wrap}
-.personactions .btn{width:auto;flex:1 1 130px}
+.personactions .btn{width:auto;min-width:0;flex:1 1 130px;overflow-wrap:anywhere}
+.personlayout{display:flex;flex-direction:column;gap:18px;min-width:0}
+.personcol{display:flex;flex-direction:column;gap:var(--gap);min-width:0}
+.personconnections{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+.personlink{
+  width:38px;height:38px;border-radius:10px;display:grid;place-items:center;
+  color:var(--fg-2);background:var(--raised);border:1px solid var(--line-soft)
+}
+.personlink:hover{color:var(--accent);border-color:var(--accent)}
+.personlink svg{width:19px;height:19px;fill:currentColor;stroke:none}
+.personlink .stroke{fill:none;stroke:currentColor;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}
+.personnotehead{display:flex;align-items:center;gap:10px}
+.personnotehead .fhead{flex:1;margin:0}
 .personnotes textarea{height:100px;min-height:100px;padding:11px 13px;resize:vertical;
   line-height:1.45}
+.personnotes .formrow{justify-content:flex-end}
+.personnotes .formrow .btn{width:auto}
 .profilelinks{display:grid;grid-template-columns:1fr 1fr;gap:8px}
 .profilelinks .labelled{min-width:0}
 .profilelinks input{height:40px;font-size:14px}
@@ -1215,7 +1239,41 @@ label.btn{cursor:pointer}
 .cmdraw summary{cursor:pointer;color:var(--fg-3);font-size:12.5px}
 .cmdraw pre{white-space:pre-wrap;overflow-wrap:anywhere;background:var(--sunken);
   padding:10px;border-radius:9px;font:11.5px/1.5 var(--mono);max-height:230px;overflow:auto}
-@media (max-width:520px){.profilelinks{grid-template-columns:1fr}.personactions .btn{flex-basis:100%}}
+
+/* Quick profile: deliberately compact and anchored to the clicked name or
+   face. The soft banner/profile overlap borrows the familiar chat-card shape
+   while keeping Aurora's palette and controls. */
+#person-popover{
+  position:fixed;z-index:68;width:min(360px,calc(100vw - 20px));max-height:min(610px,calc(100vh - 20px));
+  overflow:auto;display:none;background:var(--surface);border:1px solid var(--line);
+  border-radius:16px;box-shadow:var(--shadow)
+}
+#person-popover.on{display:block}
+.personpop-banner{height:76px;background:linear-gradient(135deg,var(--accent-soft),var(--raised));
+  border-bottom:1px solid var(--line-soft)}
+.personpop-main{padding:0 16px 16px;display:flex;flex-direction:column;gap:12px}
+.personpop-face{display:flex;align-items:flex-end;justify-content:space-between;height:30px}
+.personpop-face .av.big{width:70px;height:70px;font-size:28px;border:5px solid var(--surface)}
+.personpop-name{font-size:21px;font-weight:720;letter-spacing:-.025em;min-width:0;
+  overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.personpop-status{display:flex;flex-direction:column;gap:3px;min-width:0}
+.personpop-status .hint{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.personpop-actions{display:flex;gap:7px}
+.personpop-actions .btn{min-width:0;width:auto;padding-inline:11px;flex:none}
+.personpop-actions .btn:first-child{flex:1}
+.personpop-actions .btn:first-child{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.personpop-note{padding:9px 11px;border-radius:10px;background:var(--raised);color:var(--fg-2);
+  font-size:13px;line-height:1.45;white-space:pre-wrap;overflow-wrap:anywhere;
+  max-height:84px;overflow:hidden}
+.personpop-foot{display:flex;gap:8px;align-items:center}
+.personpop-foot .btn{flex:1;min-width:0}
+.personpop-foot .personconnections{flex:none}
+.nickmore{display:block;width:calc(100% - 12px);margin:6px;padding:9px;text-align:center}
+
+@media (max-width:520px){
+  .profilelinks{grid-template-columns:1fr}.personactions .btn{flex-basis:100%}
+  #person-popover{left:10px!important;right:10px;top:auto!important;bottom:10px;width:auto}
+}
 @media (min-width:900px){
   #dlg.helpdlg{width:min(940px,94vw);max-height:min(760px,92vh)}
   #dlg.helpdlg .content{padding:22px;overflow:hidden}
@@ -1228,8 +1286,16 @@ label.btn{cursor:pointer}
   .helpcommands .summary .kv .k{flex:0 0 112px;max-width:112px}
   .helpcommands .summary .kv .v{font-size:11.5px;white-space:nowrap;
     overflow:hidden;text-overflow:ellipsis}
+  #dlg.persondlg{width:min(940px,94vw);height:min(760px,90vh);max-height:min(760px,90vh)}
+  #dlg.persondlg .content{padding:22px;overflow:hidden}
+  #dlg.persondlg .content > .personlayout{flex:1 1 auto;min-height:0}
+  .personlayout{display:grid;grid-template-columns:minmax(280px,.9fr) minmax(0,1.35fr);gap:22px}
+  .personcol{overflow-y:auto;padding-right:4px;align-content:start}
 }
-@media (max-width:899px){.helpgrid,.helpcol{display:flex;flex-direction:column;gap:var(--gap)}}
+@media (max-width:899px){
+  .helpgrid,.helpcol{display:flex;flex-direction:column;gap:var(--gap)}
+  .personlayout{display:flex;flex-direction:column}
+}
 /* Search dropdown rows that carry their own delete control */
 .sgrow{display:flex;align-items:center;gap:2px}
 .sgrow > button[role="option"]{flex:1;min-width:0}
@@ -1592,8 +1658,16 @@ details.card[open] > summary{margin-bottom:2px}
 <!-- account details, opened from the People list -->
 <div id="dlg" role="dialog" aria-label="Details">
   <header><h3 id="dlg-title">Details</h3><span class="grow"></span>
+    <span id="dlg-tools"></span>
     <button class="linkbtn" id="dlg-close">Close</button></header>
   <div class="content" id="dlg-body"></div>
+</div>
+
+<!-- A chat click gets a quick profile card first. It deliberately has no
+     scrim: like a native chat popover, the conversation remains in context.
+     The full profile opens from here when the reader wants the archive. -->
+<div id="person-popover" role="dialog" aria-label="Quick person profile">
+  <div id="person-popover-body"></div>
 </div>
 
 <!-- image quick-look -->
@@ -1759,7 +1833,10 @@ function applyAppName(){
 }
 let META=null, SESSION={signedIn:false, live:{connected:false}};
 let nickSort='count', nickFilter='', lastDay=null, lastMsg=null, seq=0, jumpSeq=0, ctxFocus=null;
+let NICK_DIRECTORY=[],NICK_DIRECTORY_TOTAL=0,NICK_DIRECTORY_MORE=false,NICK_DIRECTORY_READY=false;
+let NICK_DIRECTORY_LOADING=false,NICK_DIRECTORY_SEQ=0,nickDirectoryTimer=null;
 let PERSON_FAVS=new Set(), PERSON_OPEN=null, PERSON_SEQ=0, personTimer=null;
+let PERSON_DATA=null,PERSON_MODE='',PERSON_EDITING=false,PERSON_ANCHOR=null;
 
 /* ---------------- helpers ---------------- */
 const esc = s => s.replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
@@ -1927,9 +2004,10 @@ function terms(){
    the same kind are ORed; different kinds are ANDed. */
 function resolveNick(n){
   if(!META)return n;
-  const exact=META.nicks.find(x=>x.name===n);
+  const pool=META.nicks.concat(NICK_DIRECTORY||[]);
+  const exact=pool.find(x=>x.name===n);
   if(exact)return exact.name;
-  const ci=META.nicks.find(x=>x.name.toLowerCase()===n.toLowerCase());
+  const ci=pool.find(x=>x.name.toLowerCase()===n.toLowerCase());
   return ci?ci.name:n;
 }
 function resolveChannel(c){
@@ -1985,7 +2063,9 @@ const ICON_STAR=`<svg class="ic" viewBox="0 0 24 24">`+
   `<path d="M6 4h12a1 1 0 0 1 1 1v15l-7-4-7 4V5a1 1 0 0 1 1-1Z"/></svg>`;
 
 
+let SUGGEST_SEQ=0;
 function closeSuggest(){
+  SUGGEST_SEQ++;
   const box=$('#suggest');
   box.classList.remove('on');box.innerHTML='';
   $('#q').setAttribute('aria-expanded','false');
@@ -2004,7 +2084,15 @@ function updateSuggest(){
   return drawRecent();
 }
 
+function drawTokenHits(sigil,hits){
+  if(!hits.length)return closeSuggest();
+  openSuggest(hits.map(h=>
+    `<button type="button" role="option" data-accept="${esc(h.v)}" data-sigil="${sigil}">
+       ${h.av}<span class="nm">${esc(h.label)}</span>
+       <span class="ct">${h.count===''?'':fmtN(h.count)}</span></button>`).join(''));
+}
 function completeToken(sigil,token){
+  const mine=++SUGGEST_SEQ;
   const frag=token.slice(1).toLowerCase();
   const chosen=parseQuery($('#q').value);
   let hits=[];
@@ -2012,6 +2100,16 @@ function completeToken(sigil,token){
     hits=META.nicks.filter(n=>!chosen.nicks.has(n.name)&&
       (!frag||n.name.toLowerCase().includes(frag))).slice(0,8)
       .map(n=>({v:n.name,label:n.name,count:n.count,av:avHTML(n.name)}));
+    if(hits.length)drawTokenHits(sigil,hits);
+    else if(frag)openSuggest('<div class="loading">Searching the full archive…</div>');
+    if(frag)setTimeout(async()=>{
+      const r=await api('/api/nicks',new URLSearchParams({contains:frag,limit:'8',sort:'count'})).catch(()=>null);
+      if(mine!==SUGGEST_SEQ||caretToken().token!==token||!r||r.error)return;
+      const remote=(r.nicks||[]).filter(n=>!parseQuery($('#q').value).nicks.has(n.name))
+        .map(n=>({v:n.name,label:n.name,count:n.count,av:avHTML(n.name)}));
+      drawTokenHits(sigil,remote);
+    },120);
+    return;
   }else if(sigil==='#'){
     hits=META.channels.filter(c=>!chosen.chans.has(c.name)&&
       (!frag||c.name.toLowerCase().includes(frag))).slice(0,8)
@@ -2031,11 +2129,7 @@ function completeToken(sigil,token){
         av:`<span class="swatch" style="${tagStyle(c)};background:var(--tg-dot);
             width:13px;height:13px;border-radius:50%"></span>`})));
   }
-  if(!hits.length)return closeSuggest();
-  openSuggest(hits.map(h=>
-    `<button type="button" role="option" data-accept="${esc(h.v)}" data-sigil="${sigil}">
-       ${h.av}<span class="nm">${esc(h.label)}</span>
-       <span class="ct">${h.count===''?'':fmtN(h.count)}</span></button>`).join(''));
+  drawTokenHits(sigil,hits);
 }
 
 /* Recent searches and saved ones. Both are per-account, so this is empty and
@@ -2781,44 +2875,84 @@ function asideHTML(){
       <input class="nickfilter" type="search" placeholder="Find someone" autocomplete="off">
     </div><div class="nicklist"></div>`;
 }
+function nickDirectorySort(){
+  return nickSort==='name'||nickSort==='recent'?nickSort:'count';
+}
+async function loadNickDirectory(reset=false){
+  if(NICK_DIRECTORY_LOADING&&!reset)return;
+  if(reset){
+    NICK_DIRECTORY_SEQ++;NICK_DIRECTORY=[];NICK_DIRECTORY_TOTAL=0;
+    NICK_DIRECTORY_MORE=false;NICK_DIRECTORY_READY=false;
+  }
+  const mine=NICK_DIRECTORY_SEQ,filter=nickFilter,sort=nickDirectorySort();
+  const offset=reset?0:NICK_DIRECTORY.length;
+  NICK_DIRECTORY_LOADING=true;drawNicks();
+  const q=new URLSearchParams({limit:'400',offset:String(offset),sort});
+  if(filter)q.set('contains',filter);
+  const r=await api('/api/nicks',q.toString()).catch(()=>null);
+  if(mine!==NICK_DIRECTORY_SEQ||filter!==nickFilter||sort!==nickDirectorySort())return;
+  NICK_DIRECTORY_LOADING=false;
+  if(!r||r.error){NICK_DIRECTORY_READY=true;return drawNicks()}
+  const known=new Set(NICK_DIRECTORY.map(n=>n.name.toLowerCase()));
+  for(const n of r.nicks||[])if(!known.has(n.name.toLowerCase()))NICK_DIRECTORY.push(n);
+  NICK_DIRECTORY_TOTAL=r.total||NICK_DIRECTORY.length;
+  NICK_DIRECTORY_MORE=!!r.more;NICK_DIRECTORY_READY=true;
+  drawNicks();
+}
+function queueNickDirectory(){
+  clearTimeout(nickDirectoryTimer);
+  NICK_DIRECTORY_SEQ++;NICK_DIRECTORY=[];NICK_DIRECTORY_TOTAL=0;
+  NICK_DIRECTORY_MORE=false;NICK_DIRECTORY_READY=false;drawNicks();
+  // A previous page may still be in flight when the query changes. Starting
+  // this as a reset gives the new search its own request instead of waiting
+  // behind a response that is now guaranteed to be discarded.
+  nickDirectoryTimer=setTimeout(()=>loadNickDirectory(true),140);
+}
 function drawNicks(){
   if(!META)return;
-  let list=META.nicks.slice();
-  if(nickFilter){const f=nickFilter.toLowerCase();list=list.filter(n=>n.name.toLowerCase().includes(f))}
+  let list=(NICK_DIRECTORY_READY?NICK_DIRECTORY:META.nicks).slice();
+  if(!NICK_DIRECTORY_READY&&nickFilter){
+    const f=nickFilter.toLowerCase();list=list.filter(n=>n.name.toLowerCase().includes(f));
+  }
   if(nickSort==='name')list.sort((a,b)=>a.name.localeCompare(b.name));
   else if(nickSort==='recent')list.sort((a,b)=>b.last-a.last);
   else if(nickSort==='favorite')list.sort((a,b)=>
     (PERSON_FAVS.has(b.name.toLowerCase())-PERSON_FAVS.has(a.name.toLowerCase()))||b.last-a.last);
   else list.sort((a,b)=>b.count-a.count);
-  const shown=list.slice(0,400);
 
   for(const box of $$('.nicklist')){
     box.innerHTML='';
     const frag=document.createDocumentFragment();
-    for(const n of shown){
+    for(const n of list){
       const row=document.createElement('div');
       row.className='person'+(state.nicks.has(n.name)?' on':'');
       row.dataset.avname=n.name;
       row.dataset.nick=n.name;
       row.innerHTML=avHTML(n.name)+
-        `<span class="nm">${esc(n.name)}</span>`+
+        `<span class="nm" title="${esc(n.name)}">${esc(n.name)}</span>`+
         (PERSON_FAVS.has(n.name.toLowerCase())?'<span class="fav" aria-label="Favourite">★</span>':'')+
         `<span class="ct">${fmtN(n.count)}</span>`;
       row.onclick=()=>showPerson(n.name);
       frag.appendChild(row);
     }
     box.appendChild(frag);
-    if(list.length>400)box.insertAdjacentHTML('beforeend',
-      `<div class="loading">+${fmtN(list.length-400)} more — search to narrow</div>`);
+    if(NICK_DIRECTORY_LOADING)box.insertAdjacentHTML('beforeend',
+      `<div class="loading">Searching the full archive…</div>`);
+    else if(NICK_DIRECTORY_READY&&NICK_DIRECTORY_MORE)box.insertAdjacentHTML('beforeend',
+      `<button class="linkbtn nickmore" type="button">Show more people · ${fmtN(
+        Math.max(0,NICK_DIRECTORY_TOTAL-NICK_DIRECTORY.length))} remaining</button>`);
+    else if(NICK_DIRECTORY_READY&&!list.length)box.insertAdjacentHTML('beforeend',
+      `<div class="loading">No one found</div>`);
   }
+  $$('.nickmore').forEach(b=>b.onclick=()=>loadNickDirectory(false));
   $$('.nicksort').forEach(sel=>{
     if(document.activeElement!==sel)sel.value=nickSort;
-    sel.onchange=e=>{nickSort=e.target.value;drawNicks()}});
+    sel.onchange=e=>{nickSort=e.target.value;queueNickDirectory()}});
   $$('.nickfilter').forEach(fil=>{
     // Never reassign the field being typed in: it resets the caret, and on
     // mobile that reads as the keyboard fighting you.
     if(document.activeElement!==fil)fil.value=nickFilter;
-    fil.oninput=e=>{nickFilter=e.target.value;drawNicks()}});
+    fil.oninput=e=>{nickFilter=e.target.value;queueNickDirectory()}});
 }
 /* Every selection lives in the search box as a token, so there is one visible
    source of truth whether you clicked a chip or typed it. */
@@ -3632,7 +3766,9 @@ function closeAll(opts={}){
     el.classList.remove('on');
     if(el.id==='wizard')WIZ.open=false;
   });
-  PERSON_OPEN=null;PERSON_SEQ++;clearTimeout(personTimer);
+  hidePersonPopover(false);
+  PERSON_OPEN=null;PERSON_DATA=null;PERSON_MODE='';PERSON_EDITING=false;
+  PERSON_ANCHOR=null;PERSON_SEQ++;clearTimeout(personTimer);
   $('#picker').classList.remove('on');
   closeLightbox();
   hideTip();
@@ -4261,11 +4397,13 @@ $('#people-btn').onclick=()=>{
     document.body.classList.toggle('no-people',hide);
     $('#people-btn').setAttribute('aria-pressed',!hide);
     try{localStorage.setItem('people',hide?'0':'1')}catch(e){}
+    if(!hide)loadNickDirectory(true);
     return;
   }
   const open=$('#people-sheet').classList.contains('on');
   closeAll();
-  if(!open){openSheet('#people-sheet');$('#people-btn').setAttribute('aria-pressed','true');drawNicks()}
+  if(!open){openSheet('#people-sheet');$('#people-btn').setAttribute('aria-pressed','true');
+    drawNicks();loadNickDirectory(true)}
 };
 $('#filter-btn').onclick=()=>{
   const open=$('#filter-sheet').classList.contains('on');
@@ -4357,7 +4495,7 @@ $('#log').onclick=e=>{
   const who=e.target.closest('[data-nick]');
   if(who){
     const row=who.closest('.msg,.evt');
-    return showPerson(who.dataset.nick,row&&row.dataset.channel);
+    return showPerson(who.dataset.nick,row&&row.dataset.channel,who);
   }
 
   // Anywhere else on the row: on touch, offer the choices instead of acting.
@@ -4374,7 +4512,7 @@ $('#ctxbody').onclick=e=>{
   }
   const row=e.target.closest('.msg');
   const who=e.target.closest('[data-nick]');
-  if(who)return showPerson(who.dataset.nick,row&&row.dataset.channel);
+  if(who)return showPerson(who.dataset.nick,row&&row.dataset.channel,who);
 };
 
 /* paging by scroll - simpler and more reliable than sentinels */
@@ -4972,7 +5110,9 @@ function setPeople(u){
 
 /* ---------------------------------------------------- account details */
 function openDialog(title,html,kind=''){
+  hidePersonPopover(false);
   $('#dlg-title').textContent=title;
+  $('#dlg-tools').innerHTML='';
   $('#dlg-body').innerHTML=html;
   $('#dlg').classList.remove('persondlg','commanddlg','helpdlg');
   if(kind)$('#dlg').classList.add(kind+'dlg');
@@ -4981,7 +5121,9 @@ function openDialog(title,html,kind=''){
 }
 $('#dlg-close').onclick=()=>{
   $('#dlg').classList.remove('on');
-  PERSON_OPEN=null;PERSON_SEQ++;clearTimeout(personTimer);
+  $('#dlg-tools').innerHTML='';
+  PERSON_OPEN=null;PERSON_DATA=null;PERSON_MODE='';PERSON_EDITING=false;
+  PERSON_ANCHOR=null;PERSON_SEQ++;clearTimeout(personTimer);
   // Settings is still open behind it, so the scrim stays
   $('#scrim').classList.toggle('on',$$('.panel.on, .sheet.on').length>0);
 };
@@ -5014,88 +5156,196 @@ function profileEvent(e){
 }
 function drawnNickForEvent(e){ return PERSON_OPEN&&PERSON_OPEN.nick||'' }
 
-function drawPerson(d){
-  if(!d||d.error)return toast((d&&d.error)||'Could not load that person');
-  const a=d.annotation||{favourite:false,notes:'',links:{}};
-  const p=d.presence||{state:'unknown',label:'Unknown',channels:[]};
-  const badges=[d.identity&&d.identity.label,d.internal&&d.internal.username?'@'+d.internal.username:null,
+const PERSON_LINK_LABELS={website:'Website',github:'GitHub',x:'X',matrix:'Matrix',other:'Other'};
+const PERSON_PENCIL=`<svg viewBox="0 0 24 24"><path d="m4 20 4.2-1 10.9-10.9a2.1 2.1 0 0 0-3-3L5.2 16 4 20Z"/><path d="m14.8 6.2 3 3"/></svg>`;
+const PERSON_LINK_ICONS={
+  website:`<svg viewBox="0 0 24 24"><g class="stroke"><circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3c2.4 2.5 3.5 5.5 3.5 9S14.4 18.5 12 21M12 3C9.6 5.5 8.5 8.5 8.5 12S9.6 18.5 12 21"/></g></svg>`,
+  github:`<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2.5a9.7 9.7 0 0 0-3.1 18.9c.5.1.7-.2.7-.5v-1.9c-2.8.6-3.4-1.2-3.4-1.2-.5-1.1-1.1-1.4-1.1-1.4-.9-.6.1-.6.1-.6 1 0 1.5 1 1.5 1 .9 1.5 2.3 1.1 2.9.8.1-.6.3-1.1.6-1.3-2.3-.3-4.7-1.1-4.7-5.1 0-1.1.4-2.1 1-2.8-.1-.3-.4-1.3.1-2.8 0 0 .9-.3 2.9 1.1a10 10 0 0 1 5.3 0c2-1.4 2.9-1.1 2.9-1.1.5 1.5.2 2.5.1 2.8.7.7 1 1.7 1 2.8 0 4-2.4 4.8-4.7 5.1.4.3.7 1 .7 2v3.1c0 .3.2.6.7.5A9.7 9.7 0 0 0 12 2.5Z"/></svg>`,
+  x:`<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 3h4.9l4.2 5.6L18 3h2l-6 7 6.5 11h-4.9l-4.8-6.4L5.3 21h-2l6.6-7.8L4 3Zm3.8 1.8H6.9l9.7 14.4h.9L7.8 4.8Z"/></svg>`,
+  matrix:`<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 3H3v18h2v-1H4V4h1V3Zm14 0h2v18h-2v-1h1V4h-1V3ZM7 8h2v2H7V8Zm4 0h2v2h-2V8Zm4 0h2v2h-2V8ZM7 12h2v4H7v-4Zm4 0h2v4h-2v-4Zm4 0h2v4h-2v-4Z"/></svg>`,
+  other:`<svg viewBox="0 0 24 24"><g class="stroke"><path d="m9.5 14.5 5-5"/><path d="M7.2 16.8 5.8 18.2a2.8 2.8 0 0 1-4-4l3-3a2.8 2.8 0 0 1 4 0" transform="translate(3)"/><path d="m16.8 7.2 1.4-1.4a2.8 2.8 0 0 1 4 4l-3 3a2.8 2.8 0 0 1-4 0" transform="translate(-3)"/></g></svg>`
+};
+function personLinksHTML(links){
+  return Object.entries(PERSON_LINK_LABELS).filter(([k])=>links&&links[k]).map(([k,label])=>
+    `<a class="personlink" href="${esc(links[k])}" target="_blank" rel="noopener noreferrer" `+
+      `data-tip="Open ${label}" aria-label="Open ${label}">${PERSON_LINK_ICONS[k]}</a>`).join('');
+}
+function personBadges(d){
+  return [d.identity&&d.identity.label,
+    d.internal&&d.internal.username?'@'+d.internal.username:null,
     d.network&&d.network.label].filter(Boolean);
-  const facts=[
-    ['Last seen in archive',d.lastSeen?`${esc(relTime(d.lastSeen))} · ${esc(stamp(d.lastSeen))}`:'No recorded activity'],
-    ['Messages',fmtN(d.messages||0)],
-    ['First appeared',d.firstSeen?`${esc(dateOnly(d.firstSeen))} · ${esc(relTime(d.firstSeen))}`:'—'],
-    ['Most recent message',d.lastMessage?esc(relTime(d.lastMessage)):'—'],
-  ];
-  const linkLabels={website:'Website',github:'GitHub',x:'X',matrix:'Matrix',other:'Other'};
-  const links=a.links||{};
-  const editors=SESSION.signedIn?`
-    <div class="field personnotes"><label class="fhead">Private notes</label>
-      <textarea id="person-notes" maxlength="2000" placeholder="Timezone, context, how you know them…">${esc(a.notes||'')}</textarea>
-      <div class="hint">Only you can see these notes.</div></div>
-    <div class="field"><label class="fhead">Private links</label>
-      <div class="profilelinks">${Object.entries(linkLabels).map(([k,label])=>
-        `<label class="labelled"><span>${label}${links[k]?` · <a href="${esc(links[k])}" target="_blank" rel="noopener">open ↗</a>`:''}</span>`+
-        `<input id="person-link-${k}" value="${esc(links[k]||'')}" placeholder="${k==='github'?'username or URL':k==='x'?'@handle or URL':'https://…'}"></label>`).join('')}</div>
-      <button class="btn sm auto" id="person-save" type="button">Save notes and links</button>
-      <div class="hint">These are attached to your Aurora account, not published to IRC.</div></div>`:'';
-  const html=`
-    <div class="personhero">${personFace(d)}<div class="personhero-main">
-      <div class="personname">${esc(d.nick)}</div>
-      <div class="personstatus"><i class="pdot ${esc(p.state)}"></i><b>${esc(p.label)}</b>`+
-        `${p.refreshing?' · checking…':''}</div>
-      <div class="hint">${esc(personStatusNote(p))}</div>
-      <div class="personbadges">${badges.map(x=>`<span class="personbadge">${esc(x)}</span>`).join('')}</div>
-    </div></div>
-    ${p.channels&&p.channels.length?`<div class="personchannels">${p.channels.map(c=>
-      `<span class="personbadge">#${esc(c)}</span>`).join('')}</div>`:''}
-    <div class="personactions">
-      <button class="btn ghost sm" id="person-filter" type="button">Filter by ${esc(d.nick)}</button>
-      ${SESSION.signedIn?`<button class="btn ghost sm" id="person-fav" type="button">${a.favourite?'★ Favourited':'☆ Favourite'}</button>`:''}
-      ${p.canCheck?`<button class="btn ghost sm" id="person-check" type="button">Check network-wide</button>`:''}
-    </div>
-    <div class="summary">${facts.map(([k,v])=>`<div class="kv"><span class="k">${esc(k)}</span><span class="v${v==='—'?' dim':''}">${v}</span></div>`).join('')}</div>
-    ${d.channels&&d.channels.length?`<div class="field"><label class="fhead">Archive activity</label><div class="personchannels">${d.channels.slice(0,12).map(c=>
-      `<span class="personbadge">#${esc(c.name)} · ${fmtN(c.count)}</span>`).join('')}</div></div>`:''}
-    ${editors}
-    ${d.recentEvents&&d.recentEvents.length?`<div class="field"><label class="fhead">Recent event log</label>`+
-      `<div class="profileevents">${d.recentEvents.map(profileEvent).join('')}</div></div>`:''}`;
-  openDialog(d.nick,html,'person');
-  $('#person-filter').onclick=()=>{selectOnlyNick(d.nick);closeAll()};
-  const fav=$('#person-fav');
+}
+function placePersonPopover(anchor){
+  const pop=$('#person-popover');
+  if(!pop.classList.contains('on')||!anchor||!anchor.isConnected)return;
+  const a=anchor.getBoundingClientRect(),w=pop.offsetWidth,h=pop.offsetHeight;
+  let left=a.left+a.width/2-w/2;
+  left=Math.max(10,Math.min(innerWidth-w-10,left));
+  let top=a.bottom+9;
+  if(top+h>innerHeight-10)top=Math.max(10,a.top-h-9);
+  pop.style.left=Math.round(left)+'px';pop.style.top=Math.round(top)+'px';
+}
+function hidePersonPopover(cancel=true){
+  const pop=$('#person-popover');if(!pop)return;
+  pop.classList.remove('on');pop.style.left=pop.style.top='';
+  if(cancel&&PERSON_MODE==='compact'){
+    PERSON_OPEN=null;PERSON_DATA=null;PERSON_MODE='';PERSON_ANCHOR=null;
+    PERSON_SEQ++;clearTimeout(personTimer);
+  }
+}
+function openPersonPopover(anchor,html){
+  $('#person-popover-body').innerHTML=html;
+  const pop=$('#person-popover');pop.classList.add('on');
+  placePersonPopover(anchor);
+}
+function bindPersonSurface(root,d){
+  const a=d.annotation||{favourite:false};
+  root.querySelector('[data-person-filter]')?.addEventListener('click',()=>{
+    selectOnlyNick(d.nick);closeAll();
+  });
+  root.querySelector('[data-person-full]')?.addEventListener('click',()=>{
+    hidePersonPopover(false);drawPerson(d,false);
+  });
+  const fav=root.querySelector('[data-person-fav]');
   if(fav)fav.onclick=async()=>{
     fav.disabled=true;
     const r=await post('/api/person',{nick:d.nick,network:d.network&&d.network.id,
                                       favourite:!a.favourite});
     if(r.error){fav.disabled=false;return toast(r.error)}
     r.annotation.favourite?PERSON_FAVS.add(d.nick.toLowerCase()):PERSON_FAVS.delete(d.nick.toLowerCase());
-    drawNicks();drawPerson(r);
+    PERSON_DATA=r;drawNicks();
+    if(PERSON_MODE==='compact')drawPersonCard(r,PERSON_ANCHOR);else drawPerson(r,PERSON_EDITING);
   };
+  const check=root.querySelector('[data-person-check]');
+  if(check)check.onclick=()=>refreshPersonStatus(d);
+}
+function drawPersonCard(d,anchor){
+  if(!d||d.error)return toast((d&&d.error)||'Could not load that person');
+  PERSON_DATA=d;PERSON_MODE='compact';PERSON_EDITING=false;PERSON_ANCHOR=anchor;
+  const a=d.annotation||{favourite:false,notes:'',links:{}};
+  const p=d.presence||{state:'unknown',label:'Unknown',channels:[]};
+  const badges=personBadges(d),links=a.links||{},connections=personLinksHTML(links);
+  const seen=d.lastSeen?`${relTime(d.lastSeen)} · ${fmtN(d.messages||0)} messages`:
+    `${fmtN(d.messages||0)} archived messages`;
+  const html=`<div class="personpop-banner"></div><div class="personpop-main">
+    <div class="personpop-face">${personFace(d)}</div>
+    <div class="personpop-status">
+      <div class="personpop-name" title="${esc(d.nick)}">${esc(d.nick)}</div>
+      <div class="personstatus"><i class="pdot ${esc(p.state)}"></i><b>${esc(p.label)}</b>${p.refreshing?' · checking…':''}</div>
+      <div class="hint">${esc(seen)}</div>
+    </div>
+    ${badges.length?`<div class="personbadges">${badges.map(x=>`<span class="personbadge">${esc(x)}</span>`).join('')}</div>`:''}
+    ${p.channels&&p.channels.length?`<div class="personchannels">${p.channels.slice(0,6).map(c=>
+      `<span class="personbadge">#${esc(c)}</span>`).join('')}</div>`:''}
+    ${a.notes?`<div class="personpop-note">${esc(a.notes)}</div>`:''}
+    <div class="personpop-actions">
+      <button class="btn sm" type="button" data-person-full>Open full profile</button>
+      ${SESSION.signedIn?`<button class="btn ghost sm" type="button" data-person-fav aria-label="${a.favourite?'Remove favourite':'Favourite'}">${a.favourite?'★':'☆'}</button>`:''}
+      ${p.canCheck?`<button class="btn ghost sm" type="button" data-person-check aria-label="Check network-wide">↻</button>`:''}
+    </div>
+    <div class="personpop-foot"><button class="btn ghost sm" type="button" data-person-filter>Filter messages</button>
+      ${connections?`<div class="personconnections">${connections}</div>`:''}</div>
+  </div>`;
+  openPersonPopover(anchor,html);bindPersonSurface($('#person-popover'),d);
+}
+
+function drawPerson(d,editing=false){
+  if(!d||d.error)return toast((d&&d.error)||'Could not load that person');
+  PERSON_DATA=d;PERSON_MODE='full';PERSON_EDITING=!!editing;PERSON_ANCHOR=null;
+  const a=d.annotation||{favourite:false,notes:'',links:{}};
+  const p=d.presence||{state:'unknown',label:'Unknown',channels:[]};
+  const badges=personBadges(d);
+  const facts=[
+    ['Last seen in archive',d.lastSeen?`${esc(relTime(d.lastSeen))} · ${esc(stamp(d.lastSeen))}`:'No recorded activity'],
+    ['Messages',fmtN(d.messages||0)],
+    ['First appeared',d.firstSeen?`${esc(dateOnly(d.firstSeen))} · ${esc(relTime(d.firstSeen))}`:'—'],
+    ['Most recent message',d.lastMessage?esc(relTime(d.lastMessage)):'—'],
+  ];
+  const links=a.links||{};
+  const connections=personLinksHTML(links);
+  const linkBlock=SESSION.signedIn?(editing?`
+    <div class="field"><label class="fhead">Edit private links</label>
+      <div class="profilelinks">${Object.entries(PERSON_LINK_LABELS).map(([k,label])=>
+        `<label class="labelled"><span>${label}</span><input id="person-link-${k}" `+
+        `value="${esc(links[k]||'')}" placeholder="${k==='github'?'username or URL':k==='x'?'@handle or URL':'https://…'}"></label>`).join('')}</div>
+      <div class="formrow"><button class="btn ghost sm auto" id="person-edit-cancel" type="button">Cancel</button>
+        <button class="btn sm auto" id="person-save" type="button">Save links</button></div>
+      <div class="hint">These stay on your Aurora account and are never published to IRC.</div></div>`:
+    `<div class="field"><label class="fhead">Connections</label>
+      ${connections?`<div class="personconnections">${connections}</div>`:
+        '<div class="hint">No private links saved yet. Use the pencil to add one.</div>'}</div>`):'';
+  const notes=SESSION.signedIn?`<div class="field personnotes">
+      <div class="personnotehead"><label class="fhead">Private notes</label></div>
+      <textarea id="person-notes" maxlength="2000" placeholder="Timezone, context, how you know them…">${esc(a.notes||'')}</textarea>
+      <div class="formrow"><button class="btn ghost sm auto" id="person-note-save" type="button">Save note</button></div>
+      <div class="hint">Only you can see this note.</div></div>`:'';
+  const html=`
+    <div class="personlayout"><div class="personcol">
+      <div class="personhero">${personFace(d)}<div class="personhero-main">
+        <div class="personname" title="${esc(d.nick)}">${esc(d.nick)}</div>
+        <div class="personstatus"><i class="pdot ${esc(p.state)}"></i><b>${esc(p.label)}</b>${p.refreshing?' · checking…':''}</div>
+        <div class="hint">${esc(personStatusNote(p))}</div>
+        <div class="personbadges">${badges.map(x=>`<span class="personbadge">${esc(x)}</span>`).join('')}</div>
+      </div></div>
+      ${p.channels&&p.channels.length?`<div class="personchannels">${p.channels.map(c=>
+        `<span class="personbadge">#${esc(c)}</span>`).join('')}</div>`:''}
+      <div class="personactions">
+        <button class="btn ghost sm" id="person-filter" data-person-filter type="button">Filter messages</button>
+        ${SESSION.signedIn?`<button class="btn ghost sm" id="person-fav" data-person-fav type="button">${a.favourite?'★ Favourited':'☆ Favourite'}</button>`:''}
+        ${p.canCheck?`<button class="btn ghost sm" id="person-check" data-person-check type="button">Check network-wide</button>`:''}
+      </div>
+      <div class="summary">${facts.map(([k,v])=>`<div class="kv"><span class="k">${esc(k)}</span><span class="v${v==='—'?' dim':''}">${v}</span></div>`).join('')}</div>
+      ${linkBlock}
+    </div><div class="personcol">
+      ${d.channels&&d.channels.length?`<div class="field"><label class="fhead">Archive activity</label><div class="personchannels">${d.channels.slice(0,18).map(c=>
+        `<span class="personbadge">#${esc(c.name)} · ${fmtN(c.count)}</span>`).join('')}</div></div>`:''}
+      ${notes}
+      ${d.recentEvents&&d.recentEvents.length?`<div class="field"><label class="fhead">Recent event log</label>`+
+        `<div class="profileevents">${d.recentEvents.map(profileEvent).join('')}</div></div>`:''}
+    </div></div>`;
+  openDialog('Person profile',html,'person');
+  if(SESSION.signedIn&&!editing)$('#dlg-tools').innerHTML=`<button class="iconact" id="person-edit" `+
+    `type="button" data-tip="Edit private links" aria-label="Edit private links">${PERSON_PENCIL}</button>`;
+  bindPersonSurface($('#dlg'),d);
+  $('#person-edit')?.addEventListener('click',()=>drawPerson(d,true));
+  $('#person-edit-cancel')?.addEventListener('click',()=>drawPerson(d,false));
   const save=$('#person-save');
   if(save)save.onclick=async()=>{
     save.disabled=true;
-    const out={};for(const k of Object.keys(linkLabels))out[k]=$(`#person-link-${k}`).value;
+    const out={};for(const k of Object.keys(PERSON_LINK_LABELS))out[k]=$(`#person-link-${k}`).value;
     const r=await post('/api/person',{nick:d.nick,network:d.network&&d.network.id,
-      notes:$('#person-notes').value,links:out});
+      notes:$('#person-notes')?.value||a.notes||'',links:out});
     if(r.error){save.disabled=false;return toast(r.error)}
-    toast('Person details saved');drawPerson(r);
+    toast('Links saved');drawPerson(r,false);
   };
-  const check=$('#person-check');
-  if(check)check.onclick=()=>refreshPersonStatus(d);
+  const noteSave=$('#person-note-save');
+  if(noteSave)noteSave.onclick=async()=>{
+    noteSave.disabled=true;
+    const r=await post('/api/person',{nick:d.nick,network:d.network&&d.network.id,
+      notes:$('#person-notes').value});
+    if(r.error){noteSave.disabled=false;return toast(r.error)}
+    toast('Note saved');drawPerson(r,PERSON_EDITING);
+  };
 }
 
-async function showPerson(nick,channel){
+async function showPerson(nick,channel,anchor=null){
   nick=String(nick||'').trim();if(!nick)return;
   closeAll({quiet:true});
   const my=++PERSON_SEQ;
-  PERSON_OPEN={nick,channel:channel||''};
-  openDialog(nick,'<div class="loading">Loading person…</div>','person');
+  PERSON_OPEN={nick,channel:channel||''};PERSON_MODE=anchor?'compact':'full';PERSON_ANCHOR=anchor;
+  if(anchor)openPersonPopover(anchor,'<div class="loading">Loading person…</div>');
+  else openDialog('Person profile','<div class="loading">Loading person…</div>','person');
   const q=new URLSearchParams({nick});if(channel)q.set('channel',channel);
   let d;
   try{d=await api('/api/person',q.toString())}catch(e){d={error:'Could not load that person'}}
   if(my!==PERSON_SEQ||!PERSON_OPEN)return;
-  if(d.error){openDialog(nick,`<div class="note err">${esc(d.error)}</div>`,'person');return}
+  if(d.error){
+    const err=`<div class="note err">${esc(d.error)}</div>`;
+    anchor?openPersonPopover(anchor,err):openDialog('Person profile',err,'person');return;
+  }
   PERSON_OPEN={nick:d.nick,channel:channel||'',network:d.network&&d.network.id};
-  drawPerson(d);
+  PERSON_DATA=d;
+  anchor?drawPersonCard(d,anchor):drawPerson(d,false);
   if(d.presence&&d.presence.canCheck&&d.presence.state!=='online')refreshPersonStatus(d,true);
 }
 
@@ -5105,15 +5355,28 @@ async function refreshPersonStatus(d,automatic=false){
   const asked=await post('/api/person/status',{nick,network,channel:PERSON_OPEN.channel});
   if(asked.error){if(!automatic)toast(asked.error);return}
   if(mine!==PERSON_SEQ)return;
-  if(!busyTyping($('#dlg-body')))drawPerson(asked);
+  const redraw=fresh=>{
+    PERSON_DATA=fresh;
+    if(PERSON_MODE==='compact')drawPersonCard(fresh,PERSON_ANCHOR);
+    else if(!busyTyping($('#dlg-body')))drawPerson(fresh,PERSON_EDITING);
+  };
+  redraw(asked);
   for(let i=0;i<24&&mine===PERSON_SEQ;i++){
     await new Promise(r=>setTimeout(r,350));
     const q=new URLSearchParams({nick});if(network)q.set('network',network);
     const fresh=await api('/api/person',q.toString()).catch(()=>null);
     if(!fresh||mine!==PERSON_SEQ)return;
-    if(!fresh.presence.refreshing){if(!busyTyping($('#dlg-body')))drawPerson(fresh);return}
+    if(!fresh.presence.refreshing){redraw(fresh);return}
   }
 }
+
+document.addEventListener('click',e=>{
+  if(!$('#person-popover').classList.contains('on'))return;
+  if(e.target.closest('#person-popover')||e.target.closest('[data-nick]'))return;
+  hidePersonPopover(true);
+},true);
+$('#log').addEventListener('scroll',()=>hidePersonPopover(true),{passive:true});
+addEventListener('resize',()=>placePersonPopover(PERSON_ANCHOR),{passive:true});
 
 async function showUserDetail(name){
   const d=await api('/api/users/detail','username='+encodeURIComponent(name));
@@ -7515,6 +7778,7 @@ addEventListener('hashchange',()=>{
     $('#people-btn').setAttribute('aria-pressed',
       !document.body.classList.contains('no-people'));
   drawNicks();drawTagList();drawApplied();refreshSaved();
+  if(wantPeople&&sidebarPinned())loadNickDirectory(true);
 
   if(!empty){
     if(state.anchor){await jumpTo(state.anchor)}

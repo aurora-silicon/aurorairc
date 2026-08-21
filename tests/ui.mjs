@@ -284,21 +284,74 @@ const run = async () => {
       (await page.textContent('#dlg-body')).includes('ryan_'));
     await page.click('#dlg-close');
 
-    await page.locator('#log [data-nick="someone"]').first().click();
+    // These two speakers arrive after boot. Remove them from the deliberately
+    // capped metadata snapshot so discovery has to use the full directory API.
+    const longNick='verylongmatrixusername_test[m]';
+    await control('/inject',{nick:'notatide',chan:'#mychannel',text:'quiet alt account'});
+    await control('/inject',{nick:longNick,chan:'#mychannel',text:'a long Matrix name'});
+    await waitFor(async()=>{
+      const text=await page.textContent('#log');return text.includes('quiet alt account')&&text.includes('a long Matrix name');
+    });
+    await sleep(1500);
+    await page.evaluate(names=>{
+      META.nicks=META.nicks.filter(n=>!names.includes(n.name));
+      NICK_DIRECTORY=[];NICK_DIRECTORY_READY=false;NICK_DIRECTORY_MORE=false;
+    },['notatide',longNick]);
+
+    await page.fill('#q','@notat');
+    await page.waitForSelector('#suggest.on [data-accept="notatide"]');
+    check('search @autocomplete finds a low-volume person outside initial metadata',
+      (await page.textContent('#suggest')).includes('notatide'));
+    await page.fill('#q','');await page.press('#q','Escape');
+
+    await page.click('#people-btn');
+    await page.fill('#desktop-aside .nickfilter','notatide');
+    await page.waitForSelector('#desktop-aside .nicklist [data-nick="notatide"]');
+    check('People search includes every archived speaker, not only top talkers',true);
+    await page.click('#people-btn');
+
+    await page.locator(`#log [data-nick="${longNick}"]`).first().click();
+    await page.waitForSelector('#person-popover.on [data-person-full]');
+    check('clicking an inline name opens a compact profile first',
+      await page.isVisible('#person-popover') && !await page.isVisible('#dlg.persondlg'));
+    const compact=await page.evaluate(()=>{
+      const p=$('#person-popover'),n=p.querySelector('.personpop-name'),r=p.getBoundingClientRect();
+      const nr=n.getBoundingClientRect(),style=getComputedStyle(n);
+      return {width:r.width,right:r.right,overflow:p.scrollWidth-p.clientWidth,
+              nameWithin:nr.right<=r.right-15,overflowRule:style.overflow,viewport:innerWidth};
+    });
+    check('long usernames stay contained in the compact profile',
+      compact.width<=380 && compact.right<=compact.viewport && compact.overflow<=1 &&
+      compact.nameWithin && compact.overflowRule==='hidden',
+      JSON.stringify(compact));
+    await waitFor(async()=>!/checking/i.test(await page.textContent('#person-popover')),{timeout:12000});
+    await page.click('[data-person-full]');
     await page.waitForSelector('#dlg.persondlg.on #person-filter');
     const personText=await page.textContent('#dlg-body');
-    check('clicking a name opens the person profile',
+    check('the compact card opens the full archive profile',
       personText.includes('Last seen in archive') && personText.includes('Messages'));
-    check('a signed-in profile has filtering, favourite, notes, and links',
+    const fullSize=await page.evaluate(()=>{
+      const r=$('#dlg').getBoundingClientRect();return {width:r.width,height:r.height,overflow:$('#dlg-body').scrollWidth-$('#dlg-body').clientWidth};
+    });
+    check('the full profile matches Settings and Help sizing',
+      fullSize.width===940 && fullSize.height===760 && fullSize.overflow<=1,JSON.stringify(fullSize));
+    check('the full profile starts in view mode with a pencil for links',
       await page.isVisible('#person-filter') && await page.isVisible('#person-fav') &&
-      await page.isVisible('#person-notes') && await page.isVisible('#person-link-github'));
+      await page.isVisible('#person-notes') && await page.isVisible('#person-edit') &&
+      !await page.isVisible('#person-link-github'));
     await page.fill('#person-notes', 'GMT+2');
+    await page.click('#person-note-save');
+    await waitFor(async()=>await page.inputValue('#person-notes')==='GMT+2');
+    await page.click('#person-edit');
+    await page.waitForSelector('#person-link-github');
     await page.fill('#person-link-github', 'octocat');
     await page.click('#person-save');
-    await waitFor(async()=> (await page.inputValue('#person-link-github'))===
-      'https://github.com/octocat');
-    check('private person notes and links survive the save',
-      (await page.inputValue('#person-link-github'))==='https://github.com/octocat');
+    await page.waitForSelector('.personlink[aria-label="Open GitHub"]');
+    check('saved links return to view mode as recognisable icons',
+      (await page.getAttribute('.personlink[aria-label="Open GitHub"]','href'))===
+      'https://github.com/octocat' && !await page.isVisible('#person-link-github'));
+    check('private notes remain directly editable without entering link edit mode',
+      (await page.inputValue('#person-notes'))==='GMT+2');
     await page.click('#dlg-close');
 
     // ---- the other bug: composer growth ----
