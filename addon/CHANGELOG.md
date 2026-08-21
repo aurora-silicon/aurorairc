@@ -1,5 +1,17 @@
 # Changelog
 
+## 1.2.3
+
+- **Compact people cards in the conversation.** Clicking a name or picture
+  now opens a Discord-style summary first, with status, archive activity,
+  notes, favourites, saved connection icons and a route into the full profile.
+- The full profile now matches the wide Settings and Help dialogs on desktop,
+  starts in a clean read-only view and uses a pencil action when private links
+  need editing. Long IRC and Matrix names stay contained in both views.
+- People search and `@` autocomplete now query the complete archive directory,
+  so infrequent speakers remain discoverable even when they are outside the
+  busiest names included with the initial page metadata.
+
 ## 1.2.2
 
 - **IRC commands in the composer.** Slash commands now autocomplete as you
