@@ -1,5 +1,19 @@
 # Changelog
 
+## 1.2.4
+
+- **The archivist notices a dead link.** A connection that goes silent is
+  pinged after four minutes and redialled after eight, matching the networks'
+  own timeout, instead of sitting "connected" indefinitely while nothing is
+  recorded. TCP keepalive is on too.
+- On every connection the archivist asks for its configured nick first, and
+  asks for it back every five minutes while a ghost still holds it.
+- A channel that refuses the join (banned, invite-only, key, registered-only,
+  full) or kicks the archivist is retried with backoff rather than forgotten
+  until the next reconnect. The server's reason lands in the add-on log, as do
+  `ERROR` lines and other refusals.
+- `/api/session` reports `quiet`, the seconds since the server last spoke.
+
 ## 1.2.3
 
 - **Compact people cards in the conversation.** Clicking a name or picture
