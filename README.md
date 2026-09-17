@@ -239,6 +239,7 @@ back through another exactly as they would on a real network.
 python3 tests/e2e.py          # the API and the live pipeline, end to end
 python3 tests/uiserver.py     # the client itself, driven in a real browser
 python3 tests/upgrade.py      # an upgrade keeps every account and message
+python3 tests/watchdog.py     # a dead link is redialled, nicks and channels regained
 python3 tests/uiserver.py --hold    # or leave the stack up to poke at by hand
 ```
 

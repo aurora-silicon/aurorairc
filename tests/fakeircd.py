@@ -27,13 +27,14 @@ class Client:
         self.registered = False
         self.buf = b""
         self.alive = True
+        self.muted = False      # a dead link: nothing in, nothing out
 
     @property
     def prefix(self):
         return f"{self.nick}!{self.user or self.nick}@test"
 
     def send(self, line):
-        if not self.alive:
+        if not self.alive or self.muted:
             return
         try:
             self.sock.sendall((line + "\r\n").encode("utf-8", "replace"))
@@ -62,6 +63,7 @@ class FakeIRCd:
         self.port = self.sock.getsockname()[1]
         self._stop = threading.Event()
         self.seen = []                 # every PRIVMSG the server relayed
+        self.banned = set()            # channels that answer JOIN with 474
 
     def log(self, *a):
         if self.verbose:
@@ -105,12 +107,22 @@ class FakeIRCd:
                 except socket.timeout:
                     continue
                 except OSError:
+                    if c.muted:
+                        time.sleep(0.2)
+                        continue
                     break
                 if not chunk:
+                    if c.muted:
+                        # A real server keeps a ghost until its own ping
+                        # timeout fires; hold the nick until close() says so.
+                        time.sleep(0.2)
+                        continue
                     break
                 c.buf += chunk
                 while b"\r\n" in c.buf:
                     line, _, c.buf = c.buf.partition(b"\r\n")
+                    if c.muted:
+                        continue           # swallowed, as a dead link would
                     self._handle(c, line.decode("utf-8", "replace"))
         finally:
             self._part_all(c, "connection closed")
@@ -144,7 +156,9 @@ class FakeIRCd:
             old = c.nick
             c.nick = want
             if old and c.registered:
-                for peer in self._peers(c):
+                # The renaming client hears it too - that echo is how a real
+                # client learns the change took.
+                for peer in self._peers(c) | {c}:
                     peer.send(f":{old}!{c.user or old}@test NICK :{want}")
             self._maybe_register(c)
         elif cmd == "USER" and args:
@@ -255,6 +269,9 @@ class FakeIRCd:
             return
         if channel in c.channels:
             return
+        if channel.lower() in self.banned:
+            c.send(f":{self.name} 474 {c.nick} {channel} :Cannot join channel (+b)")
+            return
         c.channels.add(channel)
         for m in self._members(channel):
             m.send(f":{c.prefix} JOIN {channel}")
@@ -313,6 +330,28 @@ class FakeIRCd:
     def inject_join(self, nick, channel):
         for m in self._members(channel):
             m.send(f":{nick}!{nick}@test JOIN {channel}")
+
+    def client(self, nick):
+        with self.lock:
+            return next((c for c in self.clients
+                         if c.alive and c.nick and c.nick.lower() == nick.lower()), None)
+
+    def mute(self, nick):
+        """Turn a client's link into a black hole: the socket stays open, but
+        nothing is delivered either way. This is what a dropped NAT entry or
+        a path failure without a RST looks like from the client's side."""
+        c = self.client(nick)
+        if c:
+            c.muted = True
+        return c
+
+    def kick(self, nick, channel, by="op", why="no bots"):
+        c = self.client(nick)
+        if not c or channel not in c.channels:
+            return
+        for m in self._members(channel):
+            m.send(f":{by}!{by}@test KICK {channel} {c.nick} :{why}")
+        c.channels.discard(channel)
 
     def inject_quit(self, nick, why="Ping timeout"):
         with self.lock:

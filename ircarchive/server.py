@@ -167,9 +167,14 @@ def network_status(con, nid):
     beat = db.setting(con, f"live_heartbeat:{nid}")
     age = (int(time.time()) - int(beat)) if beat else None
     chans = db.setting(con, f"live_channels:{nid}") or ""
+    seen = db.setting(con, f"live_seen:{nid}")
     return {"id": nid, "connected": age is not None and age < LIVE_STALE,
             "nick": db.setting(con, f"live_nick:{nid}"),
-            "channels": [c for c in chans.split(",") if c], "age": age}
+            "channels": [c for c in chans.split(",") if c], "age": age,
+            # seconds since the server last sent anything: a healthy link is
+            # never quiet for long, so this is the number to look at when the
+            # heartbeat says connected but the archive has stopped growing
+            "quiet": (int(time.time()) - int(seen)) if seen else None}
 
 
 def live_status(con):

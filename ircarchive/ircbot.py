@@ -26,6 +26,24 @@ from . import db
 
 CTCP = "\x01"
 
+# Silence thresholds. OFTC and Libera drop a client after 480 s without a
+# PONG, so a socket that has carried nothing for that long is already dead on
+# the far side whether or not the local kernel has heard about it. A NAT entry
+# that expires, or a link that goes away without a RST, leaves recv() timing
+# out politely forever while the network forgot us long ago - which is how an
+# archivist once sat "connected" for four days recording nothing.
+PING_AFTER = 240        # seconds of silence before we ask the server ourselves
+DEAD_AFTER = 480        # seconds of silence before the socket is given up on
+REGAIN_EVERY = 300      # how often to ask for the wanted nick back
+REJOIN_MIN, REJOIN_MAX = 60, 3600   # retry backoff for a channel we can't hold
+
+# Numerics a server answers JOIN with when it will not have us. Each one is a
+# reason to try again later rather than to forget the channel existed.
+JOIN_REFUSED = {"405": "too many channels", "470": "forwarded elsewhere",
+                "471": "channel is full", "473": "invite only",
+                "474": "banned", "475": "needs a key",
+                "477": "needs a registered nick"}
+
 
 def strip_formatting(text):
     """Remove mIRC colour/format codes so stored text matches the web export."""
@@ -97,6 +115,10 @@ class Logger:
         self._wanted = None
         self._names = {}
         self._ison = None
+        self._last_rx = 0          # when the server last sent us anything
+        self._pinged = False       # a PING of ours is outstanding
+        self._last_regain = 0
+        self._rejoin = {}          # channel (lower) -> (next try, delay)
         self.registered = False
 
     # -- plumbing ---------------------------------------------------------
@@ -108,6 +130,13 @@ class Logger:
 
     def connect(self):
         raw = socket.create_connection((self.host, self.port), timeout=60)
+        # Kernel keepalives catch the plain cases; the watchdog in pump()
+        # catches the rest, and does so on platforms without these options.
+        raw.setsockopt(socket.SOL_SOCKET, socket.SO_KEEPALIVE, 1)
+        for opt, val in (("TCP_KEEPIDLE", 60), ("TCP_KEEPINTVL", 30),
+                         ("TCP_KEEPCNT", 4)):
+            if hasattr(socket, opt):
+                raw.setsockopt(socket.IPPROTO_TCP, getattr(socket, opt), val)
         if self.tls:
             ctx = ssl.create_default_context()
             raw = ctx.wrap_socket(raw, server_hostname=self.host)
@@ -119,6 +148,13 @@ class Logger:
         self.registered = False
         self._names = {}
         self._ison = None
+        self._rejoin = {}
+        self._last_rx = time.time()
+        self._pinged = False
+        # Every connection asks for the wanted nick first. A ghost of our own
+        # previous session may still hold it, in which case 433 hands us the
+        # underscore variant as before - but only until the ghost times out.
+        self.nick = self.base_nick
         db.presence_reset_network(self.con, self.network_id)
         self.send(f"NICK {self.nick}")
         self.send(f"USER {self.username} 0 * :{self.realname}")
@@ -133,6 +169,8 @@ class Logger:
                 continue
             if not chunk:
                 return
+            self._last_rx = time.time()
+            self._pinged = False
             self._buf += chunk
             while b"\r\n" in self._buf:
                 line, _, self._buf = self._buf.partition(b"\r\n")
@@ -166,8 +204,11 @@ class Logger:
         if time.time() - self._last_pump < 0.25:
             return
         self._last_pump = time.time()
-        self.apply_channels()
         now = int(time.time())
+        self.watchdog(now)
+        self.apply_channels()
+        self.pump_regain(now)
+        self.pump_rejoin(now)
         self.pump_presence_check(now)
         if now - self._last_beat >= 10:
             self._last_beat = now
@@ -178,10 +219,53 @@ class Logger:
             db.setting(self.con, "live_heartbeat" + suffix, now)
             db.setting(self.con, "live_nick" + suffix, self.nick)
             db.setting(self.con, "live_channels" + suffix, ",".join(self.channels))
+            db.setting(self.con, "live_seen" + suffix, int(self._last_rx))
             if self.network_id:
                 # keep the unsuffixed keys as a summary for the status pill
                 db.setting(self.con, "live_heartbeat", now)
                 db.setting(self.con, "live_nick", self.nick)
+
+    def watchdog(self, now):
+        """Notice a dead link ourselves rather than waiting for the kernel.
+
+        Raises out of the read loop, which is the ordinary reconnect path:
+        run() logs it, closes the socket and dials again with backoff.
+        """
+        idle = now - self._last_rx
+        if idle >= DEAD_AFTER:
+            raise ConnectionError(
+                f"nothing from the server for {int(idle)}s - link is dead")
+        if idle >= PING_AFTER and not self._pinged:
+            self._pinged = True
+            self.send(f"PING :{int(now)}")
+
+    def pump_regain(self, now):
+        """Ask for the wanted nick back while we are stuck on a fallback."""
+        if not self.registered or self.nick == self.base_nick:
+            return
+        if now - self._last_regain < REGAIN_EVERY:
+            return
+        self._last_regain = now
+        self.send(f"NICK {self.base_nick}")
+
+    def schedule_rejoin(self, channel, why):
+        """A channel we should be in but aren't: try again later, backing off."""
+        key = channel.lower()
+        _, delay = self._rejoin.get(key, (0, REJOIN_MIN / 2))
+        delay = min(delay * 2, REJOIN_MAX)
+        self._rejoin[key] = (time.time() + delay, delay)
+        print(f"   cannot stay in {channel}: {why}; trying again in {int(delay)}s")
+
+    def pump_rejoin(self, now):
+        if not self.registered or not self._rejoin:
+            return
+        wanted = {c.lower() for c in self.channels}
+        for key, (due, delay) in list(self._rejoin.items()):
+            if key not in wanted:
+                self._rejoin.pop(key, None)       # no longer archived
+            elif due <= now:
+                self._rejoin[key] = (now + delay, delay)
+                self.send(f"JOIN {key}")
 
     def pump_presence_check(self, now):
         """Issue at most one pending ISON lookup on this network at a time."""
@@ -253,9 +337,18 @@ class Logger:
             for ch in self.channels:
                 self.send(f"JOIN {ch}")
         elif command in ("433", "436"):  # nick in use / collision
-            self.nick += "_"
-            print(f"   nick taken, retrying as {self.nick}")
-            self.send(f"NICK {self.nick}")
+            if self.registered:
+                # A regain attempt that didn't land; the server left our
+                # current nick alone, so there is nothing to change.
+                print(f"   {self.base_nick} is still taken, staying {self.nick}")
+            else:
+                self.nick += "_"
+                print(f"   nick taken, retrying as {self.nick}")
+                self.send(f"NICK {self.nick}")
+        elif command in JOIN_REFUSED and len(params) >= 2:
+            reason = params[-1] if len(params) > 2 else ""
+            self.schedule_rejoin(params[1], f"{JOIN_REFUSED[command]} ({command}"
+                                 + (f": {reason}" if reason else "") + ")")
         elif command == "303":  # RPL_ISON
             if self._ison:
                 asked, _ = self._ison
@@ -303,6 +396,8 @@ class Logger:
 
         # Presence traffic - recorded to the events table, never to messages
         elif command == "JOIN" and params:
+            if nick.lower() == self.nick.lower():
+                self._rejoin.pop(params[0].lower(), None)
             db.presence_join(self.con, self.network_id, params[0], nick)
             self.note(params[0], nick, db.EV_JOIN, "")
         elif command == "PART" and params:
@@ -315,6 +410,8 @@ class Logger:
         elif command == "KICK" and len(params) >= 2:
             if params[1].lower() == self.nick.lower():
                 db.presence_clear_channel(self.con, self.network_id, params[0])
+                self.schedule_rejoin(params[0], f"kicked by {nick}"
+                                     + (f" [{params[-1]}]" if len(params) > 2 else ""))
             else:
                 db.presence_part(self.con, self.network_id, params[0], params[1])
             self.note(params[0], params[1], db.EV_KICK,
@@ -332,6 +429,12 @@ class Logger:
                 self.note(ch, nick, db.EV_NICK, params[-1])
             if nick.lower() == self.nick.lower():
                 self.nick = params[-1]
+                print(f"   now known as {self.nick}")
+        elif command == "ERROR":
+            print(f"   server: {params[-1] if params else ''}")
+        elif command.isdigit() and command[0] in "45":
+            # Anything else the server refused - in the log, not swallowed.
+            print(f"   server {command}: {' '.join(params[1:])}")
 
     # -- main loop --------------------------------------------------------
 
